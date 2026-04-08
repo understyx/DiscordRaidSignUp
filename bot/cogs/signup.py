@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 # Chat message parser helpers
 # ---------------------------------------------------------------------------
 
-# Matches: CharName / Spec / GS [/ Spec / GS ...] [⭐ or ❌]
-# Each line in a posted message is checked independently.
-_CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/\S+", re.IGNORECASE)
+# Matches: CharName / CharClass / Spec / GS [/ Spec / GS ...] [⭐ or ❌]
+# Requires at least 4 slash-separated parts (name, class, spec, gs).
+_CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/.+/.+", re.IGNORECASE)
 
 
 def _parse_character_lines(text: str) -> list[dict]:
@@ -29,12 +29,20 @@ def _parse_character_lines(text: str) -> list[dict]:
 
     Supported format (one per line)::
 
-        CharName / Spec / GS [/ Spec2 / GS2 ...] [⭐ or ❌]
+        CharName / CharClass / Spec1 / GS1 [/ Spec2 / GS2 ...] [⭐ or ❌]
+
+    ⭐  = priority character
+    ❌  = saved character (already saved this lockout)
 
     Returns a list of dicts with keys:
-        char_name, spec, gearscore, is_prio (bool), is_saved (bool)
+        char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool)
+
+    One dict is returned per unique character name (first spec/GS pair is used
+    as the primary spec and gearscore).
     """
     results = []
+    seen_names: set[str] = set()
+
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or not _CHAR_LINE_RE.match(line):
@@ -47,31 +55,42 @@ def _parse_character_lines(text: str) -> list[dict]:
         clean = line.replace("⭐", "").replace("★", "").replace("❌", "").replace("✗", "").strip()
 
         parts = [p.strip() for p in clean.split("/")]
-        if len(parts) < 3:
+        # Need at least: CharName / CharClass / Spec / GS
+        if len(parts) < 4:
             continue
 
         char_name = parts[0].strip()
-        if not char_name:
+        char_class = parts[1].strip()
+        if not char_name or not char_class:
+            continue
+
+        name_key = char_name.lower()
+        if name_key in seen_names:
             continue
 
         # Remaining parts alternate: spec, gs, spec, gs, …
-        spec_gs = parts[1:]
-        for i in range(0, len(spec_gs) - 1, 2):
-            spec = spec_gs[i].strip()
-            try:
-                gs = float(spec_gs[i + 1].strip().replace(",", "."))
-            except (ValueError, IndexError):
-                continue
-            if spec:
-                results.append(
-                    {
-                        "char_name": char_name.capitalize(),
-                        "spec": spec,
-                        "gearscore": gs,
-                        "is_prio": is_prio,
-                        "is_saved": is_saved,
-                    }
-                )
+        spec_gs = parts[2:]
+        if len(spec_gs) < 2:
+            continue
+
+        spec = spec_gs[0].strip()
+        try:
+            gs = float(spec_gs[1].strip().replace(",", "."))
+        except ValueError:
+            continue
+
+        if spec:
+            seen_names.add(name_key)
+            results.append(
+                {
+                    "char_name": char_name.capitalize(),
+                    "char_class": char_class,
+                    "spec": spec,
+                    "gearscore": gs,
+                    "is_prio": is_prio,
+                    "is_saved": is_saved,
+                }
+            )
 
     return results
 
@@ -157,6 +176,27 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
 
 
+def _chars_to_dicts(characters) -> list[dict]:
+    """Serialize Character ORM objects to plain dicts (safe to use after session close)."""
+    return [
+        {
+            "id": c.id,
+            "char_name": c.char_name,
+            "realm": c.realm,
+            "char_class": c.char_class,
+            "spec": c.spec,
+            "gearscore": c.gearscore or 0.0,
+        }
+        for c in characters
+    ]
+
+
+def _char_display_description(char: dict) -> str:
+    """Return a short spec/class/GS description string for a character dict."""
+    spec_or_class = char["spec"] if char["spec"] else (char["char_class"] or "?")
+    return f"{spec_or_class} – GS {char['gearscore']:.0f}"
+
+
 class CharacterSelectView(discord.ui.View):
     """Shown when a user has multiple characters and needs to pick one."""
 
@@ -185,6 +225,149 @@ class CharacterSelectView(discord.ui.View):
         char_id = int(interaction.data["values"][0])
         await _process_signup(interaction, self.raid_id, char_id, self.signup_type, self.preferred_role)
         self.stop()
+
+
+class SignupPrioritySelectView(discord.ui.View):
+    """
+    Step 2 of the multi-character sign-up flow.
+
+    Shows the characters the player has chosen to sign up with and lets them
+    optionally mark any of them as priority.  A Confirm button submits all
+    the signups.
+    """
+
+    def __init__(self, selected_chars: list[dict], raid_id: int):
+        super().__init__(timeout=120)
+        self.raid_id = raid_id
+        self.selected_chars = selected_chars
+
+        options = [
+            discord.SelectOption(
+                label=c["char_name"][:100],
+                description=_char_display_description(c)[:100],
+                value=str(c["id"]),
+            )
+            for c in selected_chars[:25]
+        ]
+
+        self.priority_select = discord.ui.Select(
+            placeholder="Mark priority characters (optional)…",
+            options=options,
+            min_values=0,
+            max_values=len(options),
+            row=0,
+        )
+        self.priority_select.callback = self._on_priority_select
+        self.add_item(self.priority_select)
+
+    async def _on_priority_select(self, interaction: discord.Interaction):
+        """Acknowledge the select interaction; values are read when Confirm is pressed."""
+        await interaction.response.defer()
+
+    @discord.ui.button(
+        label="Confirm Sign Up",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        row=1,
+    )
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        priority_ids = {int(v) for v in (self.priority_select.values or [])}
+        discord_user_id = interaction.user.id
+        raid_id = self.raid_id
+        loop = asyncio.get_event_loop()
+
+        def _upsert_all():
+            session = get_session()
+            try:
+                for char in self.selected_chars:
+                    signup_type = (
+                        SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
+                    )
+                    existing = (
+                        session.query(Signup)
+                        .filter_by(
+                            raid_id=raid_id,
+                            discord_user_id=discord_user_id,
+                            character_id=char["id"],
+                        )
+                        .first()
+                    )
+                    if existing:
+                        existing.signup_type = signup_type
+                        existing.status = SignupStatus.signed
+                    else:
+                        session.add(
+                            Signup(
+                                raid_id=raid_id,
+                                discord_user_id=discord_user_id,
+                                character_id=char["id"],
+                                signup_type=signup_type,
+                                status=SignupStatus.signed,
+                            )
+                        )
+                session.commit()
+            finally:
+                session.close()
+
+        await loop.run_in_executor(None, _upsert_all)
+
+        lines = [
+            f"• **{c['char_name']}**{' ⭐ priority' if c['id'] in priority_ids else ''}"
+            for c in self.selected_chars
+        ]
+        await interaction.response.edit_message(
+            content=f"✅ Signed up for the raid:\n" + "\n".join(lines),
+            view=None,
+        )
+        await update_raid_embed(interaction.client, raid_id)
+
+
+class SignupCharacterSelectView(discord.ui.View):
+    """
+    Step 1 of the multi-character sign-up flow.
+
+    Shows all of the player's registered characters as a multi-select.
+    After confirming, transitions to SignupPrioritySelectView.
+    """
+
+    def __init__(self, characters: list[dict], raid_id: int):
+        super().__init__(timeout=120)
+        self.raid_id = raid_id
+        self.characters = characters
+
+        options = [
+            discord.SelectOption(
+                label=c["char_name"][:100],
+                description=_char_display_description(c)[:100],
+                value=str(c["id"]),
+            )
+            for c in characters[:25]
+        ]
+
+        self.char_select = discord.ui.Select(
+            placeholder="Choose characters to sign up with…",
+            options=options,
+            min_values=1,
+            max_values=len(options),
+            row=0,
+        )
+        self.char_select.callback = self._on_select
+        self.add_item(self.char_select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        selected_ids = {int(v) for v in interaction.data["values"]}
+        chars_by_id = {c["id"]: c for c in self.characters}
+        selected_chars = [chars_by_id[cid] for cid in selected_ids if cid in chars_by_id]
+
+        names = ", ".join(f"**{c['char_name']}**" for c in selected_chars)
+        view = SignupPrioritySelectView(selected_chars, self.raid_id)
+        await interaction.response.edit_message(
+            content=(
+                f"Selected: {names}\n\n"
+                "Optionally mark any as **priority** below, then click **Confirm Sign Up**."
+            ),
+            view=view,
+        )
 
 
 async def _process_signup(
@@ -390,10 +573,72 @@ class SignupView(discord.ui.View):
         await self._handle_button(interaction, SignupType.prio_role, preferred_role="dps")
 
     @discord.ui.button(
+        label="Sign Up",
+        style=discord.ButtonStyle.success,
+        custom_id="signup:multi",
+        emoji="✅",
+        row=1,
+    )
+    async def btn_signup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Open the multi-character sign-up flow."""
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
+        loop = asyncio.get_event_loop()
+
+        def _check_raid():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                return raid.status if raid else None
+            finally:
+                session.close()
+
+        status = await loop.run_in_executor(None, _check_raid)
+        if status != RaidStatus.open:
+            await interaction.response.send_message(
+                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
+            )
+            return
+
+        discord_user_id = interaction.user.id
+
+        def _get_chars():
+            session = get_session()
+            try:
+                chars = (
+                    session.query(Character)
+                    .filter_by(discord_user_id=discord_user_id)
+                    .all()
+                )
+                return _chars_to_dicts(chars)
+            finally:
+                session.close()
+
+        char_dicts = await loop.run_in_executor(None, _get_chars)
+
+        if not char_dicts:
+            await interaction.response.send_message(
+                "❌ You have no registered characters. Post a sign-up line or use `/addcharacter` first.",
+                ephemeral=True,
+            )
+            return
+
+        view = SignupCharacterSelectView(char_dicts, raid_id)
+        await interaction.response.send_message(
+            "Choose which characters to sign up with:", view=view, ephemeral=True
+        )
+
+    @discord.ui.button(
         label="Withdraw",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:withdraw",
         emoji="❌",
+        row=1,
     )
     async def btn_withdraw(self, interaction: discord.Interaction, button: discord.ui.Button):
         raid_id = self._get_raid_id(interaction)
@@ -443,10 +688,13 @@ class SignupCog(commands.Cog):
 
         Format (one character per line)::
 
-            CharName / Spec / GS [/ Spec2 / GS2 ...] [⭐ or ❌]
+            CharName / CharClass / Spec1 / GS1 [/ Spec2 / GS2 ...] [⭐ or ❌]
 
         ⭐  = priority character (maps to prio_character signup type)
         ❌  = saved character (ID-locked; marks signup as is_saved=True)
+
+        Characters are upserted by (discord_user_id, char_name) – one row
+        per character.  The primary spec/GS (first pair) is stored.
 
         The bot only acts in channels that have an active (open) raid.
         It saves/updates the character(s) in the DB and auto-signs the
@@ -491,13 +739,12 @@ class SignupCog(commands.Cog):
             try:
                 summaries = []
                 for entry in parsed:
-                    # Upsert character
+                    # Upsert character keyed on (discord_user_id, char_name)
                     char = (
                         session.query(Character)
                         .filter_by(
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
-                            spec=entry["spec"],
                         )
                         .first()
                     )
@@ -505,15 +752,16 @@ class SignupCog(commands.Cog):
                         char = Character(
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
-                            spec=entry["spec"],
                         )
                         session.add(char)
 
+                    char.char_class = entry["char_class"]
+                    char.spec = entry["spec"]
                     char.gearscore = entry["gearscore"]
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
 
-                    # Upsert signup
+                    # Upsert signup (one per character per raid)
                     signup_type = (
                         SignupType.prio_character if entry["is_prio"] else SignupType.fill
                     )
@@ -544,7 +792,7 @@ class SignupCog(commands.Cog):
                     elif entry["is_saved"]:
                         flag = " ❌"
                     summaries.append(
-                        f"• **{entry['char_name']}** – {entry['spec']} (GS {entry['gearscore']:.0f}){flag}"
+                        f"• **{entry['char_name']}** ({entry['char_class']}) – {entry['spec']} GS {entry['gearscore']:.0f}{flag}"
                     )
 
                 session.commit()
