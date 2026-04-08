@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Text, BigInteger, ForeignKey, Float
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Enum, Text, BigInteger, ForeignKey, Float
 from sqlalchemy.orm import DeclarativeBase, relationship
 import enum
 import datetime
@@ -70,6 +70,7 @@ class Signup(Base):
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
     signup_type = Column(Enum(SignupType), default=SignupType.fill)
     status = Column(Enum(SignupStatus), default=SignupStatus.signed)
+    is_saved = Column(Boolean, default=False)  # character is ID-locked / already saved this lockout
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="signups")
     character = relationship("Character", back_populates="signups")

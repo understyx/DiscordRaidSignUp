@@ -179,7 +179,148 @@ class CharacterCog(commands.Cog):
         role_view = RoleSelectView(char_id)
         await interaction.followup.send(embed=embed, view=role_view, ephemeral=True)
 
-    # ── /my_characters ─────────────────────────────────────────────────────
+    # ── /addcharacter ──────────────────────────────────────────────────────
+    @app_commands.command(
+        name="addcharacter",
+        description="Manually add a character with spec and gearscore (no armory needed).",
+    )
+    @app_commands.describe(
+        name="Character name",
+        spec1="First (or only) spec",
+        gs1="Gearscore for spec 1",
+        spec2="Second spec (optional)",
+        gs2="Gearscore for spec 2 (optional)",
+        spec3="Third spec (optional)",
+        gs3="Gearscore for spec 3 (optional)",
+        realm="Realm name (default: Icecrown)",
+    )
+    async def addcharacter(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        spec1: str,
+        gs1: float,
+        spec2: Optional[str] = None,
+        gs2: Optional[float] = None,
+        spec3: Optional[str] = None,
+        gs3: Optional[float] = None,
+        realm: str = "Icecrown",
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        specs: list[tuple[str, float]] = [(spec1.strip(), gs1)]
+        if spec2 and gs2 is not None:
+            specs.append((spec2.strip(), gs2))
+        if spec3 and gs3 is not None:
+            specs.append((spec3.strip(), gs3))
+
+        def _upsert_all():
+            session = get_session()
+            try:
+                saved_ids = []
+                for spec, gs in specs:
+                    char = (
+                        session.query(Character)
+                        .filter_by(
+                            discord_user_id=discord_user_id,
+                            char_name=name.capitalize(),
+                            realm=realm.capitalize(),
+                            spec=spec,
+                        )
+                        .first()
+                    )
+                    if char is None:
+                        char = Character(
+                            discord_user_id=discord_user_id,
+                            char_name=name.capitalize(),
+                            realm=realm.capitalize(),
+                            spec=spec,
+                        )
+                        session.add(char)
+
+                    char.gearscore = gs
+                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    session.flush()
+                    saved_ids.append(char.id)
+
+                session.commit()
+                return saved_ids
+            finally:
+                session.close()
+
+        char_ids = await loop.run_in_executor(None, _upsert_all)
+
+        lines = [
+            f"• **{spec}** – GS {gs:.0f}"
+            for spec, gs in specs
+        ]
+        embed = discord.Embed(
+            title=f"✅ {name.capitalize()}-{realm.capitalize()} added!",
+            description="\n".join(lines),
+            color=discord.Color.green(),
+        )
+        embed.set_footer(text="Use /my_characters to see all your characters.")
+
+        # Offer role selection for the first (primary) spec
+        role_view = RoleSelectView(char_ids[0])
+        await interaction.followup.send(embed=embed, view=role_view, ephemeral=True)
+
+    # ── /remove_character ──────────────────────────────────────────────────
+    @app_commands.command(
+        name="remove_character",
+        description="Remove one of your registered characters.",
+    )
+    @app_commands.describe(
+        name="Character name to remove",
+        spec="Spec to remove (leave blank to remove all specs of this character)",
+    )
+    async def remove_character(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        spec: Optional[str] = None,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        def _delete():
+            session = get_session()
+            try:
+                q = session.query(Character).filter(
+                    Character.discord_user_id == discord_user_id,
+                    Character.char_name.ilike(name),
+                )
+                if spec:
+                    q = q.filter(Character.spec.ilike(spec))
+                chars = q.all()
+                if not chars:
+                    return 0
+                for c in chars:
+                    session.delete(c)
+                session.commit()
+                return len(chars)
+            finally:
+                session.close()
+
+        removed = await loop.run_in_executor(None, _delete)
+
+        if removed == 0:
+            await interaction.followup.send(
+                f"❌ No character named **{name}**"
+                + (f" ({spec})" if spec else "")
+                + " found in your registered list.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                f"🗑️ Removed **{removed}** entry/entries for **{name.capitalize()}**.",
+                ephemeral=True,
+            )
+
+
     @app_commands.command(
         name="my_characters",
         description="List all your registered characters.",
@@ -204,7 +345,7 @@ class CharacterCog(commands.Cog):
 
         if not chars:
             await interaction.followup.send(
-                "You have no registered characters. Use `/register_character` to add one.",
+                "You have no registered characters. Use `/register_character` or `/addcharacter` to add one.",
                 ephemeral=True,
             )
             return
@@ -215,11 +356,13 @@ class CharacterCog(commands.Cog):
         )
         for char in chars:
             role_str = char.role.value.capitalize() if char.role else "Not set"
+            field_name = f"{char.char_name} ({char.realm})"
+            if char.spec:
+                field_name += f" – {char.spec}"
             embed.add_field(
-                name=f"{char.char_name} ({char.realm})",
+                name=field_name,
                 value=(
                     f"Class: {char.char_class or 'Unknown'}\n"
-                    f"Spec: {char.spec or 'Unknown'}\n"
                     f"GS: {char.gearscore:.0f}\n"
                     f"Role: {role_str}"
                 ),
