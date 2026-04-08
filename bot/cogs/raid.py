@@ -107,28 +107,35 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             size = 25
 
         discord_user_id = interaction.user.id
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
-        def _create():
-            session = get_session()
-            try:
-                raid = Raid(
-                    name=self.raid_name.value.strip(),
-                    date=raid_dt,
-                    description=self.description.value.strip() if self.description.value else "",
-                    raid_instance=self.raid_instance.value.strip(),
-                    max_size=size,
-                    status=RaidStatus.open,
-                    created_by=discord_user_id,
-                )
-                session.add(raid)
-                session.commit()
-                session.refresh(raid)
-                return raid.id, raid.name, raid.date, raid.raid_instance, raid.description, raid.max_size
-            finally:
-                session.close()
+        try:
+            def _create():
+                session = get_session()
+                try:
+                    raid = Raid(
+                        name=self.raid_name.value.strip(),
+                        date=raid_dt,
+                        description=self.description.value.strip() if self.description.value else "",
+                        raid_instance=self.raid_instance.value.strip(),
+                        max_size=size,
+                        status=RaidStatus.open,
+                        created_by=discord_user_id,
+                    )
+                    session.add(raid)
+                    session.commit()
+                    session.refresh(raid)
+                    return raid.id, raid.name, raid.date, raid.raid_instance, raid.description, raid.max_size
+                finally:
+                    session.close()
 
-        raid_id, name, date, instance, desc, max_size = await loop.run_in_executor(None, _create)
+            raid_id, name, date, instance, desc, max_size = await loop.run_in_executor(None, _create)
+        except Exception:
+            logger.exception("Failed to create raid in database")
+            await interaction.response.send_message(
+                "❌ Failed to create raid. Please try again later.", ephemeral=True
+            )
+            return
 
         fake = _RaidEmbed(
             id=raid_id,
@@ -159,7 +166,21 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             finally:
                 session.close()
 
-        await loop.run_in_executor(None, _store_msg)
+        try:
+            await loop.run_in_executor(None, _store_msg)
+        except Exception:
+            logger.warning("Failed to store discord_message_id for raid %s", raid_id, exc_info=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        logger.exception("Unhandled error in CreateRaidModal", exc_info=error)
+        msg = "❌ An unexpected error occurred. Please try again later."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except Exception:
+            pass
 
 
 class RaidCog(commands.Cog):
