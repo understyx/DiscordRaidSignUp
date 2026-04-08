@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
+import re
 from typing import Optional
 
 import discord
@@ -11,6 +13,67 @@ from bot.db import get_session
 from db.models import Character, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Chat message parser helpers
+# ---------------------------------------------------------------------------
+
+# Matches: CharName / Spec / GS [/ Spec / GS ...] [⭐ or ❌]
+# Each line in a posted message is checked independently.
+_CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/\S+", re.IGNORECASE)
+
+
+def _parse_character_lines(text: str) -> list[dict]:
+    """
+    Parse one or more character lines from a message body.
+
+    Supported format (one per line)::
+
+        CharName / Spec / GS [/ Spec2 / GS2 ...] [⭐ or ❌]
+
+    Returns a list of dicts with keys:
+        char_name, spec, gearscore, is_prio (bool), is_saved (bool)
+    """
+    results = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or not _CHAR_LINE_RE.match(line):
+            continue
+
+        is_prio = "⭐" in line or "★" in line
+        is_saved = "❌" in line or "✗" in line
+
+        # Strip flag characters before splitting
+        clean = line.replace("⭐", "").replace("★", "").replace("❌", "").replace("✗", "").strip()
+
+        parts = [p.strip() for p in clean.split("/")]
+        if len(parts) < 3:
+            continue
+
+        char_name = parts[0].strip()
+        if not char_name:
+            continue
+
+        # Remaining parts alternate: spec, gs, spec, gs, …
+        spec_gs = parts[1:]
+        for i in range(0, len(spec_gs) - 1, 2):
+            spec = spec_gs[i].strip()
+            try:
+                gs = float(spec_gs[i + 1].strip().replace(",", "."))
+            except (ValueError, IndexError):
+                continue
+            if spec:
+                results.append(
+                    {
+                        "char_name": char_name.capitalize(),
+                        "spec": spec,
+                        "gearscore": gs,
+                        "is_prio": is_prio,
+                        "is_saved": is_saved,
+                    }
+                )
+
+    return results
 
 
 def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
@@ -105,8 +168,10 @@ class CharacterSelectView(discord.ui.View):
 
         options = [
             discord.SelectOption(
-                label=f"{c.char_name} ({c.realm})",
-                description=f"{c.char_class or '?'} – GS {c.gearscore:.0f}",
+                label=f"{c.char_name} ({c.realm})"[:100],
+                description=(
+                    f"{c.spec or c.char_class or '?'} – GS {c.gearscore:.0f}"
+                )[:100],
                 value=str(c.id),
             )
             for c in characters[:25]  # Discord max 25 options
@@ -128,6 +193,7 @@ async def _process_signup(
     character_id: int,
     signup_type: SignupType,
     preferred_role: str | None = None,
+    is_saved: bool = False,
 ):
     """Upsert signup, optionally update character role, and refresh the raid embed."""
     discord_user_id = interaction.user.id
@@ -145,6 +211,7 @@ async def _process_signup(
                 existing.character_id = character_id
                 existing.signup_type = signup_type
                 existing.status = SignupStatus.signed
+                existing.is_saved = is_saved
             else:
                 new_signup = Signup(
                     raid_id=raid_id,
@@ -152,6 +219,7 @@ async def _process_signup(
                     character_id=character_id,
                     signup_type=signup_type,
                     status=SignupStatus.signed,
+                    is_saved=is_saved,
                 )
                 session.add(new_signup)
 
@@ -195,7 +263,8 @@ async def _process_signup(
         SignupType.prio_character: "Prio (Character)",
     }.get(signup_type, signup_type.value)
 
-    msg = f"✅ Signed up as **{char_display}** ({type_label})!"
+    saved_label = " ❌ *Saved*" if is_saved else ""
+    msg = f"✅ Signed up as **{char_display}** ({type_label}){saved_label}!"
     if interaction.response.is_done():
         await interaction.followup.send(msg, ephemeral=True)
     else:
@@ -365,6 +434,141 @@ class SignupView(discord.ui.View):
 class SignupCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    # ── on_message: character list parser ─────────────────────────────────
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """
+        Parse character sign-up lines posted in raid channels.
+
+        Format (one character per line)::
+
+            CharName / Spec / GS [/ Spec2 / GS2 ...] [⭐ or ❌]
+
+        ⭐  = priority character (maps to prio_character signup type)
+        ❌  = saved character (ID-locked; marks signup as is_saved=True)
+
+        The bot only acts in channels that have an active (open) raid.
+        It saves/updates the character(s) in the DB and auto-signs the
+        player up for the raid.  A summary reply is sent to the channel.
+        """
+        # Ignore bot messages and DMs
+        if message.author.bot or not message.guild:
+            return
+
+        parsed = _parse_character_lines(message.content)
+        if not parsed:
+            return
+
+        loop = asyncio.get_event_loop()
+        channel_id = message.channel.id
+
+        # Find an open raid in this channel
+        def _find_raid():
+            session = get_session()
+            try:
+                raid = (
+                    session.query(Raid)
+                    .filter_by(discord_channel_id=channel_id, status=RaidStatus.open)
+                    .order_by(Raid.id.desc())
+                    .first()
+                )
+                if raid:
+                    return {"id": raid.id, "name": raid.name}
+                return None
+            finally:
+                session.close()
+
+        raid_info = await loop.run_in_executor(None, _find_raid)
+        if not raid_info:
+            return  # Not a raid channel with an open raid; ignore silently
+
+        discord_user_id = message.author.id
+        raid_id = raid_info["id"]
+
+        def _save_and_signup():
+            session = get_session()
+            try:
+                summaries = []
+                for entry in parsed:
+                    # Upsert character
+                    char = (
+                        session.query(Character)
+                        .filter_by(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                            spec=entry["spec"],
+                        )
+                        .first()
+                    )
+                    if char is None:
+                        char = Character(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                            spec=entry["spec"],
+                        )
+                        session.add(char)
+
+                    char.gearscore = entry["gearscore"]
+                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    session.flush()
+
+                    # Upsert signup
+                    signup_type = (
+                        SignupType.prio_character if entry["is_prio"] else SignupType.fill
+                    )
+                    existing = (
+                        session.query(Signup)
+                        .filter_by(raid_id=raid_id, discord_user_id=discord_user_id, character_id=char.id)
+                        .first()
+                    )
+                    if existing:
+                        existing.signup_type = signup_type
+                        existing.status = SignupStatus.signed
+                        existing.is_saved = entry["is_saved"]
+                    else:
+                        session.add(
+                            Signup(
+                                raid_id=raid_id,
+                                discord_user_id=discord_user_id,
+                                character_id=char.id,
+                                signup_type=signup_type,
+                                status=SignupStatus.signed,
+                                is_saved=entry["is_saved"],
+                            )
+                        )
+
+                    flag = ""
+                    if entry["is_prio"]:
+                        flag = " ⭐"
+                    elif entry["is_saved"]:
+                        flag = " ❌"
+                    summaries.append(
+                        f"• **{entry['char_name']}** – {entry['spec']} (GS {entry['gearscore']:.0f}){flag}"
+                    )
+
+                session.commit()
+                return summaries
+            finally:
+                session.close()
+
+        try:
+            summaries = await loop.run_in_executor(None, _save_and_signup)
+        except Exception:
+            logger.exception("Failed to process chat character sign-up from %s", discord_user_id)
+            return
+
+        reply = (
+            f"✅ {message.author.mention} signed up for **{raid_info['name']}**:\n"
+            + "\n".join(summaries)
+        )
+        try:
+            await message.reply(reply, mention_author=False)
+        except Exception:
+            pass
+
+        # Refresh the raid embed
+        await update_raid_embed(self.bot, raid_id)
 
 
 async def setup(bot: commands.Bot):
