@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Create Raid – RaidBot{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card p-4">
+      <h3 class="mb-4">⚔️ Create New Raid</h3>
+      <form method="post" action="/raids/create">
+        <div class="mb-3">
+          <label class="form-label">Raid Name</label>
+          <input type="text" name="name" class="form-control bg-dark text-light border-secondary" required maxlength="100" placeholder="e.g. Wednesday ICC 25" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Raid Instance</label>
+          <input type="text" name="raid_instance" class="form-control bg-dark text-light border-secondary" required maxlength="100" placeholder="e.g. ICC 25, RS 10 HM" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Date &amp; Time</label>
+          <input type="datetime-local" name="date" class="form-control bg-dark text-light border-secondary" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control bg-dark text-light border-secondary" rows="3" placeholder="Optional notes..."></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Max Size</label>
+          <input type="number" name="max_size" class="form-control bg-dark text-light border-secondary" value="25" min="1" max="40" />
+        </div>
+        <div class="d-grid">
+          <button type="submit" class="btn btn-wow btn-lg">Create Raid</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
