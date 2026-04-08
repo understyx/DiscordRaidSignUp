@@ -2,18 +2,18 @@
 {% block title %}{{ raid.name }} Composition – RaidBot{% endblock %}
 {% block content %}
 <h2 class="mb-1">📋 {{ raid.name }}</h2>
-<p class="text-muted mb-4">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date.strftime("%Y-%m-%d %H:%M UTC") }}</p>
+<p class="text-muted mb-4">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%Y-%m-%d %H:%M") }} UTC</p>
 
-{% set role_info = [("tank", "🛡️ Tanks"), ("healer", "💚 Healers"), ("dps", "⚔️ DPS")] %}
-{% for role_key, role_label in role_info %}
-  {% set entries = groups.get(role_key, []) %}
-  {% if entries %}
+{% set role_info = [{"key": "tank", "label": "🛡️ Tanks"}, {"key": "healer", "label": "💚 Healers"}, {"key": "dps", "label": "⚔️ DPS"}] %}
+{% for ri in role_info %}
+  {% set entries = groups[ri.key] or [] %}
+  {% if entries | length > 0 %}
   <div class="card mb-4 p-3">
-    <h4>{{ role_label }}</h4>
+    <h4>{{ ri.label }}</h4>
     <div class="row g-2">
       {% for comp in entries %}
         {% set c = comp.character %}
-        {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+        {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
         <div class="col-6 col-md-3">
           <div class="card p-2 h-100 border-secondary text-center">
             <div class="small text-muted mb-1">{{ comp.role_slot }}</div>

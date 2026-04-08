@@ -19,13 +19,14 @@
   <div class="col-md-4">
     <div class="card p-3 mb-3" style="min-height: 400px;">
       <h5>📝 Sign-ups</h5>
-      {% for role_label, role_key in [("🛡️ Tanks", "tank"), ("💚 Healers", "healer"), ("⚔️ DPS / Fill", "dps")] %}
-      <h6 class="text-muted mt-3">{{ role_label }}</h6>
+      {% set roleGroups = [{"label": "🛡️ Tanks", "key": "tank"}, {"label": "💚 Healers", "key": "healer"}, {"label": "⚔️ DPS / Fill", "key": "dps"}] %}
+      {% for rg in roleGroups %}
+      <h6 class="text-muted mt-3">{{ rg.label }}</h6>
       {% for s in signups %}
         {% set c = s.character %}
-        {% set char_role = c.role.value if c.role else "fill" %}
-        {% if char_role == role_key or (role_key == "dps" and char_role not in ("tank", "healer")) %}
-        {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+        {% set char_role = c.role if c.role else "fill" %}
+        {% if char_role == rg.key or (rg.key == "dps" and char_role != "tank" and char_role != "healer") %}
+        {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
         <div class="char-card card p-2 mb-1 border-secondary"
              draggable="true"
              data-char-id="{{ c.id }}"
@@ -51,8 +52,9 @@
       <div class="row g-2" id="rosterSlots">
         {% for slot in slots %}
         {% set slot_prefix = slot.split("_")[0] %}
-        {% set slot_emoji = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"}.get(slot_prefix, "❓") %}
-        {% set assigned_char_id = comp_map.get(slot) %}
+        {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+        {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
+        {% set assigned_char_id = comp_map[slot] %}
         <div class="col-6 col-md-4">
           <div class="slot-card card p-2 h-100 border-secondary text-center"
                data-slot="{{ slot }}"
@@ -63,7 +65,7 @@
               {% for s in signups %}
                 {% if s.character.id | string == assigned_char_id %}
                 {% set c = s.character %}
-                {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+                {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                 <div class="assigned-char" data-char-id="{{ c.id }}">
                   <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
                   <small>{{ c.char_class or "?" }}</small>
