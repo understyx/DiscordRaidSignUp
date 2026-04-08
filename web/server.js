@@ -17,6 +17,11 @@ app.use(
     secret: process.env.WEB_SECRET_KEY || 'change_this_to_a_random_string',
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    },
   })
 );
 
