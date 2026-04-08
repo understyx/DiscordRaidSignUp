@@ -3,15 +3,16 @@
 A World of Warcraft raid management system consisting of three components:
 
 - **Discord Bot** – slash commands for officers and players to manage raids and sign-ups
-- **Web App** – FastAPI + Jinja2 web interface with Discord OAuth2 login
+- **Web App** – Node.js / Express web interface with Discord OAuth2 login
 - **Database** – MariaDB with SQLAlchemy 2.0 ORM and Alembic migrations
 
 ---
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
-- [Node.js](https://nodejs.org/) v18+ (for local tooling / static file serving without Docker)
+- [Python](https://www.python.org/downloads/) 3.11+
+- [Node.js](https://nodejs.org/) v18+
+- [MariaDB](https://mariadb.org/download/) 10.6+ (or MySQL 8+) running locally
 - A [Discord Application](https://discord.com/developers/applications) with a bot token
 
 ---
@@ -45,8 +46,8 @@ DISCORD_BOT_TOKEN=your_bot_token_here
 DISCORD_CLIENT_ID=your_client_id
 DISCORD_CLIENT_SECRET=your_client_secret
 
-# Database (matches docker-compose defaults)
-DB_HOST=db
+# Database – point to your local MariaDB/MySQL instance
+DB_HOST=localhost
 DB_PORT=3306
 DB_USER=raidbot
 DB_PASSWORD=changeme
@@ -61,102 +62,91 @@ DISCORD_REDIRECT_URI=http://localhost:8000/auth/callback
 OFFICER_ROLE_NAME=Officer
 ```
 
-> **Tip:** Generate a strong `WEB_SECRET_KEY` with Node.js:
+> **Tip:** Generate a strong `WEB_SECRET_KEY`:
 > ```bash
 > node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 > ```
 
 ---
 
-## Running with Docker Compose (recommended)
+## Running Locally (without Docker)
 
-```bash
-docker compose up --build
+### 1. Set up the database
+
+Log in to MariaDB/MySQL as root and create the database and user:
+
+```sql
+CREATE DATABASE raidbot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'raidbot'@'localhost' IDENTIFIED BY 'changeme';
+GRANT ALL PRIVILEGES ON raidbot.* TO 'raidbot'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
-This starts three containers:
-
-| Container | Description                          | Port  |
-|-----------|--------------------------------------|-------|
-| `db`      | MariaDB database                     | –     |
-| `bot`     | Discord bot                          | –     |
-| `web`     | Web interface (FastAPI + uvicorn)    | 8000  |
-
-The web app will be available at **http://localhost:8000**.
-
-To run in detached (background) mode:
+Then import the item seed data:
 
 ```bash
-docker compose up --build -d
+mysql -u raidbot -p raidbot < items.sql
 ```
 
-To stop everything:
-
-```bash
-docker compose down
-```
-
-To stop and remove the database volume (full reset):
-
-```bash
-docker compose down -v
-```
-
----
-
-## Database Migrations
-
-Migrations are managed with [Alembic](https://alembic.sqlalchemy.org/). When the containers are running, apply pending migrations:
-
-```bash
-docker compose exec web alembic upgrade head
-```
-
-To create a new migration after changing `db/models.py`:
-
-```bash
-docker compose exec web alembic revision --autogenerate -m "describe your change"
-```
-
----
-
-## Local Development (without Docker)
-
-### 1. Install dependencies
+### 2. Install Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Start a local MariaDB / MySQL instance
+### 3. Apply database migrations
 
-Use Docker just for the database:
+Run Alembic from the project root to create all tables:
 
 ```bash
-docker compose up -d db
+alembic upgrade head
 ```
 
-Update `DB_HOST=localhost` in your `.env` when connecting from outside Docker.
+To create a new migration after changing `db/models.py`:
 
-### 3. Run the Discord bot
+```bash
+alembic revision --autogenerate -m "describe your change"
+```
+
+### 4. Run the Discord bot
 
 ```bash
 python -m bot.main
 ```
 
-### 4. Serve the web application
-
-Use [Node.js `http-server`](https://www.npmjs.com/package/http-server) via `npx` to preview static assets, or run the app directly through its ASGI runner:
+### 5. Install and run the web server
 
 ```bash
-# Serve the FastAPI app (requires uvicorn from requirements.txt)
-uvicorn web.main:app --reload --host 0.0.0.0 --port 8000
+cd web
+npm install
+npm start
 ```
 
-> To quickly browse compiled or exported static files with Node.js:
-> ```bash
-> npx http-server ./web/static -p 8080
-> ```
+The web app will be available at **http://localhost:8000**.
+
+---
+
+## Running with Docker Compose
+
+If you prefer containers, Docker Compose is also supported:
+
+```bash
+docker compose up --build
+```
+
+| Container | Description        | Port  |
+|-----------|--------------------|-------|
+| `db`      | MariaDB database   | –     |
+| `bot`     | Discord bot        | –     |
+| `web`     | Web interface      | 8000  |
+
+> When using Docker Compose, set `DB_HOST=db` in your `.env` (the compose service name).
+
+Apply migrations inside the running container:
+
+```bash
+docker compose exec bot alembic upgrade head
+```
 
 ---
 
@@ -174,10 +164,11 @@ uvicorn web.main:app --reload --host 0.0.0.0 --port 8000
 ├── db/                   # Database layer
 │   ├── migrations/       # Alembic migration scripts
 │   └── models.py         # SQLAlchemy 2.0 ORM models
-├── web/                  # Web interface (FastAPI + Jinja2 + Discord OAuth2)
-│   ├── routers/
+├── web/                  # Web interface (Node.js / Express + Nunjucks)
+│   ├── routes/
 │   ├── templates/
-│   └── main.py
+│   ├── db.js
+│   └── server.js
 ├── .env.example          # Environment variable template
 ├── docker-compose.yml
 ├── Dockerfile.bot
@@ -190,17 +181,17 @@ uvicorn web.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Environment Variables Reference
 
-| Variable               | Description                                          | Default              |
-|------------------------|------------------------------------------------------|----------------------|
-| `DISCORD_BOT_TOKEN`    | Bot token from Discord Developer Portal             | –                    |
-| `DISCORD_CLIENT_ID`    | OAuth2 Client ID                                     | –                    |
-| `DISCORD_CLIENT_SECRET`| OAuth2 Client Secret                                 | –                    |
-| `DB_HOST`              | Database host                                        | `db`                 |
-| `DB_PORT`              | Database port                                        | `3306`               |
-| `DB_USER`              | Database user                                        | `raidbot`            |
-| `DB_PASSWORD`          | Database password                                    | `changeme`           |
-| `DB_NAME`              | Database name                                        | `raidbot`            |
-| `WEB_SECRET_KEY`       | Secret key for session cookies                       | –                    |
-| `WEB_BASE_URL`         | Public base URL of the web app                       | `http://localhost:8000` |
-| `DISCORD_REDIRECT_URI` | OAuth2 redirect URI (must match Discord app setting) | `http://localhost:8000/auth/callback` |
-| `OFFICER_ROLE_NAME`    | Discord role name with officer permissions           | `Officer`            |
+| Variable                 | Description                                          | Default                               |
+|--------------------------|------------------------------------------------------|---------------------------------------|
+| `DISCORD_BOT_TOKEN`      | Bot token from Discord Developer Portal             | –                                     |
+| `DISCORD_CLIENT_ID`      | OAuth2 Client ID                                     | –                                     |
+| `DISCORD_CLIENT_SECRET`  | OAuth2 Client Secret                                 | –                                     |
+| `DB_HOST`                | Database host                                        | `localhost`                           |
+| `DB_PORT`                | Database port                                        | `3306`                                |
+| `DB_USER`                | Database user                                        | `raidbot`                             |
+| `DB_PASSWORD`            | Database password                                    | `changeme`                            |
+| `DB_NAME`                | Database name                                        | `raidbot`                             |
+| `WEB_SECRET_KEY`         | Secret key for session cookies                       | –                                     |
+| `WEB_BASE_URL`           | Public base URL of the web app                       | `http://localhost:8000`               |
+| `DISCORD_REDIRECT_URI`   | OAuth2 redirect URI (must match Discord app setting) | `http://localhost:8000/auth/callback` |
+| `OFFICER_ROLE_NAME`      | Discord role name with officer permissions           | `Officer`                             |
