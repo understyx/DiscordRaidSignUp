@@ -26,18 +26,18 @@ router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const [raids] = await pool.query(
-    `SELECT * FROM raids ORDER BY (status = 'open') DESC, date ASC`
+    `SELECT r.*, COALESCE(s.signup_count, 0) AS signup_count
+     FROM raids r
+     LEFT JOIN (
+       SELECT raid_id, COUNT(*) AS signup_count FROM signups GROUP BY raid_id
+     ) s ON s.raid_id = r.id
+     ORDER BY (r.status = 'open') DESC, r.date ASC`
   );
 
-  const raidData = await Promise.all(
-    raids.map(async r => {
-      const [[{ cnt }]] = await pool.query(
-        'SELECT COUNT(*) AS cnt FROM signups WHERE raid_id = ?',
-        [r.id]
-      );
-      return { raid: r, signup_count: cnt };
-    })
-  );
+  const raidData = raids.map(r => ({
+    raid: r,
+    signup_count: r.signup_count,
+  }));
 
   res.render('raids_list.html', {
     raids: raidData,
