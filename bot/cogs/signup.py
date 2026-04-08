@@ -202,17 +202,22 @@ def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
     Group per-spec character rows by character name.
 
     Each unique char_name becomes one group dict with:
-        id         – primary character ID (spec with the highest gearscore)
+        id         – primary character ID (row with the highest gearscore)
         char_name  – character name
         realm      – realm name
         char_class – class string
-        spec       – primary spec name (highest GS)
-        gearscore  – highest gearscore across all specs
-        specs      – list of (spec, gearscore, id) tuples sorted by GS descending
+        spec       – primary spec name (highest GS), or None if no specs
+        gearscore  – highest gearscore across all rows (including spec-less)
+        specs      – list of (spec, gearscore, id) tuples for rows that have a
+                     spec, sorted by GS descending; may be empty
     """
     groups: dict[str, dict] = {}
+    # Track all (gs, id) pairs per group regardless of spec, for primary selection
+    all_rows: dict[str, list[tuple[float, int]]] = {}
+
     for c in char_dicts:
         key = c["char_name"].lower()
+        gs = c.get("gearscore", 0.0)
         if key not in groups:
             groups[key] = {
                 "id": c["id"],
@@ -220,21 +225,28 @@ def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
                 "realm": c.get("realm", ""),
                 "char_class": c.get("char_class"),
                 "spec": c.get("spec"),
-                "gearscore": c.get("gearscore", 0.0),
+                "gearscore": gs,
                 "specs": [],
             }
+            all_rows[key] = []
         spec = c.get("spec")
-        gs = c.get("gearscore", 0.0)
         if spec:
             groups[key]["specs"].append((spec, gs, c["id"]))
+        all_rows[key].append((gs, c["id"]))
 
     result = []
-    for group in groups.values():
+    for key, group in groups.items():
         group["specs"].sort(key=lambda x: x[1], reverse=True)
         if group["specs"]:
+            # Primary is the highest-GS spec row
             group["id"] = group["specs"][0][2]
             group["spec"] = group["specs"][0][0]
             group["gearscore"] = group["specs"][0][1]
+        else:
+            # No spec rows – use the highest-GS row as primary
+            best_gs, best_id = max(all_rows[key], key=lambda x: x[0])
+            group["id"] = best_id
+            group["gearscore"] = best_gs
         result.append(group)
     return result
 
@@ -521,6 +533,132 @@ async def _process_signup(
     await update_raid_embed(interaction.client, raid_id)
 
 
+class SignupModal(discord.ui.Modal):
+    """
+    Modal shown when a player clicks the Sign Up button.
+
+    Layout:
+        Title           – Raid Name (≤ 45 chars, truncated if longer)
+        Label text      – 📍 Raid Instance (≤ 45 chars)
+        Label desc      – "── Characters ──"
+        CheckboxGroup   – one option per character (grouped by name), up to 10
+                          characters shown; extras are silently truncated by GS.
+    """
+
+    def __init__(
+        self,
+        raid_name: str,
+        raid_instance: str,
+        char_groups: list[dict],
+        raid_id: int,
+    ) -> None:
+        super().__init__(title=raid_name[:45])
+        self.raid_id = raid_id
+        self.char_groups = char_groups
+        self._groups_by_value: dict[str, dict] = {str(g["id"]): g for g in char_groups}
+
+        options: list[discord.CheckboxGroupOption] = []
+        for g in char_groups[:10]:
+            label = f"{g['char_name']} ({g['char_class'] or '?'})"[:100]
+            if g["specs"]:
+                spec_parts = [f"{s} {gs:.0f}" for s, gs, _ in g["specs"][:4]]
+                description = " / ".join(spec_parts)[:100]
+            else:
+                description = (g["char_class"] or "?")[:100]
+            options.append(
+                discord.CheckboxGroupOption(
+                    label=label,
+                    value=str(g["id"]),
+                    description=description,
+                )
+            )
+
+        self._checkbox_group = discord.ui.CheckboxGroup(
+            custom_id="char_select",
+            options=options,
+            max_values=len(options),
+            required=False,
+        )
+        instance_text = (f"📍 {raid_instance}" if raid_instance else "Sign Up")[:45]
+        self.add_item(
+            discord.ui.Label(
+                text=instance_text,
+                description="── Characters ──",
+                component=self._checkbox_group,
+            )
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        selected_values = self._checkbox_group.values
+        if not selected_values:
+            await interaction.response.send_message(
+                "No characters selected – sign-up cancelled.", ephemeral=True
+            )
+            return
+
+        selected_groups = [
+            self._groups_by_value[v]
+            for v in selected_values
+            if v in self._groups_by_value
+        ]
+        discord_user_id = interaction.user.id
+        raid_id = self.raid_id
+        loop = asyncio.get_event_loop()
+
+        def _upsert_all() -> None:
+            session = get_session()
+            try:
+                for g in selected_groups:
+                    existing = (
+                        session.query(Signup)
+                        .filter_by(
+                            raid_id=raid_id,
+                            discord_user_id=discord_user_id,
+                            character_id=g["id"],
+                        )
+                        .first()
+                    )
+                    if existing:
+                        existing.signup_type = SignupType.fill
+                        existing.status = SignupStatus.signed
+                    else:
+                        session.add(
+                            Signup(
+                                raid_id=raid_id,
+                                discord_user_id=discord_user_id,
+                                character_id=g["id"],
+                                signup_type=SignupType.fill,
+                                status=SignupStatus.signed,
+                            )
+                        )
+                session.commit()
+            finally:
+                session.close()
+
+        await loop.run_in_executor(None, _upsert_all)
+
+        lines = [
+            f"• **{g['char_name']}** ({g['char_class'] or '?'})"
+            for g in selected_groups
+        ]
+        await interaction.response.send_message(
+            "✅ Signed up for the raid:\n" + "\n".join(lines),
+            ephemeral=True,
+        )
+        await update_raid_embed(interaction.client, raid_id)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        logger.exception("Unhandled error in SignupModal", exc_info=error)
+        msg = "❌ An unexpected error occurred. Please try again later."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except Exception:
+            pass
+
+
 class SignupView(discord.ui.View):
     """Persistent view attached to each raid sign-up message."""
 
@@ -644,7 +782,7 @@ class SignupView(discord.ui.View):
         row=1,
     )
     async def btn_signup(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Open the multi-character sign-up flow."""
+        """Open the character sign-up modal."""
         raid_id = self._get_raid_id(interaction)
         if raid_id is None:
             await interaction.response.send_message(
@@ -653,37 +791,36 @@ class SignupView(discord.ui.View):
             return
 
         loop = asyncio.get_event_loop()
+        discord_user_id = interaction.user.id
 
-        def _check_raid():
+        def _fetch():
             session = get_session()
             try:
                 raid = session.get(Raid, raid_id)
-                return raid.status if raid else None
-            finally:
-                session.close()
-
-        status = await loop.run_in_executor(None, _check_raid)
-        if status != RaidStatus.open:
-            await interaction.response.send_message(
-                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
-            )
-            return
-
-        discord_user_id = interaction.user.id
-
-        def _get_chars():
-            session = get_session()
-            try:
+                if raid is None:
+                    return None, None, None, []
                 chars = (
                     session.query(Character)
                     .filter_by(discord_user_id=discord_user_id)
                     .all()
                 )
-                return _chars_to_dicts(chars)
+                return raid.status, raid.name, raid.raid_instance, _chars_to_dicts(chars)
             finally:
                 session.close()
 
-        char_dicts = await loop.run_in_executor(None, _get_chars)
+        status, raid_name, raid_instance, char_dicts = await loop.run_in_executor(None, _fetch)
+
+        if status is None:
+            await interaction.response.send_message(
+                "❌ Could not find this raid.", ephemeral=True
+            )
+            return
+
+        if status != RaidStatus.open:
+            await interaction.response.send_message(
+                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
+            )
+            return
 
         if not char_dicts:
             await interaction.response.send_message(
@@ -692,9 +829,9 @@ class SignupView(discord.ui.View):
             )
             return
 
-        view = SignupCharacterSelectView(char_dicts, raid_id)
-        await interaction.response.send_message(
-            "Choose which characters to sign up with:", view=view, ephemeral=True
+        char_groups = _group_chars_by_name(char_dicts)
+        await interaction.response.send_modal(
+            SignupModal(raid_name, raid_instance, char_groups, raid_id)
         )
 
     @discord.ui.button(
