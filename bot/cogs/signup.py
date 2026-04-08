@@ -197,6 +197,48 @@ def _char_display_description(char: dict) -> str:
     return f"{spec_or_class} – GS {char['gearscore']:.0f}"
 
 
+def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
+    """
+    Group per-spec character rows by character name.
+
+    Each unique char_name becomes one group dict with:
+        id         – primary character ID (spec with the highest gearscore)
+        char_name  – character name
+        realm      – realm name
+        char_class – class string
+        spec       – primary spec name (highest GS)
+        gearscore  – highest gearscore across all specs
+        specs      – list of (spec, gearscore, id) tuples sorted by GS descending
+    """
+    groups: dict[str, dict] = {}
+    for c in char_dicts:
+        key = c["char_name"].lower()
+        if key not in groups:
+            groups[key] = {
+                "id": c["id"],
+                "char_name": c["char_name"],
+                "realm": c.get("realm", ""),
+                "char_class": c.get("char_class"),
+                "spec": c.get("spec"),
+                "gearscore": c.get("gearscore", 0.0),
+                "specs": [],
+            }
+        spec = c.get("spec")
+        gs = c.get("gearscore", 0.0)
+        if spec:
+            groups[key]["specs"].append((spec, gs, c["id"]))
+
+    result = []
+    for group in groups.values():
+        group["specs"].sort(key=lambda x: x[1], reverse=True)
+        if group["specs"]:
+            group["id"] = group["specs"][0][2]
+            group["spec"] = group["specs"][0][0]
+            group["gearscore"] = group["specs"][0][1]
+        result.append(group)
+    return result
+
+
 class CharacterSelectView(discord.ui.View):
     """Shown when a user has multiple characters and needs to pick one."""
 
@@ -326,23 +368,32 @@ class SignupCharacterSelectView(discord.ui.View):
     """
     Step 1 of the multi-character sign-up flow.
 
-    Shows all of the player's registered characters as a multi-select.
-    After confirming, transitions to SignupPrioritySelectView.
+    Shows the player's characters (grouped by name) in a multi-select.
+    Each option shows the character name, class, and all their specs/GS.
+    After selecting, transitions to SignupPrioritySelectView.
     """
 
-    def __init__(self, characters: list[dict], raid_id: int):
+    def __init__(self, char_groups: list[dict], raid_id: int):
         super().__init__(timeout=120)
         self.raid_id = raid_id
-        self.characters = characters
+        self.char_groups = char_groups
+        self.groups_by_id = {g["id"]: g for g in char_groups}
 
-        options = [
-            discord.SelectOption(
-                label=c["char_name"][:100],
-                description=_char_display_description(c)[:100],
-                value=str(c["id"]),
+        options = []
+        for g in char_groups[:25]:
+            label = f"{g['char_name']} ({g['char_class'] or '?'})"[:100]
+            if g["specs"]:
+                spec_parts = [f"{s} {gs:.0f}" for s, gs, _ in g["specs"][:4]]
+                desc = " / ".join(spec_parts)
+            else:
+                desc = g["char_class"] or "?"
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    description=desc[:100],
+                    value=str(g["id"]),
+                )
             )
-            for c in characters[:25]
-        ]
 
         self.char_select = discord.ui.Select(
             placeholder="Choose characters to sign up with…",
@@ -356,8 +407,20 @@ class SignupCharacterSelectView(discord.ui.View):
 
     async def _on_select(self, interaction: discord.Interaction):
         selected_ids = {int(v) for v in interaction.data["values"]}
-        chars_by_id = {c["id"]: c for c in self.characters}
-        selected_chars = [chars_by_id[cid] for cid in selected_ids if cid in chars_by_id]
+        selected_groups = [
+            self.groups_by_id[sid] for sid in selected_ids if sid in self.groups_by_id
+        ]
+        # Convert groups to char dicts expected by SignupPrioritySelectView
+        selected_chars = [
+            {
+                "id": g["id"],
+                "char_name": g["char_name"],
+                "char_class": g["char_class"],
+                "spec": g["spec"],
+                "gearscore": g["gearscore"],
+            }
+            for g in selected_groups
+        ]
 
         names = ", ".join(f"**{c['char_name']}**" for c in selected_chars)
         view = SignupPrioritySelectView(selected_chars, self.raid_id)
@@ -366,6 +429,7 @@ class SignupCharacterSelectView(discord.ui.View):
                 f"Selected: {names}\n\n"
                 "Optionally mark any as **priority** below, then click **Confirm Sign Up**."
             ),
+            embed=None,
             view=view,
         )
 
