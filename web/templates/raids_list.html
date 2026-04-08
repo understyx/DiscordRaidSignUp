@@ -27,11 +27,11 @@
         <td>{{ r.id }}</td>
         <td class="fw-bold">{{ r.name }}</td>
         <td>{{ r.raid_instance }}</td>
-        <td>{{ r.date.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
         <td>
-          {% if r.status.value == "open" %}
+          {% if r.status == "open" %}
             <span class="badge badge-open">🟢 Open</span>
-          {% elif r.status.value == "locked" %}
+          {% elif r.status == "locked" %}
             <span class="badge badge-locked">🔒 Locked</span>
           {% else %}
             <span class="badge badge-posted">📋 Posted</span>

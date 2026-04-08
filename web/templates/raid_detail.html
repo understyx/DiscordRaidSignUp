@@ -7,20 +7,20 @@
   <div class="d-flex justify-content-between align-items-start">
     <div>
       <h2>⚔️ {{ raid.name }}</h2>
-      <p class="text-muted mb-1">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date.strftime("%A, %d %B %Y %H:%M UTC") }}</p>
+      <p class="text-muted mb-1">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%A, %d %B %Y %H:%M UTC") }}</p>
       {% if raid.description %}
       <p>{{ raid.description }}</p>
       {% endif %}
     </div>
     <div class="text-end">
-      {% if raid.status.value == "open" %}
+      {% if raid.status == "open" %}
         <span class="badge badge-open fs-6">🟢 Open</span>
-      {% elif raid.status.value == "locked" %}
+      {% elif raid.status == "locked" %}
         <span class="badge badge-locked fs-6">🔒 Locked</span>
       {% else %}
         <span class="badge badge-posted fs-6">📋 Posted</span>
       {% endif %}
-      <div class="mt-2 text-muted small">{{ raid.signups | length }} / {{ raid.max_size }} signed up</div>
+      <div class="mt-2 text-muted small">{{ raid.signup_count }} / {{ raid.max_size }} signed up</div>
     </div>
   </div>
 </div>
@@ -30,7 +30,7 @@
   <div class="col-md-4 mb-4">
     <div class="card p-3">
       <h5>📝 Sign Up</h5>
-      {% if raid.status.value == "open" %}
+      {% if raid.status == "open" %}
         {% if user_chars %}
         <form method="post" action="/raids/{{ raid.id }}/signup">
           <div class="mb-2">
@@ -47,9 +47,9 @@
           <div class="mb-3">
             <label class="form-label small">Sign-up Type</label>
             <select name="signup_type" class="form-select bg-dark text-light border-secondary">
-              <option value="fill" {% if my_signup and my_signup.signup_type.value == "fill" %}selected{% endif %}>Fill</option>
-              <option value="prio_role" {% if my_signup and my_signup.signup_type.value == "prio_role" %}selected{% endif %}>Prio Role</option>
-              <option value="prio_character" {% if my_signup and my_signup.signup_type.value == "prio_character" %}selected{% endif %}>Prio Character</option>
+              <option value="fill" {% if my_signup and my_signup.signup_type == "fill" %}selected{% endif %}>Fill</option>
+              <option value="prio_role" {% if my_signup and my_signup.signup_type == "prio_role" %}selected{% endif %}>Prio Role</option>
+              <option value="prio_character" {% if my_signup and my_signup.signup_type == "prio_character" %}selected{% endif %}>Prio Character</option>
             </select>
           </div>
           <div class="d-grid gap-2">
@@ -75,7 +75,7 @@
         <p class="text-muted">This raid is no longer accepting sign-ups.</p>
         {% if my_signup %}
         <div class="alert alert-secondary p-2 small">
-          You are signed up as <strong>{{ my_signup.character.char_name }}</strong> ({{ my_signup.signup_type.value }}).
+          You are signed up as <strong>{{ my_signup.character.char_name }}</strong> ({{ my_signup.signup_type }}).
         </div>
         {% endif %}
       {% endif %}
@@ -86,21 +86,22 @@
   <div class="col-md-8">
     <div class="card p-3">
       <h5>📋 Current Sign-ups</h5>
-      {% set all_sups = grouped_signups.get("fill", []) + grouped_signups.get("prio_role", []) + grouped_signups.get("prio_character", []) %}
-      {% if all_sups %}
-        {% for type_key, label in [("prio_character", "Prio Character"), ("prio_role", "Prio Role"), ("fill", "Fill")] %}
-          {% set sups = grouped_signups.get(type_key, []) %}
-          {% if sups %}
-          <h6 class="text-muted mt-2">{{ label }}</h6>
+      {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list %}
+      {% if all_sups | length > 0 %}
+        {% set signupTypeLabels = [{"key": "prio_character", "label": "Prio Character"}, {"key": "prio_role", "label": "Prio Role"}, {"key": "fill", "label": "Fill"}] %}
+        {% for item in signupTypeLabels %}
+          {% set sups = grouped_signups[item.key] or [] %}
+          {% if sups | length > 0 %}
+          <h6 class="text-muted mt-2">{{ item.label }}</h6>
           <div class="row g-2 mb-3">
             {% for s in sups %}
             {% set c = s.character %}
-            {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+            {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
             <div class="col-sm-6">
               <div class="card p-2 h-100 border-secondary">
                 <div class="d-flex justify-content-between align-items-center">
                   <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
-                  <span class="badge bg-secondary">{{ c.role.value.capitalize() if c.role else "?" }}</span>
+                  <span class="badge bg-secondary">{{ c.role | capitalize if c.role else "?" }}</span>
                 </div>
                 <small class="text-muted">{{ c.char_class or "?" }} – {{ c.spec or "?" }}</small>
                 <small class="text-muted">GS {{ c.gearscore | int }}</small>
