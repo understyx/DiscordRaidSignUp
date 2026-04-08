@@ -1,0 +1,5 @@
+discord.py
+audiooop-lts
+requests
+beautifulsoup4
+mariadb
