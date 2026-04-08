@@ -100,6 +100,8 @@ async def create_raid(
 
     try:
         raid_dt = datetime.datetime.fromisoformat(date).replace(tzinfo=datetime.timezone.utc)
+        # Note: the datetime-local HTML input does not carry timezone info, so we treat
+        # all submitted times as UTC. Admins should enter times in UTC.
     except ValueError:
         request.session["flash"] = "❌ Invalid date format."
         return RedirectResponse("/raids/create", status_code=302)
@@ -286,7 +288,17 @@ async def save_manage(request: Request, raid_id: int, db: Session = Depends(get_
 
     user_id = int(request.session["user_id"])
     body = await request.json()
-    # body: list of {"character_id": int, "role_slot": str}
+
+    # Validate body before mutating any data
+    if not isinstance(body, list):
+        return {"ok": False, "error": "Body must be a list of {character_id, role_slot} entries."}
+    for entry in body:
+        if not isinstance(entry, dict) or "character_id" not in entry or "role_slot" not in entry:
+            return {"ok": False, "error": "Each entry must have character_id and role_slot fields."}
+        try:
+            int(entry["character_id"])
+        except (ValueError, TypeError):
+            return {"ok": False, "error": f"Invalid character_id: {entry.get('character_id')}"}
 
     db.query(Composition).filter_by(raid_id=raid_id).delete()
 

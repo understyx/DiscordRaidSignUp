@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+from dataclasses import dataclass, field
 from typing import Optional
 
 import discord
@@ -14,6 +15,18 @@ from bot.db import get_session
 from db.models import Character, Composition, Raid, RaidStatus, Signup
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _RaidEmbed:
+    """Lightweight dataclass used to build a signup embed before the DB object is available."""
+    id: int
+    name: str
+    date: datetime.datetime
+    raid_instance: str
+    description: str
+    max_size: int
+    status: RaidStatus = field(default=RaidStatus.open)
 
 
 def is_officer():
@@ -117,18 +130,14 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
 
         raid_id, name, date, instance, desc, max_size = await loop.run_in_executor(None, _create)
 
-        # Build a minimal Raid-like object for the embed
-        class _FakeRaid:
-            pass
-
-        fake = _FakeRaid()
-        fake.id = raid_id
-        fake.name = name
-        fake.date = date
-        fake.raid_instance = instance
-        fake.description = desc
-        fake.max_size = max_size
-        fake.status = RaidStatus.open
+        fake = _RaidEmbed(
+            id=raid_id,
+            name=name,
+            date=date,
+            raid_instance=instance,
+            description=desc,
+            max_size=max_size,
+        )
 
         from bot.cogs.signup import SignupView
 
