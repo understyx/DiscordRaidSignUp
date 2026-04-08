@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Raids – RaidBot{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>⚔️ Upcoming Raids</h2>
+  <a href="/raids/create" class="btn btn-wow">+ Create Raid</a>
+</div>
+
+{% if raids %}
+<div class="table-responsive">
+  <table class="table table-hover table-bordered align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Instance</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Sign-ups</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in raids %}
+      {% set r = item.raid %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td class="fw-bold">{{ r.name }}</td>
+        <td>{{ r.raid_instance }}</td>
+        <td>{{ r.date.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if r.status.value == "open" %}
+            <span class="badge badge-open">🟢 Open</span>
+          {% elif r.status.value == "locked" %}
+            <span class="badge badge-locked">🔒 Locked</span>
+          {% else %}
+            <span class="badge badge-posted">📋 Posted</span>
+          {% endif %}
+        </td>
+        <td>{{ item.signup_count }} / {{ r.max_size }}</td>
+        <td>
+          <a href="/raids/{{ r.id }}" class="btn btn-sm btn-outline-light">View</a>
+          <a href="/raids/{{ r.id }}/comp" class="btn btn-sm btn-outline-info">Comp</a>
+          <a href="/raids/{{ r.id }}/manage" class="btn btn-sm btn-outline-warning">Manage</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-5">
+  <p class="text-muted">No raids scheduled yet.</p>
+  <a href="/raids/create" class="btn btn-wow">Create the first raid!</a>
+</div>
+{% endif %}
+{% endblock %}

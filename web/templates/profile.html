@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Profile – RaidBot{% endblock %}
+{% block content %}
+<h2 class="mb-4">👤 My Profile</h2>
+
+<div class="row">
+  {# ── Register Character Form ───────────────────────────────────────── #}
+  <div class="col-md-4 mb-4">
+    <div class="card p-3">
+      <h5>➕ Register Character</h5>
+      <form method="post" action="/characters/register">
+        <div class="mb-2">
+          <label class="form-label small">Character Name</label>
+          <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
+                 required maxlength="50" placeholder="e.g. Arthas" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Realm</label>
+          <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
+                 value="Icecrown" maxlength="50" />
+        </div>
+        <div class="d-grid">
+          <button type="submit" class="btn btn-wow">Register / Refresh</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Character List ────────────────────────────────────────────────── #}
+  <div class="col-md-8">
+    {% if chars %}
+    <div class="row g-3">
+      {% for c in chars %}
+      {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+      <div class="col-md-6">
+        <div class="card p-3 h-100 border-secondary">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h5 class="mb-0 cls-{{ cls_key }}">{{ c.char_name }}</h5>
+              <small class="text-muted">{{ c.realm }}</small>
+            </div>
+            <form method="post" action="/characters/{{ c.id }}/delete"
+                  onsubmit="return confirm('Delete {{ c.char_name }}?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
+            </form>
+          </div>
+          <hr class="border-secondary my-2" />
+          <table class="table table-sm table-borderless mb-2" style="color:#e0e0e0; font-size:.85rem;">
+            <tr><td>Class</td><td class="fw-bold cls-{{ cls_key }}">{{ c.char_class or "Unknown" }}</td></tr>
+            <tr><td>Spec</td><td>{{ c.spec or "Unknown" }}</td></tr>
+            <tr><td>GearScore</td><td>{{ c.gearscore | int }}</td></tr>
+            <tr><td>Last Updated</td><td>{{ c.last_updated.strftime("%Y-%m-%d") if c.last_updated else "—" }}</td></tr>
+          </table>
+          <form method="post" action="/characters/{{ c.id }}/role" class="d-flex gap-2 align-items-center">
+            <select name="role" class="form-select form-select-sm bg-dark text-light border-secondary">
+              <option value="">— Set role —</option>
+              {% for r in roles %}
+              <option value="{{ r }}" {% if c.role and c.role.value == r %}selected{% endif %}>
+                {{ r.capitalize() }}
+              </option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-wow">Save</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card p-4 text-center text-muted">
+      No characters registered yet. Use the form on the left to add one!
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

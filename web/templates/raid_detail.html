@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ raid.name }} – RaidBot{% endblock %}
+{% block content %}
+
+{# ── Raid Header ──────────────────────────────────────────────────────── #}
+<div class="card mb-4 p-4">
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h2>⚔️ {{ raid.name }}</h2>
+      <p class="text-muted mb-1">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date.strftime("%A, %d %B %Y %H:%M UTC") }}</p>
+      {% if raid.description %}
+      <p>{{ raid.description }}</p>
+      {% endif %}
+    </div>
+    <div class="text-end">
+      {% if raid.status.value == "open" %}
+        <span class="badge badge-open fs-6">🟢 Open</span>
+      {% elif raid.status.value == "locked" %}
+        <span class="badge badge-locked fs-6">🔒 Locked</span>
+      {% else %}
+        <span class="badge badge-posted fs-6">📋 Posted</span>
+      {% endif %}
+      <div class="mt-2 text-muted small">{{ raid.signups | length }} / {{ raid.max_size }} signed up</div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  {# ── Sign-Up Form ─────────────────────────────────────────────────── #}
+  <div class="col-md-4 mb-4">
+    <div class="card p-3">
+      <h5>📝 Sign Up</h5>
+      {% if raid.status.value == "open" %}
+        {% if user_chars %}
+        <form method="post" action="/raids/{{ raid.id }}/signup">
+          <div class="mb-2">
+            <label class="form-label small">Character</label>
+            <select name="character_id" class="form-select bg-dark text-light border-secondary">
+              {% for c in user_chars %}
+              <option value="{{ c.id }}"
+                {% if my_signup and my_signup.character_id == c.id %}selected{% endif %}>
+                {{ c.char_name }} ({{ c.realm }}) – {{ c.char_class or "?" }} GS {{ c.gearscore | int }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Sign-up Type</label>
+            <select name="signup_type" class="form-select bg-dark text-light border-secondary">
+              <option value="fill" {% if my_signup and my_signup.signup_type.value == "fill" %}selected{% endif %}>Fill</option>
+              <option value="prio_role" {% if my_signup and my_signup.signup_type.value == "prio_role" %}selected{% endif %}>Prio Role</option>
+              <option value="prio_character" {% if my_signup and my_signup.signup_type.value == "prio_character" %}selected{% endif %}>Prio Character</option>
+            </select>
+          </div>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-wow">
+              {% if my_signup %}Update Sign-up{% else %}Sign Up{% endif %}
+            </button>
+          </div>
+        </form>
+        {% if my_signup %}
+        <form method="post" action="/raids/{{ raid.id }}/withdraw" class="mt-2">
+          <div class="d-grid">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
+          </div>
+        </form>
+        {% endif %}
+        {% else %}
+        <p class="text-muted small">
+          You have no registered characters.
+          <a href="/profile">Register one on your profile.</a>
+        </p>
+        {% endif %}
+      {% else %}
+        <p class="text-muted">This raid is no longer accepting sign-ups.</p>
+        {% if my_signup %}
+        <div class="alert alert-secondary p-2 small">
+          You are signed up as <strong>{{ my_signup.character.char_name }}</strong> ({{ my_signup.signup_type.value }}).
+        </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Current Sign-ups ─────────────────────────────────────────────── #}
+  <div class="col-md-8">
+    <div class="card p-3">
+      <h5>📋 Current Sign-ups</h5>
+      {% set all_sups = grouped_signups.get("fill", []) + grouped_signups.get("prio_role", []) + grouped_signups.get("prio_character", []) %}
+      {% if all_sups %}
+        {% for type_key, label in [("prio_character", "Prio Character"), ("prio_role", "Prio Role"), ("fill", "Fill")] %}
+          {% set sups = grouped_signups.get(type_key, []) %}
+          {% if sups %}
+          <h6 class="text-muted mt-2">{{ label }}</h6>
+          <div class="row g-2 mb-3">
+            {% for s in sups %}
+            {% set c = s.character %}
+            {% set cls_key = (c.char_class or "").lower().replace(" ", "-") %}
+            <div class="col-sm-6">
+              <div class="card p-2 h-100 border-secondary">
+                <div class="d-flex justify-content-between align-items-center">
+                  <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+                  <span class="badge bg-secondary">{{ c.role.value.capitalize() if c.role else "?" }}</span>
+                </div>
+                <small class="text-muted">{{ c.char_class or "?" }} – {{ c.spec or "?" }}</small>
+                <small class="text-muted">GS {{ c.gearscore | int }}</small>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <p class="text-muted">No sign-ups yet. Be the first!</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
