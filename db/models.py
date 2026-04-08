@@ -58,7 +58,7 @@ class Character(Base):
     char_class = Column(String(50), nullable=True)
     spec = Column(String(100), nullable=True)
     gearscore = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+    last_updated = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     signups = relationship("Signup", back_populates="character")
 
 
@@ -70,7 +70,7 @@ class Signup(Base):
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
     signup_type = Column(Enum(SignupType), default=SignupType.fill)
     status = Column(Enum(SignupStatus), default=SignupStatus.signed)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="signups")
     character = relationship("Character", back_populates="signups")
 
@@ -82,6 +82,6 @@ class Composition(Base):
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
     role_slot = Column(String(50), nullable=False)  # e.g. "tank_1", "healer_3", "dps_10"
     created_by = Column(BigInteger, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="compositions")
     character = relationship("Character")

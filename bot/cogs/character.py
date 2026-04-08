@@ -159,7 +159,7 @@ class CharacterCog(commands.Cog):
                 char.char_class = armory_data.get("char_class")
                 char.spec = armory_data.get("spec")
                 char.gearscore = armory_data.get("gearscore", 0.0)
-                char.last_updated = datetime.datetime.utcnow()
+                char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                 session.commit()
                 session.refresh(char)
                 return char.id
@@ -281,7 +281,7 @@ class CharacterCog(commands.Cog):
                     c.char_class = armory_data.get("char_class")
                     c.spec = armory_data.get("spec")
                     c.gearscore = armory_data.get("gearscore", 0.0)
-                    c.last_updated = datetime.datetime.utcnow()
+                    c.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.commit()
             finally:
                 session.close()

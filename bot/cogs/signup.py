@@ -97,10 +97,11 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
 class CharacterSelectView(discord.ui.View):
     """Shown when a user has multiple characters and needs to pick one."""
 
-    def __init__(self, characters: list[Character], raid_id: int, signup_type: SignupType):
+    def __init__(self, characters: list[Character], raid_id: int, signup_type: SignupType, preferred_role: str | None = None):
         super().__init__(timeout=60)
         self.raid_id = raid_id
         self.signup_type = signup_type
+        self.preferred_role = preferred_role
 
         options = [
             discord.SelectOption(
@@ -117,7 +118,7 @@ class CharacterSelectView(discord.ui.View):
 
     async def _on_select(self, interaction: discord.Interaction):
         char_id = int(interaction.data["values"][0])
-        await _process_signup(interaction, self.raid_id, char_id, self.signup_type)
+        await _process_signup(interaction, self.raid_id, char_id, self.signup_type, self.preferred_role)
         self.stop()
 
 
@@ -126,8 +127,9 @@ async def _process_signup(
     raid_id: int,
     character_id: int,
     signup_type: SignupType,
+    preferred_role: str | None = None,
 ):
-    """Upsert signup and update the raid embed."""
+    """Upsert signup, optionally update character role, and refresh the raid embed."""
     discord_user_id = interaction.user.id
     loop = asyncio.get_event_loop()
 
@@ -152,6 +154,17 @@ async def _process_signup(
                     status=SignupStatus.signed,
                 )
                 session.add(new_signup)
+
+            # Update character role if a preferred role was specified
+            if preferred_role:
+                from db.models import CharacterRole
+                char = session.get(Character, character_id)
+                if char:
+                    try:
+                        char.role = CharacterRole(preferred_role)
+                    except ValueError:
+                        pass
+
             session.commit()
         finally:
             session.close()
@@ -214,6 +227,7 @@ class SignupView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         signup_type: SignupType,
+        preferred_role: str | None = None,
     ):
         raid_id = self._get_raid_id(interaction)
         if raid_id is None:
@@ -263,9 +277,9 @@ class SignupView(discord.ui.View):
             return
 
         if len(chars) == 1:
-            await _process_signup(interaction, raid_id, chars[0].id, signup_type)
+            await _process_signup(interaction, raid_id, chars[0].id, signup_type, preferred_role)
         else:
-            view = CharacterSelectView(chars, raid_id, signup_type)
+            view = CharacterSelectView(chars, raid_id, signup_type, preferred_role)
             await interaction.response.send_message(
                 "Choose which character to sign up with:", view=view, ephemeral=True
             )
@@ -286,7 +300,7 @@ class SignupView(discord.ui.View):
         emoji="🛡️",
     )
     async def btn_tank(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role)
+        await self._handle_button(interaction, SignupType.prio_role, preferred_role="tank")
 
     @discord.ui.button(
         label="Healer",
@@ -295,7 +309,7 @@ class SignupView(discord.ui.View):
         emoji="💚",
     )
     async def btn_healer(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role)
+        await self._handle_button(interaction, SignupType.prio_role, preferred_role="healer")
 
     @discord.ui.button(
         label="DPS",
@@ -304,7 +318,7 @@ class SignupView(discord.ui.View):
         emoji="⚔️",
     )
     async def btn_dps(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role)
+        await self._handle_button(interaction, SignupType.prio_role, preferred_role="dps")
 
     @discord.ui.button(
         label="Withdraw",

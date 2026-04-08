@@ -127,7 +127,7 @@ async def register_character(
         char.char_class = armory.get("char_class")
         char.spec = armory.get("spec")
         char.gearscore = armory.get("gearscore", 0.0)
-    char.last_updated = datetime.datetime.utcnow()
+    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
 
     request.session["flash"] = f"✅ Character {char_name.capitalize()} registered!"

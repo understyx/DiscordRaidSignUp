@@ -18,6 +18,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 OFFICER_ROLE_NAME = "Officer"
 
 
+def _raid_url(raid_id: int, suffix: str = "") -> str:
+    """Build a safe internal /raids/<id> URL. raid_id is always typed as int."""
+    return f"/raids/{int(raid_id)}{suffix}"
+
+
 def _require_login(request: Request):
     if not request.session.get("user_id"):
         return RedirectResponse("/auth/login", status_code=302)
@@ -112,7 +117,7 @@ async def create_raid(
     db.add(raid)
     db.commit()
     request.session["flash"] = f"✅ Raid '{name}' created!"
-    return RedirectResponse(f"/raids/{raid.id}", status_code=302)
+    return RedirectResponse(_raid_url(raid.id), status_code=302)
 
 
 # ── GET /raids/{raid_id} ───────────────────────────────────────────────────
@@ -174,7 +179,7 @@ async def signup_raid(
     raid = db.get(Raid, raid_id)
     if not raid or raid.status != RaidStatus.open:
         request.session["flash"] = "❌ Raid is not open for sign-ups."
-        return RedirectResponse(f"/raids/{raid_id}", status_code=302)
+        return RedirectResponse(_raid_url(raid_id), status_code=302)
 
     user_id = int(request.session["user_id"])
     existing = db.query(Signup).filter_by(raid_id=raid_id, discord_user_id=user_id).first()
@@ -200,7 +205,7 @@ async def signup_raid(
 
     db.commit()
     request.session["flash"] = "✅ Signed up!"
-    return RedirectResponse(f"/raids/{raid_id}", status_code=302)
+    return RedirectResponse(_raid_url(raid_id), status_code=302)
 
 
 # ── POST /raids/{raid_id}/withdraw ─────────────────────────────────────────
@@ -223,7 +228,7 @@ async def withdraw_raid(
     else:
         request.session["flash"] = "You were not signed up."
 
-    return RedirectResponse(f"/raids/{raid_id}", status_code=302)
+    return RedirectResponse(_raid_url(raid_id), status_code=302)
 
 
 # ── GET /raids/{raid_id}/manage ────────────────────────────────────────────
@@ -245,7 +250,7 @@ async def raid_manage(request: Request, raid_id: int, db: Session = Depends(get_
     )
 
     existing_comp = db.query(Composition).filter_by(raid_id=raid_id).all()
-    comp_map = {str(c.character_id): c.role_slot for c in existing_comp}
+    comp_map = {c.role_slot: str(c.character_id) for c in existing_comp}
 
     max_size = raid.max_size or 25
     tanks = max(2, max_size // 10)
@@ -291,7 +296,7 @@ async def save_manage(request: Request, raid_id: int, db: Session = Depends(get_
             character_id=int(entry["character_id"]),
             role_slot=entry["role_slot"],
             created_by=user_id,
-            created_at=datetime.datetime.utcnow(),
+            created_at=datetime.datetime.now(datetime.timezone.utc),
         )
         db.add(c)
 
@@ -348,7 +353,7 @@ async def lock_raid(request: Request, raid_id: int, db: Session = Depends(get_se
         db.commit()
         request.session["flash"] = f"🔒 Raid '{raid.name}' locked."
 
-    return RedirectResponse(f"/raids/{raid_id}/manage", status_code=302)
+    return RedirectResponse(_raid_url(raid_id, "/manage"), status_code=302)
 
 
 # ── POST /raids/{raid_id}/post_comp ───────────────────────────────────────
@@ -364,4 +369,4 @@ async def post_comp(request: Request, raid_id: int, db: Session = Depends(get_se
         db.commit()
         request.session["flash"] = f"📋 Raid '{raid.name}' marked as posted."
 
-    return RedirectResponse(f"/raids/{raid_id}/comp", status_code=302)
+    return RedirectResponse(_raid_url(raid_id, "/comp"), status_code=302)

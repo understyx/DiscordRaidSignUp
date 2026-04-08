@@ -101,10 +101,18 @@
     if (!draggedCharId) return;
     const slotCard = event.currentTarget;
     const assignedDiv = slotCard.querySelector(".assigned-char");
-    assignedDiv.innerHTML = `
-      <span class="fw-bold">${draggedCharName}</span>
-      <br><small class="text-muted">Assigned</small>
-    `;
+    // Use DOM construction to avoid XSS from character names
+    assignedDiv.innerHTML = "";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "fw-bold";
+    nameSpan.textContent = draggedCharName;
+    const br = document.createElement("br");
+    const small = document.createElement("small");
+    small.className = "text-muted";
+    small.textContent = "Assigned";
+    assignedDiv.appendChild(nameSpan);
+    assignedDiv.appendChild(br);
+    assignedDiv.appendChild(small);
     assignedDiv.dataset.charId = draggedCharId;
     draggedCharId = null;
     draggedCharName = null;

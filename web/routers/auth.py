@@ -1,4 +1,5 @@
 import os
+import secrets
 
 import httpx
 from fastapi import APIRouter, Request
@@ -18,11 +19,14 @@ DISCORD_USER_URL = "https://discord.com/api/users/@me"
 
 @router.get("/login")
 async def login(request: Request):
+    state = secrets.token_urlsafe(32)
+    request.session["oauth_state"] = state
     params = {
         "client_id": DISCORD_CLIENT_ID,
         "redirect_uri": DISCORD_REDIRECT_URI,
         "response_type": "code",
         "scope": "identify",
+        "state": state,
     }
     from urllib.parse import urlencode
     url = f"{DISCORD_OAUTH_URL}?{urlencode(params)}"
@@ -30,8 +34,16 @@ async def login(request: Request):
 
 
 @router.get("/callback")
-async def callback(request: Request, code: str | None = None):
+async def callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+):
     if not code:
+        return RedirectResponse("/auth/login", status_code=302)
+
+    expected_state = request.session.pop("oauth_state", None)
+    if not expected_state or state != expected_state:
         return RedirectResponse("/auth/login", status_code=302)
 
     async with httpx.AsyncClient() as client:
@@ -69,3 +81,4 @@ async def callback(request: Request, code: str | None = None):
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/auth/login", status_code=302)
+
