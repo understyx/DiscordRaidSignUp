@@ -79,7 +79,9 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            raid_dt = datetime.datetime.strptime(self.raid_date.value.strip(), "%Y-%m-%d %H:%M")
+            raid_dt = datetime.datetime.strptime(
+                self.raid_date.value.strip(), "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=datetime.timezone.utc)
         except ValueError:
             await interaction.response.send_message(
                 "❌ Invalid date format. Use `YYYY-MM-DD HH:MM`.", ephemeral=True

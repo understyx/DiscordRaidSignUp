@@ -99,7 +99,7 @@ async def create_raid(
         return redir
 
     try:
-        raid_dt = datetime.datetime.fromisoformat(date)
+        raid_dt = datetime.datetime.fromisoformat(date).replace(tzinfo=datetime.timezone.utc)
     except ValueError:
         request.session["flash"] = "❌ Invalid date format."
         return RedirectResponse("/raids/create", status_code=302)

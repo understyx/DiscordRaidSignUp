@@ -121,7 +121,12 @@
   function clearSlot(btn) {
     const slotCard = btn.closest(".slot-card");
     const assignedDiv = slotCard.querySelector(".assigned-char");
-    assignedDiv.innerHTML = `<span class="text-muted small" style="min-height:40px;">— empty —</span>`;
+    assignedDiv.innerHTML = "";
+    const empty = document.createElement("span");
+    empty.className = "text-muted small";
+    empty.style.minHeight = "40px";
+    empty.textContent = "— empty —";
+    assignedDiv.appendChild(empty);
     delete assignedDiv.dataset.charId;
   }
 

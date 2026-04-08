@@ -1,5 +1,4 @@
 import datetime
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -8,12 +7,21 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from bot.warmane import (
+    getHTML,
+    check_for_error,
+    extract_class_race_level_from_profile,
+    extract_specializations_from_profile,
+    clean_data,
+)
 from db.models import Character, CharacterRole
 from web.db import get_session
 
 router = APIRouter(tags=["characters"])
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+_WOW_TWO_WORD_CLASSES = {"Death Knight"}
 
 
 def _require_login(request: Request):
@@ -29,21 +37,6 @@ def _pop_flash(request: Request) -> Optional[str]:
 def _fetch_armory(char_name: str, realm: str) -> dict:
     """Attempt to fetch class/spec from Warmane. Returns empty dict on failure."""
     try:
-        import sys
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        from Warmane import (
-            getHTML,
-            check_for_error,
-            extract_class_race_level_from_profile,
-            extract_specializations_from_profile,
-            clean_data,
-        )
-
-        WOW_CLASS_COLORS = {
-            "Death Knight", "Druid", "Hunter", "Mage", "Paladin",
-            "Priest", "Rogue", "Shaman", "Warlock", "Warrior",
-        }
-
         html = getHTML(char_name, realm, "summary")
         if html is None or check_for_error(html):
             return {}
@@ -51,7 +44,7 @@ def _fetch_armory(char_name: str, realm: str) -> dict:
         class_race_level = extract_class_race_level_from_profile(html)
         parts = [p.strip() for p in class_race_level.split() if p.strip()]
         char_class = parts[-1] if parts else None
-        if len(parts) >= 2 and f"{parts[-2]} {parts[-1]}" in WOW_CLASS_COLORS:
+        if len(parts) >= 2 and f"{parts[-2]} {parts[-1]}" in _WOW_TWO_WORD_CLASSES:
             char_class = f"{parts[-2]} {parts[-1]}"
 
         raw_specs = extract_specializations_from_profile(html)
