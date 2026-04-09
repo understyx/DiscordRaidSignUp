@@ -90,6 +90,7 @@
   /* ── Compact roster slot cards ──────────────────────────────────────── */
   .slot-card {
     padding: 0.3rem 0.4rem !important;
+    position: relative;
   }
   .slot-card .slot-label {
     font-size: 0.68rem;
@@ -104,12 +105,40 @@
     font-size: 0.7rem;
     line-height: 1.2;
   }
-  .slot-card .btn-clear-slot {
-    font-size: 0.65rem;
-    padding: 1px 5px;
-    margin-top: 0.15rem;
-    line-height: 1.4;
+
+  /* ── Slot action overlay (role switchers + remove) ───────────────────── */
+  .slot-actions {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    gap: 1px;
+    z-index: 2;
   }
+  .role-btn {
+    background: none;
+    border: none;
+    padding: 0 1px;
+    font-size: 0.62rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.3;
+    transition: opacity 0.1s;
+  }
+  .role-btn:hover  { opacity: 0.8; }
+  .role-btn.active { opacity: 1; }
+  .slot-remove-btn {
+    background: none;
+    border: none;
+    color: #ff6b6b;
+    font-size: 0.65rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.4;
+    padding: 0 1px;
+    transition: opacity 0.1s;
+  }
+  .slot-remove-btn:hover { opacity: 1; }
 
   /* ── Comp tabs ──────────────────────────────────────────────────────── */
   .comp-tabs {
@@ -247,6 +276,12 @@
                  data-slot="{{ slot }}"
                  ondragover="event.preventDefault()"
                  ondrop="onDrop(event)">
+              <div class="slot-actions">
+                <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
+                <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
+                <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
+                <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
+              </div>
               <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
               {% if assigned_char_id %}
                 {% for s in signups %}
@@ -264,7 +299,6 @@
                 — empty —
               </div>
               {% endif %}
-              <button class="btn btn-outline-secondary btn-sm btn-clear-slot mt-1" onclick="clearSlot(this)">✕</button>
             </div>
           </div>
           {% endfor %}
@@ -338,14 +372,20 @@
   let draggedSpec         = null;
   let draggedPlaceholder  = null;
 
-  // Called when the role selector is changed — updates data-slot and border colour
-  function updateSlotRole(select) {
-    const slotCard = select.closest('.slot-card');
-    const num = slotCard.dataset.slotNum;
-    const role = select.value;
-    slotCard.dataset.slot = `${role}_${num}`;
+  // Called when a role icon button is clicked — updates data-slot, border colour, and slot label
+  function setSlotRole(btn, role) {
+    const slotCard = btn.closest('.slot-card');
+    const num = slotCard.dataset.slot.split('_').pop();
+    const newSlot = `${role}_${num}`;
+    slotCard.dataset.slot = newSlot;
     slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
     slotCard.classList.add('slot-' + role);
+    slotCard.querySelectorAll('.role-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.role === role);
+    });
+    const roleEmojis = { tank: '🛡️', healer: '💚', dps: '⚔️' };
+    const label = slotCard.querySelector('.slot-label');
+    if (label) label.textContent = `${roleEmojis[role] || ''} ${newSlot}`;
   }
 
   // Called when a spec button is clicked — updates the card's active char ID and spec
@@ -479,9 +519,8 @@
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        const btn = document.getElementById('saveBtn');
-        btn.textContent = '✅ Saved!';
-        setTimeout(() => { btn.textContent = '💾 Save Composition'; }, 2000);
+        // Reload so comp tabs and next-comp link reflect the newly saved state
+        window.location.reload();
       } else {
         alert('Error: ' + (data.error || 'Unable to save composition. Please try again.'));
       }
