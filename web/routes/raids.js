@@ -329,7 +329,7 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
     for (const char of chars) {
       const uid = String(char.discord_user_id);
       if (seenUsers.has(uid)) {
-        return res.json({ ok: false, error: 'Cannot assign multiple characters from the same Discord user to the raid composition.' });
+        return res.json({ ok: false, error: 'Each Discord user can only have one character in the raid composition. Please remove duplicate assignments.' });
       }
       seenUsers.add(uid);
     }

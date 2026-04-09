@@ -26,7 +26,7 @@
       <div class="user-group mb-3">
         <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1">
           <span>👤</span>
-          <span class="text-muted font-monospace" style="font-size:0.78rem;">{{ userGroup.discord_user_id | discordId }}</span>
+          <span class="text-muted font-monospace" style="font-size:0.78rem;" aria-label="Discord user ID">{{ userGroup.discord_user_id | discordId }}</span>
         </div>
 
         {% for s in userGroup.characters %}
@@ -191,7 +191,7 @@
         btn.textContent = "✅ Saved!";
         setTimeout(() => btn.textContent = "💾 Save Composition", 2000);
       } else {
-        alert("Error: " + (data.error || "Save failed."));
+        alert("Error: " + (data.error || "Unable to save composition. Please try again."));
       }
     })
     .catch(err => alert("Save failed: " + err));
