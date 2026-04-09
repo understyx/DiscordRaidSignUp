@@ -57,14 +57,13 @@
     border-radius: 4px;
     border: 1px solid var(--border-dim);
     background: var(--bg-card-2);
-    color: #c4cad8;
-    transition: box-shadow 0.12s, color 0.12s;
+    transition: box-shadow 0.12s, opacity 0.12s;
     user-select: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .placeholder-chip:hover  { box-shadow: 0 0 0 2px var(--wow-gold); color: var(--wow-gold); }
+  .placeholder-chip:hover  { box-shadow: 0 0 0 2px var(--wow-gold); opacity: 0.85; }
   .placeholder-chip:active { cursor: grabbing; }
 
   .placeholder-group-label {
@@ -79,15 +78,60 @@
   /* ── Slot filled with a placeholder ────────────────────────────────── */
   .slot-placeholder-text {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-style: italic;
     color: #8a95b0;
     border: 1px dashed var(--border-dim);
     border-radius: 4px;
-    padding: 2px 6px;
-    min-height: 40px;
-    line-height: 2.1;
+    padding: 1px 5px;
+    line-height: 1.8;
   }
+
+  /* ── Compact roster slot cards ──────────────────────────────────────── */
+  .slot-card {
+    padding: 0.3rem 0.4rem !important;
+  }
+  .slot-card .slot-label {
+    font-size: 0.68rem;
+    color: #8a95b0;
+    margin-bottom: 0.15rem;
+  }
+  .slot-card .assigned-char {
+    min-height: 32px;
+    font-size: 0.82rem;
+  }
+  .slot-card .assigned-char small {
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+  .slot-card .btn-clear-slot {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    margin-top: 0.15rem;
+    line-height: 1.4;
+  }
+
+  /* ── Comp tabs ──────────────────────────────────────────────────────── */
+  .comp-tabs {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .comp-tab {
+    font-size: 0.78rem;
+    padding: 2px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-card-2);
+    color: #8a95b0;
+    text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .comp-tab:hover { background: #253050; color: #d8dce8; text-decoration: none; }
+  .comp-tab.active { background: var(--wow-gold); color: #0e1117; border-color: var(--wow-gold); font-weight: 600; }
+  .comp-tab-add { color: #57a85b; border-color: #57a85b; }
+  .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
 </style>
 {% endblock %}
 
@@ -95,16 +139,31 @@
 <div class="roster-page-wrap">
 
   {# ── Action bar (never scrolls) ───────────────────────────────────── #}
-  <div class="roster-action-bar d-flex justify-content-between align-items-center">
-    <h3 class="mb-0">🛠️ Manage: {{ raid.name }}</h3>
-    <div>
-      <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
-        <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
-      </form>
-      <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save Composition</button>
-      <form method="post" action="/raids/{{ raid.id }}/post_comp" class="d-inline" id="postForm">
-        <button class="btn btn-info btn-sm">📋 Finalize &amp; Post</button>
-      </form>
+  <div class="roster-action-bar">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="mb-0">🛠️ Manage: {{ raid.name }}</h3>
+      <div>
+        <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
+          <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
+        </form>
+        <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save Composition</button>
+        <form method="post" action="/raids/{{ raid.id }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">
+          <button class="btn btn-info btn-sm">📋 Finalize &amp; Post</button>
+        </form>
+      </div>
+    </div>
+    {# ── Comp tabs ──────────────────────────────────────────────────── #}
+    <div class="comp-tabs">
+      {% for cn in comp_numbers %}
+      <a href="/raids/{{ raid.id }}/manage?comp={{ cn }}"
+         class="comp-tab{% if cn == current_comp %} active{% endif %}">
+        Raid {{ cn }}
+      </a>
+      {% endfor %}
+      {% if current_comp not in comp_numbers %}
+      <span class="comp-tab active">Raid {{ current_comp }}</span>
+      {% endif %}
+      <a href="/raids/{{ raid.id }}/manage?comp={{ next_comp }}" class="comp-tab comp-tab-add">+ Add Raid</a>
     </div>
   </div>
 
@@ -139,6 +198,7 @@
                    draggable="true"
                    data-char-id="{{ firstSpec.character_id }}"
                    data-char-name="{{ charGroup.char_name }}"
+                   data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
                    ondragstart="onDragStart(event)">
@@ -183,29 +243,28 @@
           {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
           {% set assigned_char_id = comp_map[slot] %}
           <div class="col-6 col-md-4">
-            <div class="slot-card card p-2 h-100 text-center slot-{{ slot_prefix }}"
+            <div class="slot-card card h-100 text-center slot-{{ slot_prefix }}"
                  data-slot="{{ slot }}"
                  ondragover="event.preventDefault()"
                  ondrop="onDrop(event)">
-              <div class="small text-muted mb-1">{{ slot_emoji }} {{ slot }}</div>
+              <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
               {% if assigned_char_id %}
                 {% for s in signups %}
                   {% if s.character.id | string == assigned_char_id %}
                   {% set c = s.character %}
                   {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                  <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
+                  <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
                     <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
-                    <small class="text-muted">{{ c.char_class or "?" }}</small><br>
                     <small class="text-muted">{{ c.spec or "?" }}</small>
                   </div>
                   {% endif %}
                 {% endfor %}
               {% else %}
-              <div class="assigned-char text-muted small" style="min-height:40px;">
+              <div class="assigned-char text-muted small">
                 — empty —
               </div>
               {% endif %}
-              <button class="btn btn-outline-secondary btn-sm mt-1" onclick="clearSlot(this)">✕</button>
+              <button class="btn btn-outline-secondary btn-sm btn-clear-slot mt-1" onclick="clearSlot(this)">✕</button>
             </div>
           </div>
           {% endfor %}
@@ -220,47 +279,47 @@
 
         <div class="placeholder-group-label">🛡️ Tanks</div>
         <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"           ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"   ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"   ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"       ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"   ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"           style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"   style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"   style="color:#C69B3A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"       style="color:#e05060;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"   style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
         </div>
 
         <div class="placeholder-group-label">💚 Healers</div>
         <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Healer"         ondragstart="onPlaceholderDragStart(event)">💚 Healer</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Paladin"   ondragstart="onPlaceholderDragStart(event)">💚 Holy Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Priest"    ondragstart="onPlaceholderDragStart(event)">💚 Holy Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Disc Priest"    ondragstart="onPlaceholderDragStart(event)">💚 Disc Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Druid"    ondragstart="onPlaceholderDragStart(event)">💚 Resto Druid</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Shaman"   ondragstart="onPlaceholderDragStart(event)">💚 Resto Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Healer"         style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">💚 Healer</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Paladin"   style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Priest"    style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Disc Priest"    style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Disc Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Druid"    style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Shaman"   style="color:#2e9fe0;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Shaman</span>
         </div>
 
         <div class="placeholder-group-label">⚔️ DPS</div>
         <div class="d-flex flex-column gap-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ DPS"             ondragstart="onPlaceholderDragStart(event)">⚔️ DPS</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arms Warrior"    ondragstart="onPlaceholderDragStart(event)">⚔️ Arms Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fury Warrior"    ondragstart="onPlaceholderDragStart(event)">⚔️ Fury Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Ret Paladin"     ondragstart="onPlaceholderDragStart(event)">⚔️ Ret Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Shadow Priest"   ondragstart="onPlaceholderDragStart(event)">⚔️ Shadow Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Balance Druid"   ondragstart="onPlaceholderDragStart(event)">⚔️ Balance Druid</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Feral (Cat)"     ondragstart="onPlaceholderDragStart(event)">⚔️ Feral (Cat)</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ MM Hunter"       ondragstart="onPlaceholderDragStart(event)">⚔️ MM Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ BM Hunter"       ondragstart="onPlaceholderDragStart(event)">⚔️ BM Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Surv Hunter"     ondragstart="onPlaceholderDragStart(event)">⚔️ Surv Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arcane Mage"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arcane Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fire Mage"       ondragstart="onPlaceholderDragStart(event)">⚔️ Fire Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost Mage"      ondragstart="onPlaceholderDragStart(event)">⚔️ Frost Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Combat Rogue"    ondragstart="onPlaceholderDragStart(event)">⚔️ Combat Rogue</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Mutilate Rogue"  ondragstart="onPlaceholderDragStart(event)">⚔️ Mutilate Rogue</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Elem Shaman"     ondragstart="onPlaceholderDragStart(event)">⚔️ Elem Shaman</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Enh Shaman"      ondragstart="onPlaceholderDragStart(event)">⚔️ Enh Shaman</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Affli Warlock"   ondragstart="onPlaceholderDragStart(event)">⚔️ Affli Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Destro Warlock"  ondragstart="onPlaceholderDragStart(event)">⚔️ Destro Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ DPS"             style="color:#c4cad8;"     ondragstart="onPlaceholderDragStart(event)">⚔️ DPS</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arms Warrior"    style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arms Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fury Warrior"    style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fury Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Ret Paladin"     style="color:#F48CBA;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Ret Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Shadow Priest"   style="color:#c8ccd4;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Shadow Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Balance Druid"   style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Balance Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Feral (Cat)"     style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Feral (Cat)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ MM Hunter"       style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ MM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ BM Hunter"       style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ BM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Surv Hunter"     style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Surv Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arcane Mage"     style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arcane Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fire Mage"       style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fire Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost Mage"      style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Combat Rogue"    style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Combat Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Mutilate Rogue"  style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Mutilate Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Elem Shaman"     style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Elem Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Enh Shaman"      style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Enh Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Affli Warlock"   style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Affli Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Destro Warlock"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Destro Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
         </div>
 
       </div>
@@ -274,6 +333,7 @@
 <script>
   let draggedCharId       = null;
   let draggedCharName     = null;
+  let draggedCharClass    = null;
   let draggedDiscordUserId = null;
   let draggedSpec         = null;
   let draggedPlaceholder  = null;
@@ -311,6 +371,7 @@
     draggedPlaceholder   = null;
     draggedCharId        = event.currentTarget.dataset.charId;
     draggedCharName      = event.currentTarget.dataset.charName;
+    draggedCharClass     = event.currentTarget.dataset.charClass || null;
     draggedDiscordUserId = event.currentTarget.dataset.discordUserId || null;
     draggedSpec          = event.currentTarget.dataset.spec || null;
     event.dataTransfer.effectAllowed = 'move';
@@ -320,6 +381,7 @@
   function onPlaceholderDragStart(event) {
     draggedCharId        = null;
     draggedCharName      = null;
+    draggedCharClass     = null;
     draggedDiscordUserId = null;
     draggedSpec          = null;
     draggedPlaceholder   = event.currentTarget.dataset.placeholder;
@@ -361,21 +423,22 @@
 
     assignedDiv.innerHTML = '';
     const nameSpan = document.createElement('span');
-    nameSpan.className   = 'fw-bold';
+    nameSpan.className   = 'fw-bold' + (draggedCharClass ? ' cls-' + draggedCharClass : '');
     nameSpan.textContent = draggedCharName;
     const specSmall = document.createElement('small');
-    specSmall.className   = 'text-muted';
+    specSmall.className   = 'text-muted d-block';
     specSmall.textContent = draggedSpec || '?';
     assignedDiv.appendChild(nameSpan);
-    assignedDiv.appendChild(document.createElement('br'));
     assignedDiv.appendChild(specSmall);
     assignedDiv.dataset.charId = draggedCharId;
+    if (draggedCharClass) assignedDiv.dataset.charClass = draggedCharClass;
     delete assignedDiv.dataset.placeholder;
     if (draggedDiscordUserId) {
       assignedDiv.dataset.discordUserId = draggedDiscordUserId;
     }
     draggedCharId        = null;
     draggedCharName      = null;
+    draggedCharClass     = null;
     draggedDiscordUserId = null;
     draggedSpec          = null;
   }
@@ -385,11 +448,11 @@
     el.innerHTML = '';
     const empty = document.createElement('span');
     empty.className       = 'text-muted small';
-    empty.style.minHeight = '40px';
     empty.textContent     = '— empty —';
     el.appendChild(empty);
     delete el.dataset.charId;
     delete el.dataset.discordUserId;
+    delete el.dataset.charClass;
     delete el.dataset.placeholder;
   }
 
@@ -408,7 +471,7 @@
       }
     });
 
-    fetch('/raids/{{ raid.id }}/manage', {
+    fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

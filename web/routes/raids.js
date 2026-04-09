@@ -301,9 +301,20 @@ router.get('/:raid_id/manage', async (req, res) => {
   }
   const signupsByUser = Object.values(userSignupMap);
 
-  const [existingComp] = await pool.query(
-    'SELECT * FROM compositions WHERE raid_id = ?',
+  // Determine which comp numbers already exist for this raid
+  const [existingCompNums] = await pool.query(
+    'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
     [raidId]
+  );
+  const compNumbers = existingCompNums.map(r => r.comp_number);
+  if (compNumbers.length === 0) compNumbers.push(1);
+
+  // Determine active comp from query param (default: 1)
+  const currentComp = Math.max(1, parseInt(req.query.comp || '1') || 1);
+
+  const [existingComp] = await pool.query(
+    'SELECT * FROM compositions WHERE raid_id = ? AND comp_number = ?',
+    [raidId, currentComp]
   );
   const compMap = {};
   for (const c of existingComp) {
@@ -313,7 +324,6 @@ router.get('/:raid_id/manage', async (req, res) => {
   const maxSize = raid.max_size || 25;
 
   // Build compBySlot: slot_number -> { char_id, role }
-  // Existing comp entries use role_slot like "tank_1", "healer_3", "dps_5"
   const compBySlot = {};
   for (const [roleSlot, charId] of Object.entries(compMap)) {
     const match = roleSlot.match(/^(tank|healer|dps)_(\d+)$/);
@@ -326,12 +336,14 @@ router.get('/:raid_id/manage', async (req, res) => {
   }
 
   // Build slots array: "role_number" strings for each slot 1..maxSize
-  // Use the role from existing comp data if present, otherwise default to 'dps'
   const slots = [];
   for (let i = 1; i <= maxSize; i++) {
     const role = compBySlot[i] ? compBySlot[i].role : 'dps';
     slots.push(`${role}_${i}`);
   }
+
+  // Next comp number for "Add Comp" button
+  const nextComp = Math.max(...compNumbers, currentComp) + 1;
 
   res.render('raid_manage.html', {
     raid,
@@ -341,6 +353,9 @@ router.get('/:raid_id/manage', async (req, res) => {
     comp_map: compMap,
     max_size: maxSize,
     comp_by_slot: compBySlot,
+    comp_numbers: compNumbers,
+    current_comp: currentComp,
+    next_comp: nextComp,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -352,6 +367,7 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
+  const compNumber = Math.max(1, parseInt(req.query.comp || '1') || 1);
   const body = req.body;
 
   if (!Array.isArray(body)) {
@@ -389,12 +405,12 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
     }
   }
 
-  await pool.query('DELETE FROM compositions WHERE raid_id = ?', [raidId]);
+  await pool.query('DELETE FROM compositions WHERE raid_id = ? AND comp_number = ?', [raidId, compNumber]);
 
   for (const entry of body) {
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, role_slot, created_by, created_at) VALUES (?, ?, ?, ?, NOW())',
-      [raidId, parseInt(entry.character_id), entry.role_slot, userId]
+      'INSERT INTO compositions (raid_id, character_id, role_slot, comp_number, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
+      [raidId, parseInt(entry.character_id), entry.role_slot, compNumber, userId]
     );
   }
 
@@ -410,12 +426,22 @@ router.get('/:raid_id/comp', async (req, res) => {
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
   if (!raid) return res.redirect('/raids');
 
+  // Determine which comp numbers exist
+  const [existingCompNums] = await pool.query(
+    'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
+    [raidId]
+  );
+  const compNumbers = existingCompNums.map(r => r.comp_number);
+  if (compNumbers.length === 0) compNumbers.push(1);
+
+  const currentComp = Math.max(1, parseInt(req.query.comp || String(compNumbers[0])) || 1);
+
   const [comps] = await pool.query(
     `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id
      FROM compositions co JOIN characters c ON co.character_id = c.id
-     WHERE co.raid_id = ?
+     WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
-    [raidId]
+    [raidId, currentComp]
   );
 
   const groups = { tank: [], healer: [], dps: [] };
@@ -444,6 +470,8 @@ router.get('/:raid_id/comp', async (req, res) => {
   res.render('raid_comp.html', {
     raid,
     groups,
+    comp_numbers: compNumbers,
+    current_comp: currentComp,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -476,7 +504,8 @@ router.post('/:raid_id/post_comp', async (req, res) => {
     req.session.flash = `📋 Raid '${raid.name}' marked as posted.`;
   }
 
-  res.redirect(`/raids/${raidId}/comp`);
+  const compParam = req.query.comp ? `?comp=${parseInt(req.query.comp)}` : '';
+  res.redirect(`/raids/${raidId}/comp${compParam}`);
 });
 
 module.exports = router;
