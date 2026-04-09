@@ -39,6 +39,18 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
 # Requires at least 4 slash-separated parts (name, class, spec, gs).
 _CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/.+/.+", re.IGNORECASE)
 
+# Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
+_TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
+
+
+def _is_tentative_message(text: str) -> bool:
+    """Return True if the first non-empty line of *text* is a tentative keyword."""
+    for line in text.splitlines():
+        stripped = line.strip().lower()
+        if stripped:
+            return stripped in _TENTATIVE_KEYWORDS
+    return False
+
 
 def parse_gs(raw: str) -> float:
     """Parse a gearscore string into a float.
@@ -748,6 +760,9 @@ class SignupCog(commands.Cog):
         if not parsed:
             return
 
+        is_tentative_msg = _is_tentative_message(message.content)
+        signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
+
         loop = asyncio.get_event_loop()
         channel_id = message.channel.id
 
@@ -847,7 +862,7 @@ class SignupCog(commands.Cog):
                     )
                     if existing:
                         existing.signup_type = signup_type
-                        existing.status = SignupStatus.signed
+                        existing.status = signup_status
                         existing.is_saved = entry["is_saved"]
                     else:
                         session.add(
@@ -856,7 +871,7 @@ class SignupCog(commands.Cog):
                                 discord_user_id=discord_user_id,
                                 character_id=char.id,
                                 signup_type=signup_type,
-                                status=SignupStatus.signed,
+                                status=signup_status,
                                 is_saved=entry["is_saved"],
                             )
                         )
@@ -902,10 +917,16 @@ class SignupCog(commands.Cog):
             logger.exception("Failed to process chat character sign-up from %s", discord_user_id)
             return
 
-        log_message = (
-            f"✅ {message.author.mention} signed up for **{raid_info['name']}**:\n"
-            + "\n".join(summaries)
-        )
+        if signup_status == SignupStatus.tentative:
+            log_message = (
+                f"❓ {message.author.mention} tentatively signed up for **{raid_info['name']}**:\n"
+                + "\n".join(summaries)
+            )
+        else:
+            log_message = (
+                f"✅ {message.author.mention} signed up for **{raid_info['name']}**:\n"
+                + "\n".join(summaries)
+            )
 
         # Delete the user's message to keep the channel clean
         try:
