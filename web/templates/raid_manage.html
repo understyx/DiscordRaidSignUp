@@ -653,6 +653,16 @@
   /* ── Auto-load polling (collaboration) ────────────────────────────── */
   let lastKnownVersion = null;
 
+
+  // ── Helper: sync slot role button state to a given role prefix ──────
+  function syncSlotRole(slotCard, slot) {
+    const prefix = slot.split('_')[0];
+    if (!slotCard.classList.contains('slot-' + prefix)) {
+      const roleBtn = slotCard.querySelector(`.role-btn[data-role="${prefix}"]`);
+      if (roleBtn) setSlotRole(roleBtn, prefix);
+    }
+  }
+
   function applyRemoteState(entries) {
     // Build a map of slot -> entry for quick lookup
     const remoteMap = {};
@@ -688,10 +698,7 @@
           if (remote.char_class) assignedDiv.dataset.charClass = remote.char_class;
           if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
           delete assignedDiv.dataset.placeholder;
-          // Update slot role from role_slot prefix
-          const prefix = slot.split('_')[0];
-          const roleBtn = slotCard.querySelector(`.role-btn[data-role="${prefix}"]`);
-          if (roleBtn && !slotCard.classList.contains('slot-' + prefix)) setSlotRole(roleBtn, prefix);
+          syncSlotRole(slotCard, slot);
         }
       } else if (remote.placeholder_text) {
         if (localPh !== remote.placeholder_text) {
@@ -705,17 +712,14 @@
           delete assignedDiv.dataset.charId;
           delete assignedDiv.dataset.discordUserId;
           assignedDiv.dataset.placeholder = remote.placeholder_text;
-          // Update slot role
-          const prefix = slot.split('_')[0];
-          const roleBtn = slotCard.querySelector(`.role-btn[data-role="${prefix}"]`);
-          if (roleBtn && !slotCard.classList.contains('slot-' + prefix)) setSlotRole(roleBtn, prefix);
+          syncSlotRole(slotCard, slot);
         }
       }
     });
   }
 
   function pollRemoteState() {
-    if (isDirty) return; // Don't clobber local edits
+    if (isDirty || document.hidden) return; // Don't clobber local edits or poll hidden tabs
     fetch('/raids/{{ raid.id }}/manage/json?comp={{ current_comp }}')
       .then(r => r.json())
       .then(data => {
@@ -731,8 +735,9 @@
       .catch(() => {}); // Silently ignore poll errors
   }
 
-  // Start polling every 3 seconds
+  // Start polling every 3 seconds; resume immediately when tab becomes visible
   setInterval(pollRemoteState, 3000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRemoteState(); });
   // Seed the initial version immediately
   pollRemoteState();
 </script>

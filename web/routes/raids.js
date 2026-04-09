@@ -443,7 +443,8 @@ router.get('/:raid_id/manage/json', async (req, res) => {
   const compNumber = parseInt(req.query.comp) || 1;
 
   const [rows] = await pool.query(
-    `SELECT co.role_slot, co.character_id, co.placeholder_text, co.created_at,
+    `SELECT co.role_slot, co.character_id, co.placeholder_text,
+            MAX(co.created_at) OVER () AS max_created_at,
             c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
@@ -452,12 +453,12 @@ router.get('/:raid_id/manage/json', async (req, res) => {
     [raidId, compNumber]
   );
 
-  // Version = ISO string of most recent created_at
-  let version = null;
-  for (const r of rows) {
-    const ts = r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at || '');
-    if (!version || ts > version) version = ts;
-  }
+  // Version = ISO string of most recent created_at (computed by DB window function)
+  const version = rows.length > 0 && rows[0].max_created_at
+    ? (rows[0].max_created_at instanceof Date
+        ? rows[0].max_created_at.toISOString()
+        : String(rows[0].max_created_at))
+    : '';
 
   const entries = rows.map(r => ({
     role_slot: r.role_slot,
