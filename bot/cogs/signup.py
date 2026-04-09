@@ -666,7 +666,7 @@ class SignupView(discord.ui.View):
         char_groups = _group_chars_by_name(char_dicts)
         lines = []
         for g in char_groups:
-            parts = [g["char_name"], g["char_class"] or "?"]
+            parts = [g["char_name"], g["char_class"] or "Unknown"]
             if g["specs"]:
                 for spec, gs, _ in g["specs"]:
                     parts.append(spec)
