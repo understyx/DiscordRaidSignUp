@@ -54,11 +54,11 @@ def _parse_character_lines(text: str) -> list[dict]:
     Returns a list of dicts with keys:
         char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool)
 
-    One dict is returned per unique character name (first spec/GS pair is used
-    as the primary spec and gearscore).
+    One dict is returned per spec/GS pair. Characters with multiple specs
+    (e.g. Shadow/6500/Disc/6300) produce multiple dicts, one per spec.
     """
     results = []
-    seen_names: set[str] = set()
+    seen: set[tuple[str, str]] = set()  # (char_name_lower, spec_lower)
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -81,33 +81,37 @@ def _parse_character_lines(text: str) -> list[dict]:
         if not char_name or not char_class:
             continue
 
-        name_key = char_name.lower()
-        if name_key in seen_names:
-            continue
+        name_lower = char_name.lower()
 
         # Remaining parts alternate: spec, gs, spec, gs, …
         spec_gs = parts[2:]
         if len(spec_gs) < 2:
             continue
 
-        spec = spec_gs[0].strip()
-        try:
-            gs = float(spec_gs[1].strip().replace(",", "."))
-        except ValueError:
-            continue
+        i = 0
+        while i + 1 < len(spec_gs):
+            spec = spec_gs[i].strip()
+            try:
+                gs = float(spec_gs[i + 1].strip().replace(",", "."))
+            except ValueError:
+                i += 2
+                continue
 
-        if spec:
-            seen_names.add(name_key)
-            results.append(
-                {
-                    "char_name": char_name.capitalize(),
-                    "char_class": char_class,
-                    "spec": spec,
-                    "gearscore": gs,
-                    "is_prio": is_prio,
-                    "is_saved": is_saved,
-                }
-            )
+            if spec:
+                key = (name_lower, spec.lower())
+                if key not in seen:
+                    seen.add(key)
+                    results.append(
+                        {
+                            "char_name": char_name.capitalize(),
+                            "char_class": char_class,
+                            "spec": spec,
+                            "gearscore": gs,
+                            "is_prio": is_prio,
+                            "is_saved": is_saved,
+                        }
+                    )
+            i += 2
 
     return results
 
@@ -790,8 +794,8 @@ class SignupCog(commands.Cog):
         ⭐  = priority character (maps to prio_character signup type)
         ❌  = saved character (ID-locked; marks signup as is_saved=True)
 
-        Characters are upserted by (discord_user_id, char_name) – one row
-        per character.  The primary spec/GS (first pair) is stored.
+        Characters with multiple specs produce one Character row and one
+        Signup per spec, keyed on (discord_user_id, char_name, spec).
 
         The bot only acts in channels that have an active (open) raid.
         It saves/updates the character(s) in the DB and auto-signs the
@@ -835,14 +839,16 @@ class SignupCog(commands.Cog):
             session = get_session()
             try:
                 _upsert_discord_user(session, message.author)
-                summaries = []
+                # Accumulate spec info per char_name for grouped summary display
+                char_spec_info: dict[str, dict] = {}
                 for entry in parsed:
-                    # Upsert character keyed on (discord_user_id, char_name)
+                    # Upsert character keyed on (discord_user_id, char_name, spec)
                     char = (
                         session.query(Character)
                         .filter_by(
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
+                            spec=entry["spec"],
                         )
                         .first()
                     )
@@ -859,7 +865,7 @@ class SignupCog(commands.Cog):
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
 
-                    # Upsert signup (one per character per raid)
+                    # Upsert signup (one per character row per raid)
                     signup_type = (
                         SignupType.prio_character if entry["is_prio"] else SignupType.fill
                     )
@@ -884,16 +890,36 @@ class SignupCog(commands.Cog):
                             )
                         )
 
-                    flag = ""
-                    if entry["is_prio"]:
-                        flag = " ⭐"
-                    elif entry["is_saved"]:
-                        flag = " ❌"
-                    summaries.append(
-                        f"• **{entry['char_name']}** ({entry['char_class']}) – {entry['spec']} GS {entry['gearscore']:.0f}{flag}"
+                    # Collect spec data for grouped summary
+                    key = entry["char_name"].lower()
+                    if key not in char_spec_info:
+                        char_spec_info[key] = {
+                            "char_name": entry["char_name"],
+                            "char_class": entry["char_class"],
+                            "specs": [],
+                            "is_prio": entry["is_prio"],
+                            "is_saved": entry["is_saved"],
+                        }
+                    char_spec_info[key]["specs"].append(
+                        f"{entry['spec']} GS {entry['gearscore']:.0f}"
                     )
+                    if entry["is_prio"]:
+                        char_spec_info[key]["is_prio"] = True
 
                 session.commit()
+
+                # Build summaries grouped by character name
+                summaries = []
+                for data in char_spec_info.values():
+                    flag = ""
+                    if data["is_prio"]:
+                        flag = " ⭐"
+                    elif data["is_saved"]:
+                        flag = " ❌"
+                    specs_str = " / ".join(data["specs"])
+                    summaries.append(
+                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{flag}"
+                    )
                 return summaries
             finally:
                 session.close()
