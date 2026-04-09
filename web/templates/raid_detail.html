@@ -113,8 +113,9 @@
   <div class="col-md-8">
     <div class="card p-3">
       <h5>📋 Current Sign-ups</h5>
-      {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list %}
+      {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
       {% if all_sups | length > 0 %}
+        {# Tentative signups are handled separately below #}
         {% set signupTypeLabels = [{"key": "prio_character", "label": "Prio Character"}, {"key": "prio_role", "label": "Prio Role"}, {"key": "fill", "label": "Fill"}] %}
         {% for item in signupTypeLabels %}
           {% set sups = grouped_signups[item.key] or [] %}
@@ -131,7 +132,7 @@
                   <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                 </div>
                 <small class="text-muted">
-                  {% for sp in c.specs %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
                 </small>
               </div>
             </div>
@@ -139,6 +140,28 @@
           </div>
           {% endif %}
         {% endfor %}
+        {# ── Tentative ── #}
+        {% set tentative_sups = grouped_signups.tentative or [] %}
+        {% if tentative_sups | length > 0 %}
+        <h6 class="text-muted mt-2">❓ Tentative</h6>
+        <div class="row g-2 mb-3">
+          {% for s in tentative_sups %}
+          {% set c = s.character %}
+          {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+          <div class="col-sm-6">
+            <div class="card p-2 h-100 border-secondary">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-bold cls-{{ cls_key }} tentative-name">{{ c.char_name }}</span>
+                <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
+              </div>
+              <small class="text-muted">
+                {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+              </small>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       {% else %}
         <p class="text-muted">No sign-ups yet. Be the first!</p>
       {% endif %}
