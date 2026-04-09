@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
+const pool = require('../db');
 
 const router = express.Router();
 
@@ -65,6 +66,18 @@ router.get('/callback', async (req, res) => {
     req.session.username = userData.username;
     req.session.avatar = userData.avatar || null;
     req.session.flash = `Welcome, ${userData.username}!`;
+
+    // Cache Discord user info in the database for display in raid management
+    try {
+      await pool.query(
+        `INSERT INTO discord_users (discord_user_id, username, display_name, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE username = VALUES(username), display_name = VALUES(display_name), updated_at = NOW()`,
+        [userData.id, userData.username, userData.global_name || userData.username]
+      );
+    } catch (_dbErr) {
+      // Non-fatal: table may not exist yet or another transient error
+    }
 
     res.redirect('/raids');
   } catch (_err) {

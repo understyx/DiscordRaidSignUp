@@ -10,9 +10,26 @@ import discord
 from discord.ext import commands
 
 from bot.db import get_session
-from db.models import Character, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
+
+
+def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
+    """Upsert Discord username/display_name into discord_users table."""
+    display = getattr(user, "display_name", None)
+    existing = session.get(DiscordUser, user.id)
+    if existing:
+        existing.username = user.name
+        existing.display_name = display
+        existing.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    else:
+        session.add(DiscordUser(
+            discord_user_id=user.id,
+            username=user.name,
+            display_name=display,
+            updated_at=datetime.datetime.now(datetime.timezone.utc),
+        ))
 
 # ---------------------------------------------------------------------------
 # Chat message parser helpers
@@ -333,6 +350,7 @@ class SignupPrioritySelectView(discord.ui.View):
         def _upsert_all():
             session = get_session()
             try:
+                _upsert_discord_user(session, interaction.user)
                 for char in self.selected_chars:
                     signup_type = (
                         SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
@@ -461,6 +479,7 @@ async def _process_signup(
     def _upsert():
         session = get_session()
         try:
+            _upsert_discord_user(session, interaction.user)
             existing = (
                 session.query(Signup)
                 .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
@@ -815,6 +834,7 @@ class SignupCog(commands.Cog):
         def _save_and_signup():
             session = get_session()
             try:
+                _upsert_discord_user(session, message.author)
                 summaries = []
                 for entry in parsed:
                     # Upsert character keyed on (discord_user_id, char_name)

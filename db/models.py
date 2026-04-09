@@ -86,3 +86,11 @@ class Composition(Base):
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="compositions")
     character = relationship("Character")
+
+
+class DiscordUser(Base):
+    __tablename__ = "discord_users"
+    discord_user_id = Column(BigInteger, primary_key=True)
+    username = Column(String(100), nullable=False)
+    display_name = Column(String(100), nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))

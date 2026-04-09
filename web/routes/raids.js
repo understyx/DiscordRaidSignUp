@@ -26,10 +26,10 @@ router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const [raids] = await pool.query(
-    `SELECT r.*, COALESCE(s.signup_count, 0) AS signup_count
+    `SELECT r.*, COALESCE(s.player_count, 0) AS signup_count
      FROM raids r
      LEFT JOIN (
-       SELECT raid_id, COUNT(*) AS signup_count FROM signups GROUP BY raid_id
+       SELECT raid_id, COUNT(DISTINCT discord_user_id) AS player_count FROM signups GROUP BY raid_id
      ) s ON s.raid_id = r.id
      ORDER BY (r.status = 'open') DESC, r.date ASC`
   );
@@ -44,39 +44,6 @@ router.get('/', async (req, res) => {
     flash: popFlash(req),
     user: currentUser(req),
   });
-});
-
-// GET /raids/create
-router.get('/create', (req, res) => {
-  if (!requireLogin(req, res)) return;
-
-  res.render('create_raid.html', {
-    flash: popFlash(req),
-    user: currentUser(req),
-  });
-});
-
-// POST /raids/create
-router.post('/create', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
-
-  const { name, raid_instance, date, description = '', max_size = 25 } = req.body;
-
-  const raidDate = new Date(date);
-  if (isNaN(raidDate.getTime())) {
-    req.session.flash = '❌ Invalid date format.';
-    return res.redirect('/raids/create');
-  }
-
-  const userId = req.session.user_id;
-  const [result] = await pool.query(
-    `INSERT INTO raids (name, date, description, raid_instance, max_size, status, created_by)
-     VALUES (?, ?, ?, ?, ?, 'open', ?)`,
-    [name, raidDate, description, raid_instance, parseInt(max_size), userId]
-  );
-
-  req.session.flash = `✅ Raid '${name}' created!`;
-  res.redirect(`/raids/${result.insertId}`);
 });
 
 // GET /raids/:raid_id
