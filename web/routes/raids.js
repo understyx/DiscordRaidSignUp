@@ -325,10 +325,20 @@ router.get('/:raid_id/manage', async (req, res) => {
     }
   }
 
+  // Build slots array: "role_number" strings for each slot 1..maxSize
+  // Use the role from existing comp data if present, otherwise default to 'dps'
+  const slots = [];
+  for (let i = 1; i <= maxSize; i++) {
+    const role = compBySlot[i] ? compBySlot[i].role : 'dps';
+    slots.push(`${role}_${i}`);
+  }
+
   res.render('raid_manage.html', {
     raid,
     signups,
     signupsByUser,
+    slots,
+    comp_map: compMap,
     max_size: maxSize,
     comp_by_slot: compBySlot,
     flash: popFlash(req),
