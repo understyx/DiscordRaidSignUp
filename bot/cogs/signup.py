@@ -40,6 +40,24 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
 _CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/.+/.+", re.IGNORECASE)
 
 
+def parse_gs(raw: str) -> float:
+    """Parse a gearscore string into a float.
+
+    Accepts full numbers (``"6200"``), decimal shorthand (``"6.2"`` → 6200),
+    and the explicit *k* suffix (``"6.2k"`` → 6200).  Values already in the
+    thousands are returned unchanged.  Any commas are treated as decimal
+    separators (e.g. ``"6,2"`` → 6200).  Values below 1000 are auto-scaled
+    by 1000, so ``"999"`` → 999000 — use the full number for sub-1000 scores.
+    """
+    cleaned = raw.strip().replace(",", ".")
+    if cleaned.lower().endswith("k"):
+        return float(cleaned[:-1]) * 1000
+    value = float(cleaned)
+    if value < 1000:
+        value *= 1000
+    return value
+
+
 def _parse_character_lines(text: str) -> list[dict]:
     """
     Parse one or more character lines from a message body.
@@ -92,7 +110,7 @@ def _parse_character_lines(text: str) -> list[dict]:
         while i + 1 < len(spec_gs):
             spec = spec_gs[i].strip()
             try:
-                gs = float(spec_gs[i + 1].strip().replace(",", "."))
+                gs = parse_gs(spec_gs[i + 1])
             except ValueError:
                 i += 2
                 continue

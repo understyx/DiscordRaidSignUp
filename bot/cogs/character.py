@@ -10,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.db import get_session
+from bot.cogs.signup import parse_gs
 from db.models import Character, CharacterRole
 
 logger = logging.getLogger(__name__)
@@ -199,22 +200,36 @@ class CharacterCog(commands.Cog):
         interaction: discord.Interaction,
         name: str,
         spec1: str,
-        gs1: float,
+        gs1: str,
         spec2: Optional[str] = None,
-        gs2: Optional[float] = None,
+        gs2: Optional[str] = None,
         spec3: Optional[str] = None,
-        gs3: Optional[float] = None,
+        gs3: Optional[str] = None,
         realm: str = "Icecrown",
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
         loop = asyncio.get_event_loop()
 
-        specs: list[tuple[str, float]] = [(spec1.strip(), gs1)]
+        try:
+            parsed_gs1 = parse_gs(gs1)
+        except ValueError:
+            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, or `6.2` (auto-scaled to 6200).", ephemeral=True)
+            return
+
+        specs: list[tuple[str, float]] = [(spec1.strip(), parsed_gs1)]
         if spec2 and gs2 is not None:
-            specs.append((spec2.strip(), gs2))
+            try:
+                specs.append((spec2.strip(), parse_gs(gs2)))
+            except ValueError:
+                await interaction.followup.send(f"❌ Invalid gearscore for spec 2: `{gs2}`.", ephemeral=True)
+                return
         if spec3 and gs3 is not None:
-            specs.append((spec3.strip(), gs3))
+            try:
+                specs.append((spec3.strip(), parse_gs(gs3)))
+            except ValueError:
+                await interaction.followup.send(f"❌ Invalid gearscore for spec 3: `{gs3}`.", ephemeral=True)
+                return
 
         def _upsert_all():
             session = get_session()

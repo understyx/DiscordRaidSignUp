@@ -38,6 +38,7 @@
                data-char-id="{{ firstSpec.character_id }}"
                data-char-name="{{ charGroup.char_name }}"
                data-discord-user-id="{{ charGroup.discord_user_id }}"
+               data-spec="{{ firstSpec.spec or '' }}"
                ondragstart="onDragStart(event)">
             <div class="d-flex justify-content-between align-items-start">
               <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
@@ -51,6 +52,7 @@
                       class="spec-btn {% if loop.first %}active{% endif %}"
                       data-char-id="{{ s.character_id }}"
                       data-gs="{{ s.gearscore | int }}"
+                      data-spec="{{ s.spec or '' }}"
                       onclick="selectSpec(this)">
                 {{ s.spec or "?" }} {{ s.gearscore | int }}
               </button>
@@ -94,7 +96,8 @@
                 {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                 <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
                   <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
-                  <small class="text-muted">{{ c.char_class or "?" }}</small>
+                  <small class="text-muted">{{ c.char_class or "?" }}</small><br>
+                  <small class="text-muted">{{ c.spec or "?" }}</small>
                 </div>
                 {% endif %}
               {% endfor %}
@@ -118,13 +121,15 @@
   let draggedCharId = null;
   let draggedCharName = null;
   let draggedDiscordUserId = null;
+  let draggedSpec = null;
 
-  // Called when a spec button is clicked — updates the card's active char ID
+  // Called when a spec button is clicked — updates the card's active char ID and spec
   function selectSpec(btn) {
     const card = btn.closest('.char-card');
     card.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     card.dataset.charId = btn.dataset.charId;
+    card.dataset.spec = btn.dataset.spec || '';
     const gsEl = card.querySelector('.char-gs');
     if (gsEl) gsEl.textContent = 'GS ' + btn.dataset.gs;
   }
@@ -133,6 +138,7 @@
     draggedCharId = event.currentTarget.dataset.charId;
     draggedCharName = event.currentTarget.dataset.charName;
     draggedDiscordUserId = event.currentTarget.dataset.discordUserId || null;
+    draggedSpec = event.currentTarget.dataset.spec || null;
     event.dataTransfer.effectAllowed = "move";
   }
 
@@ -156,12 +162,12 @@
     nameSpan.className = "fw-bold";
     nameSpan.textContent = draggedCharName;
     const br = document.createElement("br");
-    const small = document.createElement("small");
-    small.className = "text-muted";
-    small.textContent = "Assigned";
+    const specSmall = document.createElement("small");
+    specSmall.className = "text-muted";
+    specSmall.textContent = draggedSpec || "?";
     assignedDiv.appendChild(nameSpan);
     assignedDiv.appendChild(br);
-    assignedDiv.appendChild(small);
+    assignedDiv.appendChild(specSmall);
     assignedDiv.dataset.charId = draggedCharId;
     if (draggedDiscordUserId) {
       assignedDiv.dataset.discordUserId = draggedDiscordUserId;
@@ -169,6 +175,7 @@
     draggedCharId = null;
     draggedCharName = null;
     draggedDiscordUserId = null;
+    draggedSpec = null;
   }
 
   function clearAssigned(el) {
