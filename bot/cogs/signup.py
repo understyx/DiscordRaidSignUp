@@ -45,7 +45,9 @@ def parse_gs(raw: str) -> float:
 
     Accepts full numbers (``"6200"``), decimal shorthand (``"6.2"`` → 6200),
     and the explicit *k* suffix (``"6.2k"`` → 6200).  Values already in the
-    thousands are returned unchanged.
+    thousands are returned unchanged.  Any commas are treated as decimal
+    separators (e.g. ``"6,2"`` → 6200).  Values below 1000 are auto-scaled
+    by 1000, so ``"999"`` → 999000 — use the full number for sub-1000 scores.
     """
     cleaned = raw.strip().replace(",", ".")
     if cleaned.lower().endswith("k"):

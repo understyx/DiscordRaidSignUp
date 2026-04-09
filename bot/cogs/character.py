@@ -214,7 +214,7 @@ class CharacterCog(commands.Cog):
         try:
             parsed_gs1 = parse_gs(gs1)
         except ValueError:
-            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, or `6.2`.", ephemeral=True)
+            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, or `6.2` (auto-scaled to 6200).", ephemeral=True)
             return
 
         specs: list[tuple[str, float]] = [(spec1.strip(), parsed_gs1)]
