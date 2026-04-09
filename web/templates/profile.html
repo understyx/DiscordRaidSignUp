@@ -56,7 +56,7 @@
               <option value="">— Set role —</option>
               {% for r in roles %}
               <option value="{{ r }}" {% if c.role == r %}selected{% endif %}>
-                {{ r.capitalize() }}
+                {{ r | capitalize }}
               </option>
               {% endfor %}
             </select>
