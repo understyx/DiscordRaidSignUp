@@ -70,7 +70,7 @@ def _parse_character_lines(text: str) -> list[dict]:
       - ⭐ after a spec name (before the GS): only that spec is priority
         e.g. ``Shadow ⭐ / 6500 / Disc / 6300``  →  only Shadow is priority
       - ⭐ after the *last* GS (end of line): all specs for that character are priority
-        e.g. ``Survival / 6500 ⭐``  →  Survival (and any other listed specs) are priority
+        e.g. ``Survival / 6500 / BM / 6400 ⭐``  →  both Survival and BM are priority
       - ⭐ after any middle GS: only that spec is priority
 
     ❌  = saved character (already saved this lockout)
