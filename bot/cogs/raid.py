@@ -41,10 +41,9 @@ def is_officer():
 
 
 def _build_signup_embed(raid: Raid, signups: list[Signup]) -> discord.Embed:
-    tanks = [s for s in signups if s.character and s.character.role and s.character.role.value == "tank"]
-    healers = [s for s in signups if s.character and s.character.role and s.character.role.value == "healer"]
-    dps = [s for s in signups if s.character and s.character.role and s.character.role.value == "dps"]
-    others = [s for s in signups if not (s.character and s.character.role)]
+    unique_players = len(set(
+        s.discord_user_id for s in signups if s.discord_user_id
+    ))
 
     status_emoji = {"open": "🟢", "locked": "🔒", "posted": "📋"}.get(
         raid.status.value if raid.status else "open", "🟢"
@@ -62,12 +61,9 @@ def _build_signup_embed(raid: Raid, signups: list[Signup]) -> discord.Embed:
         inline=True,
     )
     embed.add_field(name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True)
-    embed.add_field(name="🛡️ Tanks", value=str(len(tanks)), inline=True)
-    embed.add_field(name="💚 Healers", value=str(len(healers)), inline=True)
-    embed.add_field(name="⚔️ DPS", value=str(len(dps) + len(others)), inline=True)
     embed.add_field(
-        name="Total",
-        value=f"{len(signups)} / {raid.max_size}",
+        name="👥 Players Signed Up",
+        value=f"{unique_players} / {raid.max_size}",
         inline=False,
     )
     embed.set_footer(text=f"Raid ID: {raid.id}")
@@ -170,6 +166,49 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             await loop.run_in_executor(None, _store_msg)
         except Exception:
             logger.warning("Failed to store discord_message_id for raid %s", raid_id, exc_info=True)
+
+        # Create "How to Sign Up" thread on the raid embed message and a standalone log thread
+        try:
+            howto_thread = await msg.create_thread(
+                name="📖 How to Sign Up",
+                auto_archive_duration=10080,  # 7 days in minutes
+            )
+            await howto_thread.send(
+                "**How to Sign Up for the Raid**\n\n"
+                "**Method 1: Use `/addcharacter` then click the Sign Up button**\n"
+                "1. Register your character: `/addcharacter name:<name> spec1:<spec> gs1:<gearscore>`\n"
+                "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
+                "3. Select your character(s), optionally mark priority, then confirm\n\n"
+                "**Method 2: Post your character(s) as a text message in this channel**\n"
+                "Post one character per line in this format:\n"
+                "```\nCharName / Class / Spec / GS\n```\n"
+                "Example: `Thralladin / Paladin / Holy / 5800`\n"
+                "Multiple specs: `Thralladin / Paladin / Holy / 5800 / Ret / 5600`\n"
+                "Add ⭐ to mark as priority, ❌ if already saved this lockout.\n\n"
+                "*Your message will be deleted automatically and a sign-up summary will be posted in the log thread.*"
+            )
+
+            channel = interaction.channel
+            log_thread = await channel.create_thread(
+                name=f"📋 {name} – Sign-Up Log",
+                auto_archive_duration=10080,  # 7 days in minutes
+                type=discord.ChannelType.public_thread,
+            )
+            await log_thread.send(f"📋 **Sign-Up Log for {name}**\nPlayer sign-ups will be recorded here.")
+
+            def _store_log_thread():
+                session = get_session()
+                try:
+                    raid = session.get(Raid, raid_id)
+                    if raid:
+                        raid.discord_log_thread_id = log_thread.id
+                        session.commit()
+                finally:
+                    session.close()
+
+            await loop.run_in_executor(None, _store_log_thread)
+        except Exception:
+            logger.warning("Failed to create raid threads for raid %s", raid_id, exc_info=True)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         logger.exception("Unhandled error in CreateRaidModal", exc_info=error)
