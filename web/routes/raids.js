@@ -114,15 +114,22 @@ router.get('/:raid_id', async (req, res) => {
     [raidId]
   );
 
-  // Merge signups by (discord_user_id + char_name) within each signup_type bucket
-  const grouped = { fill: [], prio_role: [], prio_character: [] };
+  // Merge signups by (discord_user_id + char_name) within each bucket.
+  // Tentative signups go into their own bucket regardless of signup_type.
+  const grouped = { fill: [], prio_role: [], prio_character: [], tentative: [] };
   for (const s of allSignups) {
-    const key = s.signup_type || 'fill';
-    const bucket = grouped[key] || grouped.fill;
+    let bucket;
+    if (s.status === 'tentative') {
+      bucket = grouped.tentative;
+    } else {
+      const key = s.signup_type || 'fill';
+      bucket = grouped[key] || grouped.fill;
+    }
     const mergeKey = `${s.discord_user_id}__${s.char_name}`;
     const existing = bucket.find(e => e._mergeKey === mergeKey);
+    const is_prio = s.signup_type === 'prio_character' || s.signup_type === 'prio_role';
     if (existing) {
-      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore });
+      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio });
     } else {
       bucket.push({
         ...s,
@@ -134,7 +141,7 @@ router.get('/:raid_id', async (req, res) => {
           realm: s.realm,
           char_class: s.char_class,
           role: s.role,
-          specs: [{ spec: s.spec, gearscore: s.gearscore }],
+          specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio }],
         },
       });
     }
