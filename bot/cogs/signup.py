@@ -333,7 +333,9 @@ class SignupPrioritySelectView(discord.ui.View):
         if signup_status == SignupStatus.signed:
             options = [
                 discord.SelectOption(
-                    label=c["char_name"][:100],
+                    label=(
+                        f"{c['char_name']} ({c['spec']})" if c.get("spec") else c["char_name"]
+                    )[:100],
                     description=_char_display_description(c)[:100],
                     value=str(c["id"]),
                 )
@@ -408,13 +410,18 @@ class SignupPrioritySelectView(discord.ui.View):
 
         is_tentative = signup_status == SignupStatus.tentative
         if is_tentative:
-            lines = [f"• **{c['char_name']}**" for c in self.selected_chars]
+            lines = [
+                f"• **{c['char_name']}**" + (f" ({c['spec']})" if c.get("spec") else "")
+                for c in self.selected_chars
+            ]
             reply_prefix = "❓ Tentatively signed up for the raid:"
             log_emoji = "❓"
             log_action = "tentatively signed up"
         else:
             lines = [
-                f"• **{c['char_name']}**{' ⭐ priority' if c['id'] in priority_ids else ''}"
+                f"• **{c['char_name']}**"
+                + (f" ({c['spec']})" if c.get("spec") else "")
+                + (" ⭐ priority" if c["id"] in priority_ids else "")
                 for c in self.selected_chars
             ]
             reply_prefix = "✅ Signed up for the raid:"
@@ -428,7 +435,10 @@ class SignupPrioritySelectView(discord.ui.View):
 
         log_message = (
             f"{log_emoji} {interaction.user.mention} {log_action} with: "
-            + ", ".join(f"**{c['char_name']}**" for c in self.selected_chars)
+            + ", ".join(
+                f"**{c['char_name']}**" + (f" ({c['spec']})" if c.get("spec") else "")
+                for c in self.selected_chars
+            )
         )
         await _post_to_raid_log(interaction.client, raid_id, log_message)
         await update_raid_embed(interaction.client, raid_id)
@@ -481,18 +491,31 @@ class SignupCharacterSelectView(discord.ui.View):
         selected_groups = [
             self.groups_by_id[sid] for sid in selected_ids if sid in self.groups_by_id
         ]
-        selected_chars = [
-            {
-                "id": g["id"],
-                "char_name": g["char_name"],
-                "char_class": g["char_class"],
-                "spec": g["spec"],
-                "gearscore": g["gearscore"],
-            }
-            for g in selected_groups
-        ]
+        selected_chars = []
+        for g in selected_groups:
+            if g["specs"]:
+                # Expand multi-spec characters into one entry per spec
+                for spec, gs, char_id in g["specs"]:
+                    selected_chars.append({
+                        "id": char_id,
+                        "char_name": g["char_name"],
+                        "char_class": g["char_class"],
+                        "spec": spec,
+                        "gearscore": gs,
+                    })
+            else:
+                selected_chars.append({
+                    "id": g["id"],
+                    "char_name": g["char_name"],
+                    "char_class": g["char_class"],
+                    "spec": g["spec"],
+                    "gearscore": g["gearscore"],
+                })
 
-        names = ", ".join(f"**{c['char_name']}**" for c in selected_chars)
+        names = ", ".join(
+            f"**{c['char_name']}** ({c['spec']})" if c.get("spec") else f"**{c['char_name']}**"
+            for c in selected_chars
+        )
         is_tentative = self.signup_status == SignupStatus.tentative
         view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
         if is_tentative:
