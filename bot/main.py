@@ -20,6 +20,7 @@ class RaidBot(commands.Bot):
         await self.load_extension("bot.cogs.character")
         await self.load_extension("bot.cogs.raid")
         await self.load_extension("bot.cogs.signup")
+        await self.load_extension("bot.cogs.dev")
 
         # Register persistent SignupView so buttons survive bot restarts
         from bot.cogs.signup import SignupView
