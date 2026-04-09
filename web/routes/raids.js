@@ -295,6 +295,7 @@ router.get('/:raid_id/manage', async (req, res) => {
         char_class: s.character.char_class,
         discord_user_id: uid,
         signup_type: s.signup_type,
+        status: s.status,
         specs: [],
       };
       userSignupMap[uid].characters.push(charGroup);

@@ -381,7 +381,7 @@ class SignupPrioritySelectView(discord.ui.View):
                 for c in selected_chars[:25]
             ]
             self.priority_select = discord.ui.Select(
-                placeholder="Mark priority characters (optional)…",
+                placeholder="Mark preferred characters (optional)…",
                 options=options,
                 min_values=0,
                 max_values=len(options),
@@ -458,7 +458,7 @@ class SignupPrioritySelectView(discord.ui.View):
             log_action = "tentatively signed up"
         else:
             lines = [
-                f"• **{_char_label(c)}**" + (" ⭐ priority" if c["id"] in priority_ids else "")
+                f"• **{_char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
                 for c in self.selected_chars
             ]
             reply_prefix = "✅ Signed up for the raid:"
@@ -530,7 +530,7 @@ class SignupCharacterSelectView(discord.ui.View):
         else:
             next_step_text = (
                 f"Selected: {names}\n\n"
-                "Optionally mark any as **priority** below, then click **Confirm Sign Up**."
+                "Optionally mark any as **preferred** below, then click **Confirm Sign Up**."
             )
         await interaction.response.edit_message(
             content=next_step_text,
