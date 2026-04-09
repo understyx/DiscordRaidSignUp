@@ -18,6 +18,8 @@ Base.metadata.create_all(engine)
 def _run_migrations():
     """Apply any schema changes not handled by create_all (existing tables)."""
     inspector = inspect(engine)
+    if not inspector.has_table("raids"):
+        return
     with engine.begin() as conn:
         raids_columns = {col["name"] for col in inspector.get_columns("raids")}
         if "discord_log_thread_id" not in raids_columns:
