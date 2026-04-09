@@ -423,7 +423,7 @@
 
     assignedDiv.innerHTML = '';
     const nameSpan = document.createElement('span');
-    nameSpan.className   = 'fw-bold' + (draggedCharClass ? ' cls-' + draggedCharClass : '');
+    nameSpan.className   = `fw-bold${draggedCharClass ? ' cls-' + draggedCharClass : ''}`;
     nameSpan.textContent = draggedCharName;
     const specSmall = document.createElement('small');
     specSmall.className   = 'text-muted d-block';

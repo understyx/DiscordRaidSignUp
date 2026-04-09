@@ -310,7 +310,7 @@ router.get('/:raid_id/manage', async (req, res) => {
   if (compNumbers.length === 0) compNumbers.push(1);
 
   // Determine active comp from query param (default: 1)
-  const currentComp = Math.max(1, parseInt(req.query.comp || '1') || 1);
+  const currentComp = parseInt(req.query.comp) || 1;
 
   const [existingComp] = await pool.query(
     'SELECT * FROM compositions WHERE raid_id = ? AND comp_number = ?',
@@ -367,7 +367,7 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
-  const compNumber = Math.max(1, parseInt(req.query.comp || '1') || 1);
+  const compNumber = parseInt(req.query.comp) || 1;
   const body = req.body;
 
   if (!Array.isArray(body)) {
@@ -434,7 +434,7 @@ router.get('/:raid_id/comp', async (req, res) => {
   const compNumbers = existingCompNums.map(r => r.comp_number);
   if (compNumbers.length === 0) compNumbers.push(1);
 
-  const currentComp = Math.max(1, parseInt(req.query.comp || String(compNumbers[0])) || 1);
+  const currentComp = parseInt(req.query.comp) || compNumbers[0];
 
   const [comps] = await pool.query(
     `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id
