@@ -1,235 +1,422 @@
 {% extends "base.html" %}
 {% block title %}Manage {{ raid.name }} – RaidBot{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Roster page: viewport-height three-column layout ──────────────── */
+  .roster-page-wrap {
+    display: flex;
+    flex-direction: column;
+    /* Fill from top of content area to bottom of viewport */
+    height: calc(100vh - 130px);
+    min-height: 480px;
+  }
+
+  /* Action bar stays fixed at the top – never scrolls */
+  .roster-action-bar {
+    flex: 0 0 auto;
+    margin-bottom: 0.6rem;
+  }
+
+  /* Three columns sit below the action bar and fill remaining height */
+  .roster-columns {
+    flex: 1 1 0;
+    min-height: 0;           /* crucial: lets flex children shrink below content height */
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  /* Scrollable side columns */
+  .roster-col-side {
+    flex: 0 0 22%;
+    min-width: 170px;
+    max-width: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Scrollable centre roster column */
+  .roster-col-main {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Make cards fill their column */
+  .roster-col-side  > .card,
+  .roster-col-main  > .card {
+    min-height: 100%;
+  }
+
+  /* ── Placeholder chips ─────────────────────────────────────────────── */
+  .placeholder-chip {
+    display: block;
+    cursor: grab;
+    font-size: 0.78rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-card-2);
+    color: #c4cad8;
+    transition: box-shadow 0.12s, color 0.12s;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .placeholder-chip:hover  { box-shadow: 0 0 0 2px var(--wow-gold); color: var(--wow-gold); }
+  .placeholder-chip:active { cursor: grabbing; }
+
+  .placeholder-group-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #8a95b0;
+    margin: 0.55rem 0 0.2rem;
+  }
+
+  /* ── Slot filled with a placeholder ────────────────────────────────── */
+  .slot-placeholder-text {
+    display: block;
+    font-size: 0.78rem;
+    font-style: italic;
+    color: #8a95b0;
+    border: 1px dashed var(--border-dim);
+    border-radius: 4px;
+    padding: 2px 6px;
+    min-height: 40px;
+    line-height: 2.1;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3>🛠️ Manage: {{ raid.name }}</h3>
-  <div>
-    <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
-      <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
-    </form>
-    <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save Composition</button>
-    <form method="post" action="/raids/{{ raid.id }}/post_comp" class="d-inline" id="postForm">
-      <button class="btn btn-info btn-sm">📋 Finalize &amp; Post</button>
-    </form>
-  </div>
-</div>
+<div class="roster-page-wrap">
 
-<div class="row">
-  {# ── Left: Sign-ups Pool (grouped by Discord user) ─────────────────── #}
-  <div class="col-md-4">
-    <div class="card p-3 mb-3" style="min-height: 400px;">
-      <h5 class="mb-3">📝 Sign-ups
-        <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}</span>
-      </h5>
-
-      {% for userGroup in signupsByUser %}
-      {% set grp_id = "ug-" ~ loop.index %}
-      <div class="user-group mb-2">
-        <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
-             style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
-             title="Click to expand/collapse">
-          <span>👤</span>
-          <span class="text-muted flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
-          <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
-        </div>
-
-        <div id="{{ grp_id }}">
-          {% for charGroup in userGroup.characters %}
-            {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
-            {% set firstSpec = charGroup.specs[0] %}
-            {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-            <div class="char-card card p-2 mb-1"
-                 draggable="true"
-                 data-char-id="{{ firstSpec.character_id }}"
-                 data-char-name="{{ charGroup.char_name }}"
-                 data-discord-user-id="{{ charGroup.discord_user_id }}"
-                 data-spec="{{ firstSpec.spec or '' }}"
-                 ondragstart="onDragStart(event)">
-              <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
-              {% if charGroup.specs | length > 1 %}
-              {# Multiple specs: show clickable spec buttons so RL can pick #}
-              <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
-                {% for s in charGroup.specs %}
-                <button type="button" draggable="false"
-                        class="spec-btn {% if loop.first %}active{% endif %}"
-                        data-char-id="{{ s.character_id }}"
-                        data-gs="{{ s.gearscore | int }}"
-                        data-spec="{{ s.spec or '' }}"
-                        onclick="selectSpec(this)">
-                  {{ s.spec or "?" }} {{ s.gearscore | int }}
-                </button>
-                {% endfor %}
-              </div>
-              {% else %}
-              <small class="text-muted d-block">
-                {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
-                {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
-              </small>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% else %}
-      <p class="text-muted text-center mt-4">No sign-ups yet.</p>
-      {% endfor %}
+  {# ── Action bar (never scrolls) ───────────────────────────────────── #}
+  <div class="roster-action-bar d-flex justify-content-between align-items-center">
+    <h3 class="mb-0">🛠️ Manage: {{ raid.name }}</h3>
+    <div>
+      <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
+        <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
+      </form>
+      <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save Composition</button>
+      <form method="post" action="/raids/{{ raid.id }}/post_comp" class="d-inline" id="postForm">
+        <button class="btn btn-info btn-sm">📋 Finalize &amp; Post</button>
+      </form>
     </div>
   </div>
 
-  {# ── Right: Roster Slots ───────────────────────────────────────────── #}
-  <div class="col-md-8">
-    <div class="card p-3">
-      <h5 class="mb-3">🎯 Raid Roster</h5>
-      <div class="row g-2" id="rosterSlots">
-        {% for slot in slots %}
-        {% set slot_prefix = slot.split("_")[0] %}
-        {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-        {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
-        {% set assigned_char_id = comp_map[slot] %}
-        <div class="col-6 col-md-4">
-          <div class="slot-card card p-2 h-100 text-center slot-{{ slot_prefix }}"
-               data-slot="{{ slot }}"
-               ondragover="event.preventDefault()"
-               ondrop="onDrop(event)">
-            <div class="small text-muted mb-1">{{ slot_emoji }} {{ slot }}</div>
-            {% if assigned_char_id %}
-              {% for s in signups %}
-                {% if s.character.id | string == assigned_char_id %}
-                {% set c = s.character %}
-                {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
-                  <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
-                  <small class="text-muted">{{ c.char_class or "?" }}</small><br>
-                  <small class="text-muted">{{ c.spec or "?" }}</small>
+  <div class="roster-columns">
+
+    {# ── Left column: Sign-ups pool ──────────────────────────────────── #}
+    <div class="roster-col-side">
+      <div class="card p-3">
+        <h5 class="mb-3">📝 Sign-ups
+          <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">
+            {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
+          </span>
+        </h5>
+
+        {% for userGroup in signupsByUser %}
+        {% set grp_id = "ug-" ~ loop.index %}
+        <div class="user-group mb-2">
+          <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
+               style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
+               title="Click to expand/collapse">
+            <span>👤</span>
+            <span class="text-muted flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+            <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
+          </div>
+
+          <div id="{{ grp_id }}">
+            {% for charGroup in userGroup.characters %}
+              {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
+              {% set firstSpec = charGroup.specs[0] %}
+              {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+              <div class="char-card card p-2 mb-1"
+                   draggable="true"
+                   data-char-id="{{ firstSpec.character_id }}"
+                   data-char-name="{{ charGroup.char_name }}"
+                   data-discord-user-id="{{ charGroup.discord_user_id }}"
+                   data-spec="{{ firstSpec.spec or '' }}"
+                   ondragstart="onDragStart(event)">
+                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+                {% if charGroup.specs | length > 1 %}
+                <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
+                  {% for s in charGroup.specs %}
+                  <button type="button" draggable="false"
+                          class="spec-btn {% if loop.first %}active{% endif %}"
+                          data-char-id="{{ s.character_id }}"
+                          data-gs="{{ s.gearscore | int }}"
+                          data-spec="{{ s.spec or '' }}"
+                          onclick="selectSpec(this)">
+                    {{ s.spec or "?" }} {{ s.gearscore | int }}
+                  </button>
+                  {% endfor %}
                 </div>
+                {% else %}
+                <small class="text-muted d-block">
+                  {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
+                  {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
+                </small>
                 {% endif %}
-              {% endfor %}
-            {% else %}
-            <div class="assigned-char text-muted small" style="min-height:40px;">
-              — empty —
-            </div>
-            {% endif %}
-            <button class="btn btn-outline-secondary btn-sm mt-1" onclick="clearSlot(this)">✕</button>
+              </div>
+            {% endfor %}
           </div>
         </div>
+        {% else %}
+        <p class="text-muted text-center mt-4">No sign-ups yet.</p>
         {% endfor %}
       </div>
     </div>
-  </div>
-</div>
+
+    {# ── Centre column: Roster slots ─────────────────────────────────── #}
+    <div class="roster-col-main">
+      <div class="card p-3">
+        <h5 class="mb-3">🎯 Raid Roster</h5>
+        <div class="row g-2" id="rosterSlots">
+          {% for slot in slots %}
+          {% set slot_prefix = slot.split("_")[0] %}
+          {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+          {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
+          {% set assigned_char_id = comp_map[slot] %}
+          <div class="col-6 col-md-4">
+            <div class="slot-card card p-2 h-100 text-center slot-{{ slot_prefix }}"
+                 data-slot="{{ slot }}"
+                 ondragover="event.preventDefault()"
+                 ondrop="onDrop(event)">
+              <div class="small text-muted mb-1">{{ slot_emoji }} {{ slot }}</div>
+              {% if assigned_char_id %}
+                {% for s in signups %}
+                  {% if s.character.id | string == assigned_char_id %}
+                  {% set c = s.character %}
+                  {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+                  <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
+                    <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
+                    <small class="text-muted">{{ c.char_class or "?" }}</small><br>
+                    <small class="text-muted">{{ c.spec or "?" }}</small>
+                  </div>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+              <div class="assigned-char text-muted small" style="min-height:40px;">
+                — empty —
+              </div>
+              {% endif %}
+              <button class="btn btn-outline-secondary btn-sm mt-1" onclick="clearSlot(this)">✕</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Right column: Placeholder pool ──────────────────────────────── #}
+    <div class="roster-col-side">
+      <div class="card p-3">
+        <h5 class="mb-2">🗂️ Placeholders</h5>
+        <p class="text-muted mb-1" style="font-size:0.72rem;">
+          Drag a label onto a roster slot to mark it as reserved (not saved to DB).
+        </p>
+
+        <div class="placeholder-group-label">🛡️ Tanks</div>
+        <div class="d-flex flex-column gap-1 mb-1">
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"          ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"  ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"  ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"  ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"      ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
+        </div>
+
+        <div class="placeholder-group-label">💚 Healers</div>
+        <div class="d-flex flex-column gap-1 mb-1">
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Healer"         ondragstart="onPlaceholderDragStart(event)">�� Healer</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Paladin"   ondragstart="onPlaceholderDragStart(event)">💚 Holy Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Priest"    ondragstart="onPlaceholderDragStart(event)">💚 Holy Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Disc Priest"    ondragstart="onPlaceholderDragStart(event)">💚 Disc Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Druid"    ondragstart="onPlaceholderDragStart(event)">�� Resto Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Shaman"   ondragstart="onPlaceholderDragStart(event)">💚 Resto Shaman</span>
+        </div>
+
+        <div class="placeholder-group-label">⚔️ DPS</div>
+        <div class="d-flex flex-column gap-1">
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ DPS"             ondragstart="onPlaceholderDragStart(event)">⚔️ DPS</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arms Warrior"    ondragstart="onPlaceholderDragStart(event)">⚔️ Arms Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fury Warrior"    ondragstart="onPlaceholderDragStart(event)">⚔️ Fury Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Ret Paladin"     ondragstart="onPlaceholderDragStart(event)">⚔️ Ret Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Shadow Priest"   ondragstart="onPlaceholderDragStart(event)">⚔️ Shadow Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Balance Druid"   ondragstart="onPlaceholderDragStart(event)">⚔️ Balance Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Feral (Cat)"     ondragstart="onPlaceholderDragStart(event)">⚔️ Feral (Cat)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ MM Hunter"       ondragstart="onPlaceholderDragStart(event)">⚔️ MM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ BM Hunter"       ondragstart="onPlaceholderDragStart(event)">⚔️ BM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Surv Hunter"     ondragstart="onPlaceholderDragStart(event)">⚔️ Surv Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arcane Mage"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arcane Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fire Mage"       ondragstart="onPlaceholderDragStart(event)">⚔️ Fire Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost Mage"      ondragstart="onPlaceholderDragStart(event)">⚔️ Frost Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Combat Rogue"    ondragstart="onPlaceholderDragStart(event)">⚔️ Combat Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Mutilate Rogue"  ondragstart="onPlaceholderDragStart(event)">⚔️ Mutilate Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Elem Shaman"     ondragstart="onPlaceholderDragStart(event)">⚔️ Elem Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Enh Shaman"      ondragstart="onPlaceholderDragStart(event)">⚔️ Enh Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Affli Warlock"   ondragstart="onPlaceholderDragStart(event)">⚔️ Affli Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Destro Warlock"  ondragstart="onPlaceholderDragStart(event)">⚔️ Destro Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>{# /roster-columns #}
+</div>{# /roster-page-wrap #}
 {% endblock %}
 
 {% block scripts %}
 <script>
-  let draggedCharId = null;
-  let draggedCharName = null;
+  let draggedCharId       = null;
+  let draggedCharName     = null;
   let draggedDiscordUserId = null;
-  let draggedSpec = null;
+  let draggedSpec         = null;
+  let draggedPlaceholder  = null;
 
-  // Called when a spec button is clicked — updates the card's active char ID and spec
+  /* ── Spec button click: switch active spec on a char card ──────────── */
   function selectSpec(btn) {
     const card = btn.closest('.char-card');
     card.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     card.dataset.charId = btn.dataset.charId;
-    card.dataset.spec = btn.dataset.spec || '';
+    card.dataset.spec   = btn.dataset.spec || '';
   }
 
+  /* ── Collapse / expand sign-up user groups ─────────────────────────── */
   function toggleUserGroup(id, header) {
-    const body = document.getElementById(id);
+    const body    = document.getElementById(id);
     const chevron = header.querySelector('.ug-chevron');
     const collapsed = body.style.display === 'none';
-    body.style.display = collapsed ? '' : 'none';
+    body.style.display  = collapsed ? '' : 'none';
     chevron.textContent = collapsed ? '▾' : '▸';
   }
 
+  /* ── Drag start: character card ────────────────────────────────────── */
   function onDragStart(event) {
-    draggedCharId = event.currentTarget.dataset.charId;
-    draggedCharName = event.currentTarget.dataset.charName;
+    draggedPlaceholder   = null;
+    draggedCharId        = event.currentTarget.dataset.charId;
+    draggedCharName      = event.currentTarget.dataset.charName;
     draggedDiscordUserId = event.currentTarget.dataset.discordUserId || null;
-    draggedSpec = event.currentTarget.dataset.spec || null;
-    event.dataTransfer.effectAllowed = "move";
+    draggedSpec          = event.currentTarget.dataset.spec || null;
+    event.dataTransfer.effectAllowed = 'move';
   }
 
+  /* ── Drag start: placeholder chip ─────────────────────────────────── */
+  function onPlaceholderDragStart(event) {
+    draggedCharId        = null;
+    draggedCharName      = null;
+    draggedDiscordUserId = null;
+    draggedSpec          = null;
+    draggedPlaceholder   = event.currentTarget.dataset.placeholder;
+    event.dataTransfer.effectAllowed = 'copy';
+  }
+
+  /* ── Drop onto a roster slot ───────────────────────────────────────── */
   function onDrop(event) {
     event.preventDefault();
+    const slotCard    = event.currentTarget;
+    const assignedDiv = slotCard.querySelector('.assigned-char');
+
+    /* Placeholder drop — visual only, nothing saved to DB */
+    if (draggedPlaceholder) {
+      assignedDiv.innerHTML = '';
+      const label = document.createElement('span');
+      label.className   = 'slot-placeholder-text';
+      label.textContent = draggedPlaceholder;
+      assignedDiv.appendChild(label);
+      delete assignedDiv.dataset.charId;
+      delete assignedDiv.dataset.discordUserId;
+      assignedDiv.dataset.placeholder = draggedPlaceholder;
+      draggedPlaceholder = null;
+      return;
+    }
+
+    /* Character drop */
     if (!draggedCharId) return;
 
-    // Enforce one character per Discord user: clear any existing slot for this user
+    /* Enforce one character per Discord user */
     if (draggedDiscordUserId) {
-      document.querySelectorAll(".assigned-char[data-discord-user-id]").forEach(el => {
-        if (el.dataset.discordUserId === draggedDiscordUserId && el.dataset.charId !== draggedCharId) {
+      document.querySelectorAll('.assigned-char[data-discord-user-id]').forEach(el => {
+        if (el.dataset.discordUserId === draggedDiscordUserId &&
+            el.dataset.charId !== draggedCharId) {
           clearAssigned(el);
         }
       });
     }
 
-    const slotCard = event.currentTarget;
-    const assignedDiv = slotCard.querySelector(".assigned-char");
-    assignedDiv.innerHTML = "";
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "fw-bold";
+    assignedDiv.innerHTML = '';
+    const nameSpan = document.createElement('span');
+    nameSpan.className   = 'fw-bold';
     nameSpan.textContent = draggedCharName;
-    const br = document.createElement("br");
-    const specSmall = document.createElement("small");
-    specSmall.className = "text-muted";
-    specSmall.textContent = draggedSpec || "?";
+    const specSmall = document.createElement('small');
+    specSmall.className   = 'text-muted';
+    specSmall.textContent = draggedSpec || '?';
     assignedDiv.appendChild(nameSpan);
-    assignedDiv.appendChild(br);
+    assignedDiv.appendChild(document.createElement('br'));
     assignedDiv.appendChild(specSmall);
     assignedDiv.dataset.charId = draggedCharId;
+    delete assignedDiv.dataset.placeholder;
     if (draggedDiscordUserId) {
       assignedDiv.dataset.discordUserId = draggedDiscordUserId;
     }
-    draggedCharId = null;
-    draggedCharName = null;
+    draggedCharId        = null;
+    draggedCharName      = null;
     draggedDiscordUserId = null;
-    draggedSpec = null;
+    draggedSpec          = null;
   }
 
+  /* ── Clear a single assigned-char div ─────────────────────────────── */
   function clearAssigned(el) {
-    el.innerHTML = "";
-    const empty = document.createElement("span");
-    empty.className = "text-muted small";
-    empty.style.minHeight = "40px";
-    empty.textContent = "— empty —";
+    el.innerHTML = '';
+    const empty = document.createElement('span');
+    empty.className       = 'text-muted small';
+    empty.style.minHeight = '40px';
+    empty.textContent     = '— empty —';
     el.appendChild(empty);
     delete el.dataset.charId;
     delete el.dataset.discordUserId;
+    delete el.dataset.placeholder;
   }
 
   function clearSlot(btn) {
-    const slotCard = btn.closest(".slot-card");
-    clearAssigned(slotCard.querySelector(".assigned-char"));
+    clearAssigned(btn.closest('.slot-card').querySelector('.assigned-char'));
   }
 
+  /* ── Save composition (placeholder-only slots are skipped) ─────────── */
   function saveComp() {
-    const slots = document.querySelectorAll(".slot-card");
     const payload = [];
-    slots.forEach(slot => {
-      const assignedDiv = slot.querySelector(".assigned-char");
+    document.querySelectorAll('.slot-card').forEach(slot => {
+      const assignedDiv = slot.querySelector('.assigned-char');
       const charId = assignedDiv ? assignedDiv.dataset.charId : null;
       if (charId) {
         payload.push({ character_id: parseInt(charId), role_slot: slot.dataset.slot });
       }
     });
 
-    fetch("/raids/{{ raid.id }}/manage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    fetch('/raids/{{ raid.id }}/manage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        const btn = document.getElementById("saveBtn");
-        btn.textContent = "✅ Saved!";
-        setTimeout(() => btn.textContent = "💾 Save Composition", 2000);
+        const btn = document.getElementById('saveBtn');
+        btn.textContent = '✅ Saved!';
+        setTimeout(() => { btn.textContent = '💾 Save Composition'; }, 2000);
       } else {
-        alert("Error: " + (data.error || "Unable to save composition. Please try again."));
+        alert('Error: ' + (data.error || 'Unable to save composition. Please try again.'));
       }
     })
-    .catch(err => alert("Save failed: " + err));
+    .catch(err => alert('Save failed: ' + err));
   }
 </script>
 {% endblock %}
