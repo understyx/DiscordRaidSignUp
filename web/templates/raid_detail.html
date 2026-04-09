@@ -34,45 +34,48 @@
         {% if user_char_groups %}
         <form method="post" action="/raids/{{ raid.id }}/signup" id="signupForm">
           <div class="mb-3">
-            <label class="form-label small fw-bold">Select characters to sign up:</label>
+            <label class="form-label small fw-bold">Select specs to sign up:</label>
             {% for charGroup in user_char_groups %}
             {% set slug = loop.index %}
             {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
             <div class="border border-secondary rounded p-2 mb-2">
+              {# Character header with "select all" toggle #}
               <div class="form-check">
                 <input class="form-check-input" type="checkbox"
                        id="char_grp_{{ slug }}"
-                       {% if charGroup.is_signed %}checked{% endif %}
                        onchange="toggleCharGroup(this, {{ slug }})">
                 <label class="form-check-label" for="char_grp_{{ slug }}">
                   <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                   <small class="text-muted ms-1">{{ charGroup.char_class or "?" }}</small>
                 </label>
               </div>
-              <div class="ms-3 mt-1 small text-muted">
+              {# Per-spec checkboxes — each independently selectable #}
+              <div class="ms-3 mt-1">
                 {% for s in charGroup.specs %}
-                  {{ s.spec or "?" }} GS {{ s.gearscore | int }}{% if not loop.last %} / {% endif %}
+                <div class="form-check">
+                  <input class="form-check-input spec-cb-{{ slug }}" type="checkbox"
+                         name="character_ids" value="{{ s.id }}" id="spec_{{ s.id }}"
+                         {% if my_signup_map[s.id] %}checked{% endif %}
+                         onchange="updateGroupCheckbox({{ slug }})">
+                  <label class="form-check-label small" for="spec_{{ s.id }}">
+                    {{ s.spec or "?" }} GS {{ s.gearscore | int }}
+                  </label>
+                </div>
+                {% endfor %}
+                {# Priority — applies to all signed specs for this character #}
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox"
+                         id="prio_grp_{{ slug }}"
+                         {% if charGroup.is_prio %}checked{% endif %}
+                         onchange="togglePrioGroup(this, {{ slug }})">
+                  <label class="form-check-label text-warning small" for="prio_grp_{{ slug }}">⭐ Priority</label>
+                </div>
+                {% for s in charGroup.specs %}
+                <input type="checkbox" name="priority_ids" value="{{ s.id }}"
+                       class="d-none prio-cb-{{ slug }}"
+                       {% if charGroup.is_prio %}checked{% endif %}>
                 {% endfor %}
               </div>
-              {# Hidden checkboxes — one per spec, submitted as character_ids #}
-              {% for s in charGroup.specs %}
-              <input type="checkbox" name="character_ids" value="{{ s.id }}"
-                     class="d-none spec-cb-{{ slug }}"
-                     {% if charGroup.is_signed %}checked{% endif %}>
-              {% endfor %}
-              {# Priority #}
-              <div class="form-check ms-3 mt-1">
-                <input class="form-check-input" type="checkbox"
-                       id="prio_grp_{{ slug }}"
-                       {% if charGroup.is_prio %}checked{% endif %}
-                       onchange="togglePrioGroup(this, {{ slug }})">
-                <label class="form-check-label text-warning small" for="prio_grp_{{ slug }}">⭐ Priority</label>
-              </div>
-              {% for s in charGroup.specs %}
-              <input type="checkbox" name="priority_ids" value="{{ s.id }}"
-                     class="d-none prio-cb-{{ slug }}"
-                     {% if charGroup.is_prio %}checked{% endif %}>
-              {% endfor %}
             </div>
             {% endfor %}
           </div>
@@ -155,8 +158,36 @@
     }
   }
 
+  function updateGroupCheckbox(slug) {
+    const specCbs = Array.from(document.querySelectorAll('.spec-cb-' + slug));
+    const allChecked = specCbs.every(cb => cb.checked);
+    const anyChecked = specCbs.some(cb => cb.checked);
+    const groupCb = document.getElementById('char_grp_' + slug);
+    if (groupCb) {
+      groupCb.indeterminate = anyChecked && !allChecked;
+      groupCb.checked = allChecked;
+    }
+    if (!anyChecked) {
+      document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = false; });
+      const prioCb = document.getElementById('prio_grp_' + slug);
+      if (prioCb) prioCb.checked = false;
+    }
+  }
+
   function togglePrioGroup(checkbox, slug) {
     document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = checkbox.checked; });
   }
+
+  // Initialise group checkboxes to reflect per-spec state on page load
+  document.addEventListener('DOMContentLoaded', function () {
+    const slugs = new Set();
+    document.querySelectorAll('[class*="spec-cb-"]').forEach(el => {
+      el.className.split(' ').forEach(cls => {
+        const m = cls.match(/^spec-cb-(\d+)$/);
+        if (m) slugs.add(parseInt(m[1]));
+      });
+    });
+    slugs.forEach(slug => updateGroupCheckbox(slug));
+  });
 </script>
 {% endblock %}
