@@ -15,32 +15,44 @@
 </div>
 
 <div class="row">
-  {# ── Left: Sign-ups Pool ───────────────────────────────────────────── #}
+  {# ── Left: Sign-ups Pool (grouped by Discord user) ─────────────────── #}
   <div class="col-md-4">
     <div class="card p-3 mb-3" style="min-height: 400px;">
-      <h5>📝 Sign-ups</h5>
-      {% set roleGroups = [{"label": "🛡️ Tanks", "key": "tank"}, {"label": "💚 Healers", "key": "healer"}, {"label": "⚔️ DPS / Fill", "key": "dps"}] %}
-      {% for rg in roleGroups %}
-      <h6 class="text-muted mt-3">{{ rg.label }}</h6>
-      {% for s in signups %}
-        {% set c = s.character %}
-        {% set char_role = c.role if c.role else "fill" %}
-        {% if char_role == rg.key or (rg.key == "dps" and char_role != "tank" and char_role != "healer") %}
-        {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-        <div class="char-card card p-2 mb-1 border-secondary"
-             draggable="true"
-             data-char-id="{{ c.id }}"
-             data-char-name="{{ c.char_name }}"
-             id="char-{{ c.id }}"
-             ondragstart="onDragStart(event)">
-          <div class="d-flex justify-content-between">
-            <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
-            <small class="text-muted">GS {{ c.gearscore | int }}</small>
-          </div>
-          <small class="text-muted">{{ c.char_class or "?" }} – {{ c.spec or "?" }}</small>
+      <h5 class="mb-3">📝 Sign-ups
+        <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ signups | length }} player{{ 's' if signups | length != 1 else '' }}</span>
+      </h5>
+
+      {% for userGroup in signupsByUser %}
+      <div class="user-group mb-3">
+        <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1">
+          <span>👤</span>
+          <span class="text-muted font-monospace" style="font-size:0.78rem;">{{ userGroup.discord_user_id | discordId }}</span>
         </div>
-        {% endif %}
-      {% endfor %}
+
+        {% for s in userGroup.characters %}
+          {% set c = s.character %}
+          {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+          {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+          <div class="char-card card p-2 mb-1 border-secondary"
+               draggable="true"
+               data-char-id="{{ c.id }}"
+               data-char-name="{{ c.char_name }}"
+               data-discord-user-id="{{ s.discord_user_id }}"
+               id="char-{{ c.id }}"
+               ondragstart="onDragStart(event)">
+            <div class="d-flex justify-content-between align-items-start">
+              <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+              <small class="text-muted ms-2">GS {{ c.gearscore | int }}</small>
+            </div>
+            <small class="text-muted">
+              {% if c.role %}{{ role_emojis[c.role] or "" }}{% endif %}
+              {{ c.char_class or "?" }} – {{ c.spec or "?" }}
+            </small>
+          </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted text-center mt-4">No sign-ups yet.</p>
       {% endfor %}
     </div>
   </div>
@@ -48,7 +60,7 @@
   {# ── Right: Roster Slots ───────────────────────────────────────────── #}
   <div class="col-md-8">
     <div class="card p-3">
-      <h5>🎯 Raid Roster</h5>
+      <h5 class="mb-3">🎯 Raid Roster</h5>
       <div class="row g-2" id="rosterSlots">
         {% for slot in slots %}
         {% set slot_prefix = slot.split("_")[0] %}
@@ -56,7 +68,7 @@
         {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
         {% set assigned_char_id = comp_map[slot] %}
         <div class="col-6 col-md-4">
-          <div class="slot-card card p-2 h-100 border-secondary text-center"
+          <div class="slot-card card p-2 h-100 text-center slot-{{ slot_prefix }}"
                data-slot="{{ slot }}"
                ondragover="event.preventDefault()"
                ondrop="onDrop(event)">
@@ -66,9 +78,9 @@
                 {% if s.character.id | string == assigned_char_id %}
                 {% set c = s.character %}
                 {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                <div class="assigned-char" data-char-id="{{ c.id }}">
+                <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
                   <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
-                  <small>{{ c.char_class or "?" }}</small>
+                  <small class="text-muted">{{ c.char_class or "?" }}</small>
                 </div>
                 {% endif %}
               {% endfor %}
@@ -91,16 +103,35 @@
 <script>
   let draggedCharId = null;
   let draggedCharName = null;
+  let draggedDiscordUserId = null;
 
   function onDragStart(event) {
     draggedCharId = event.currentTarget.dataset.charId;
     draggedCharName = event.currentTarget.dataset.charName;
+    draggedDiscordUserId = event.currentTarget.dataset.discordUserId || null;
     event.dataTransfer.effectAllowed = "move";
   }
 
   function onDrop(event) {
     event.preventDefault();
     if (!draggedCharId) return;
+
+    // Enforce one character per Discord user: clear any existing slot for this user
+    if (draggedDiscordUserId) {
+      document.querySelectorAll(".assigned-char[data-discord-user-id]").forEach(el => {
+        if (el.dataset.discordUserId === draggedDiscordUserId && el.dataset.charId !== draggedCharId) {
+          el.innerHTML = "";
+          const empty = document.createElement("span");
+          empty.className = "text-muted small";
+          empty.style.minHeight = "40px";
+          empty.textContent = "— empty —";
+          el.appendChild(empty);
+          delete el.dataset.charId;
+          delete el.dataset.discordUserId;
+        }
+      });
+    }
+
     const slotCard = event.currentTarget;
     const assignedDiv = slotCard.querySelector(".assigned-char");
     // Use DOM construction to avoid XSS from character names
@@ -116,8 +147,12 @@
     assignedDiv.appendChild(br);
     assignedDiv.appendChild(small);
     assignedDiv.dataset.charId = draggedCharId;
+    if (draggedDiscordUserId) {
+      assignedDiv.dataset.discordUserId = draggedDiscordUserId;
+    }
     draggedCharId = null;
     draggedCharName = null;
+    draggedDiscordUserId = null;
   }
 
   function clearSlot(btn) {
@@ -130,6 +165,7 @@
     empty.textContent = "— empty —";
     assignedDiv.appendChild(empty);
     delete assignedDiv.dataset.charId;
+    delete assignedDiv.dataset.discordUserId;
   }
 
   function saveComp() {
@@ -154,6 +190,8 @@
         const btn = document.getElementById("saveBtn");
         btn.textContent = "✅ Saved!";
         setTimeout(() => btn.textContent = "💾 Save Composition", 2000);
+      } else {
+        alert("Error: " + (data.error || "Save failed."));
       }
     })
     .catch(err => alert("Save failed: " + err));

@@ -71,6 +71,13 @@ njkEnv.addFilter('dateformat', (value, fmt) => {
 // int filter
 njkEnv.addFilter('int', val => Math.floor(Number(val)) || 0);
 
+// discordId filter: shows last 6 digits of a Discord snowflake, e.g. "…789012"
+njkEnv.addFilter('discordId', val => {
+  const s = String(val || '');
+  if (!s || s === '0') return '?';
+  return s.length > 6 ? '\u2026' + s.slice(-6) : s;
+});
+
 // Routes
 app.use('/auth', authRouter);
 app.use('/raids', raidsRouter);
