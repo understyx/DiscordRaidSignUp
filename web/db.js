@@ -9,6 +9,8 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'raidbot',
   waitForConnections: true,
   connectionLimit: 10,
+  supportBigNumbers: true,
+  bigNumberStrings: true,
 });
 
 module.exports = pool;
