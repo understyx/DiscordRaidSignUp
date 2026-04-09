@@ -284,7 +284,12 @@ router.get('/:raid_id/manage', async (req, res) => {
       } else {
         label = uid;
       }
-      userSignupMap[uid] = { discord_user_id: uid, display_label: label, characters: [] };
+      userSignupMap[uid] = { discord_user_id: uid, display_label: label, is_tentative: false, characters: [] };
+    }
+
+    // Tentative is a user-level flag: true if any of the user's signups is tentative
+    if (s.status === 'tentative') {
+      userSignupMap[uid].is_tentative = true;
     }
 
     // Find or create a character group by char_name
@@ -294,8 +299,6 @@ router.get('/:raid_id/manage', async (req, res) => {
         char_name: s.character.char_name,
         char_class: s.character.char_class,
         discord_user_id: uid,
-        signup_type: s.signup_type,
-        status: s.status,
         specs: [],
       };
       userSignupMap[uid].characters.push(charGroup);
@@ -305,6 +308,7 @@ router.get('/:raid_id/manage', async (req, res) => {
       spec: s.character.spec,
       gearscore: s.character.gearscore,
       role: s.character.role,
+      is_prio: s.signup_type === 'prio_character' || s.signup_type === 'prio_role',
     });
   }
   const signupsByUser = Object.values(userSignupMap);
