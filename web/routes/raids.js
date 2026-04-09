@@ -1,5 +1,72 @@
 const express = require('express');
+const fetch = require('node-fetch');
 const pool = require('../db');
+
+const DISCORD_API = 'https://discord.com/api/v10';
+
+async function postToDiscordChannel(channelId, payload) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !channelId) return { ok: false, reason: 'missing token or channel' };
+
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      return { ok: false, reason: `Discord API ${resp.status}: ${text}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
+function buildCompEmbed(raid, groups, compNumber, totalComps) {
+  const compLabel = totalComps > 1 ? ` – Raid ${compNumber}` : '';
+  const dateStr = raid.date instanceof Date
+    ? raid.date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
+    : String(raid.date).slice(0, 16) + ' UTC';
+
+  const fields = [];
+
+  for (const [roleKey, roleLabel] of [
+    ['tank', '🛡️ Tanks'],
+    ['healer', '💚 Healers'],
+    ['dps', '⚔️ DPS'],
+  ]) {
+    const entries = groups[roleKey] || [];
+    if (entries.length === 0) continue;
+    const lines = entries.map(e => {
+      if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
+      const c = e.character;
+      return `**${c.char_name}** — ${c.spec || c.char_class || '?'} (${Math.floor(c.gearscore || 0)} GS)`;
+    });
+    fields.push({
+      name: `${roleLabel} [${entries.length}]`,
+      value: lines.join('\n') || '—',
+      inline: false,
+    });
+  }
+
+  return {
+    embeds: [
+      {
+        title: `📋 ${raid.name}${compLabel}`,
+        description: `**${raid.raid_instance}** | ${dateStr}`,
+        color: 0xe6cc80,
+        fields,
+        footer: { text: `Raid ID: ${raid.id}` },
+      },
+    ],
+  };
+}
 
 const router = express.Router();
 
@@ -693,14 +760,65 @@ router.post('/:raid_id/post_comp', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
+  const compNumber = req.query.comp ? parseInt(req.query.comp) : null;
+
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
 
   if (raid) {
     await pool.query("UPDATE raids SET status = 'posted' WHERE id = ?", [raidId]);
-    req.session.flash = `📋 Raid '${raid.name}' marked as posted.`;
+
+    // Determine all comp numbers so we know if this is a multi-comp raid
+    const [existingCompNums] = await pool.query(
+      'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
+      [raidId]
+    );
+    const allCompNumbers = existingCompNums.map(r => r.comp_number);
+    if (allCompNumbers.length === 0) allCompNumbers.push(1);
+
+    // Post the selected comp (or all comps if no specific one was selected) to Discord
+    const compsToPost = compNumber !== null ? [compNumber] : allCompNumbers;
+
+    if (raid.discord_channel_id) {
+      for (const cn of compsToPost) {
+        const [comps] = await pool.query(
+          `SELECT co.*, c.char_name, c.char_class, c.spec, c.gearscore, c.role
+           FROM compositions co
+           LEFT JOIN characters c ON co.character_id = c.id
+           WHERE co.raid_id = ? AND co.comp_number = ?
+           ORDER BY co.role_slot`,
+          [raidId, cn]
+        );
+
+        const groups = { tank: [], healer: [], dps: [] };
+        for (const comp of comps) {
+          const entry = {
+            is_placeholder: !comp.character_id,
+            placeholder_text: comp.placeholder_text || null,
+            character: comp.character_id ? {
+              char_name: comp.char_name,
+              char_class: comp.char_class,
+              spec: comp.spec,
+              gearscore: comp.gearscore,
+              role: comp.role,
+            } : null,
+          };
+          const prefix = (comp.role_slot || '').split('_')[0];
+          if (groups[prefix]) groups[prefix].push(entry);
+        }
+
+        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length);
+        const result = await postToDiscordChannel(String(raid.discord_channel_id), payload);
+        if (!result.ok) {
+          console.error(`[post_comp] Failed to post comp ${cn} for raid ${raidId}: ${result.reason}`);
+        }
+      }
+      req.session.flash = `📋 Raid '${raid.name}' marked as posted and composition sent to Discord.`;
+    } else {
+      req.session.flash = `📋 Raid '${raid.name}' marked as posted. (No Discord channel linked — create the raid via bot to enable auto-posting.)`;
+    }
   }
 
-  const compParam = req.query.comp ? `?comp=${parseInt(req.query.comp)}` : '';
+  const compParam = compNumber !== null ? `?comp=${compNumber}` : '';
   res.redirect(`/raids/${raidId}/comp${compParam}`);
 });
 
