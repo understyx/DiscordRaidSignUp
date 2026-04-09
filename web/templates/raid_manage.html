@@ -418,20 +418,6 @@
     return null;
   }
 
-  // ── WoW class → hex colour (used for slot background tints) ──────────
-  const WOW_CLASS_COLORS = {
-    'death-knight': '#C41E3A',
-    'druid':        '#FF7C0A',
-    'hunter':       '#AAD372',
-    'mage':         '#3FC7EB',
-    'paladin':      '#F48CBA',
-    'priest':       '#c8ccd4',
-    'rogue':        '#FFF468',
-    'shaman':       '#0070DD',
-    'warlock':      '#8788EE',
-    'warrior':      '#C69B3A',
-  };
-
   // Apply colors to any placeholder-colored spans already in the DOM
   function applyPlaceholderColors() {
     document.querySelectorAll('.placeholder-colored').forEach(el => {
