@@ -311,22 +311,24 @@ router.get('/:raid_id/manage', async (req, res) => {
   }
 
   const maxSize = raid.max_size || 25;
-  const tanks = Math.max(2, Math.floor(maxSize / 10));
-  const healers = Math.max(4, Math.floor(maxSize / 5));
-  const dpsSlots = maxSize - tanks - healers;
 
-  const slots = [
-    ...[...Array(tanks).keys()].map(i => `tank_${i + 1}`),
-    ...[...Array(healers).keys()].map(i => `healer_${i + 1}`),
-    ...[...Array(dpsSlots).keys()].map(i => `dps_${i + 1}`),
-  ];
+  // Build compBySlot: slot_number -> { char_id, role }
+  // Existing comp entries use role_slot like "tank_1", "healer_3", "dps_5"
+  const compBySlot = {};
+  for (const [roleSlot, charId] of Object.entries(compMap)) {
+    const match = roleSlot.match(/^(tank|healer|dps)_(\d+)$/);
+    if (match) {
+      const num = parseInt(match[2]);
+      compBySlot[num] = { char_id: charId, role: match[1] };
+    }
+  }
 
   res.render('raid_manage.html', {
     raid,
     signups,
     signupsByUser,
-    slots,
-    comp_map: compMap,
+    max_size: maxSize,
+    comp_by_slot: compBySlot,
     flash: popFlash(req),
     user: currentUser(req),
   });

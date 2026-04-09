@@ -81,17 +81,26 @@
     <div class="card p-3">
       <h5 class="mb-3">🎯 Raid Roster</h5>
       <div class="row g-2" id="rosterSlots">
-        {% for slot in slots %}
-        {% set slot_prefix = slot.split("_")[0] %}
-        {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-        {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
-        {% set assigned_char_id = comp_map[slot] %}
+        {% for i in range(1, max_size + 1) %}
+        {% set slot_data = comp_by_slot[i] or {} %}
+        {% set slot_role = slot_data.role or "dps" %}
+        {% set assigned_char_id = slot_data.char_id or "" %}
         <div class="col-6 col-md-4">
-          <div class="slot-card card p-2 h-100 text-center slot-{{ slot_prefix }}"
-               data-slot="{{ slot }}"
+          <div class="slot-card card p-2 h-100 text-center slot-{{ slot_role }}"
+               data-slot-num="{{ i }}"
+               data-slot="{{ slot_role }}_{{ i }}"
                ondragover="event.preventDefault()"
                ondrop="onDrop(event)">
-            <div class="small text-muted mb-1">{{ slot_emoji }} {{ slot }}</div>
+            <div class="d-flex align-items-center justify-content-between mb-1 gap-1">
+              <select class="role-select form-select form-select-sm bg-dark text-light border-secondary"
+                      style="font-size:0.7rem; padding:1px 4px; width:auto; flex:1;"
+                      onchange="updateSlotRole(this)">
+                <option value="tank" {% if slot_role == "tank" %}selected{% endif %}>🛡️ Tank</option>
+                <option value="healer" {% if slot_role == "healer" %}selected{% endif %}>💚 Healer</option>
+                <option value="dps" {% if slot_role == "dps" %}selected{% endif %}>⚔️ DPS</option>
+              </select>
+              <small class="text-muted ms-1">{{ i }}</small>
+            </div>
             {% if assigned_char_id %}
               {% for s in signups %}
                 {% if s.character.id | string == assigned_char_id %}
@@ -125,6 +134,16 @@
   let draggedCharName = null;
   let draggedDiscordUserId = null;
   let draggedSpec = null;
+
+  // Called when the role selector is changed — updates data-slot and border colour
+  function updateSlotRole(select) {
+    const slotCard = select.closest('.slot-card');
+    const num = slotCard.dataset.slotNum;
+    const role = select.value;
+    slotCard.dataset.slot = role + '_' + num;
+    slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
+    slotCard.classList.add('slot-' + role);
+  }
 
   // Called when a spec button is clicked — updates the card's active char ID and spec
   function selectSpec(btn) {
