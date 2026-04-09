@@ -266,7 +266,8 @@
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                 {% if charGroup.status == 'tentative' %}
                 <span class="badge-tentative ms-1">❓ Tentative</span>
-                {% elif charGroup.signup_type == 'prio_character' or charGroup.signup_type == 'prio_role' %}
+                {% endif %}
+                {% if charGroup.signup_type == 'prio_character' or charGroup.signup_type == 'prio_role' %}
                 <span class="badge-preferred ms-1">⭐ Preferred</span>
                 {% endif %}
                 {% if charGroup.specs | length > 1 %}
