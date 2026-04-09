@@ -134,10 +134,10 @@ def _parse_character_lines(text: str) -> list[dict]:
     return results
 
 
-def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
-    tanks = [s for s in signups if s.get("role") == "tank"]
-    healers = [s for s in signups if s.get("role") == "healer"]
-    dps = [s for s in signups if s.get("role") not in ("tank", "healer")]
+def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
+    unique_players = len(set(
+        s.get("discord_user_id") for s in signups if s.get("discord_user_id")
+    ))
 
     status_emoji = {"open": "🟢", "locked": "🔒", "posted": "📋"}.get(
         raid.get("status", "open"), "🟢"
@@ -156,10 +156,11 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
         inline=True,
     )
     embed.add_field(name="Status", value=f"{status_emoji} {raid['status'].capitalize()}", inline=True)
-    embed.add_field(name="🛡️ Tanks", value=str(len(tanks)), inline=True)
-    embed.add_field(name="💚 Healers", value=str(len(healers)), inline=True)
-    embed.add_field(name="⚔️ DPS", value=str(len(dps)), inline=True)
-    embed.add_field(name="Total", value=f"{len(signups)} / {raid['max_size']}", inline=False)
+    embed.add_field(
+        name="👥 Players Signed Up",
+        value=f"{unique_players} / {raid['max_size']}",
+        inline=False,
+    )
     embed.set_footer(text=f"Raid ID: {raid['id']}")
     return embed
 
@@ -179,7 +180,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             for s in sups:
                 signup_data.append(
                     {
-                        "role": s.character.role.value if (s.character and s.character.role) else None,
+                        "discord_user_id": s.discord_user_id,
                     }
                 )
             raid_data = {
@@ -213,6 +214,30 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         await msg.edit(embed=embed, view=view)
     except Exception as e:
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
+
+
+async def _post_to_raid_log(bot: discord.Client, raid_id: int, log_message: str):
+    """Post a message to the raid's sign-up log thread, if one exists."""
+    loop = asyncio.get_event_loop()
+
+    def _get_thread_id():
+        session = get_session()
+        try:
+            raid = session.get(Raid, raid_id)
+            return raid.discord_log_thread_id if raid else None
+        finally:
+            session.close()
+
+    thread_id = await loop.run_in_executor(None, _get_thread_id)
+    if not thread_id:
+        return
+    try:
+        thread = bot.get_channel(thread_id)
+        if thread is None:
+            thread = await bot.fetch_channel(thread_id)
+        await thread.send(log_message)
+    except Exception as e:
+        logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
 
 
 def _chars_to_dicts(characters) -> list[dict]:
@@ -290,83 +315,59 @@ def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
     return result
 
 
-class CharacterSelectView(discord.ui.View):
-    """Shown when a user has multiple characters and needs to pick one."""
-
-    def __init__(self, characters: list[Character], raid_id: int, signup_type: SignupType, preferred_role: str | None = None):
-        super().__init__(timeout=60)
-        self.raid_id = raid_id
-        self.signup_type = signup_type
-        self.preferred_role = preferred_role
-
-        options = [
-            discord.SelectOption(
-                label=f"{c.char_name} ({c.realm})"[:100],
-                description=(
-                    f"{c.spec or c.char_class or '?'} – GS {c.gearscore:.0f}"
-                )[:100],
-                value=str(c.id),
-            )
-            for c in characters[:25]  # Discord max 25 options
-        ]
-
-        select = discord.ui.Select(placeholder="Choose a character…", options=options)
-        select.callback = self._on_select
-        self.add_item(select)
-
-    async def _on_select(self, interaction: discord.Interaction):
-        char_id = int(interaction.data["values"][0])
-        await _process_signup(interaction, self.raid_id, char_id, self.signup_type, self.preferred_role)
-        self.stop()
-
-
 class SignupPrioritySelectView(discord.ui.View):
     """
-    Step 2 of the multi-character sign-up flow.
+    Step 2 of the sign-up flow.
 
-    Shows the characters the player has chosen to sign up with and lets them
-    optionally mark any of them as priority.  A Confirm button submits all
-    the signups.
+    For normal sign-ups: lets players optionally mark characters as priority, then confirms.
+    For tentative sign-ups: skips priority and just shows a confirm button.
     """
 
-    def __init__(self, selected_chars: list[dict], raid_id: int):
+    def __init__(self, selected_chars: list[dict], raid_id: int, signup_status: SignupStatus = SignupStatus.signed):
         super().__init__(timeout=120)
         self.raid_id = raid_id
         self.selected_chars = selected_chars
+        self.signup_status = signup_status
+        self.priority_select: discord.ui.Select | None = None
 
-        options = [
-            discord.SelectOption(
-                label=c["char_name"][:100],
-                description=_char_display_description(c)[:100],
-                value=str(c["id"]),
+        if signup_status == SignupStatus.signed:
+            options = [
+                discord.SelectOption(
+                    label=c["char_name"][:100],
+                    description=_char_display_description(c)[:100],
+                    value=str(c["id"]),
+                )
+                for c in selected_chars[:25]
+            ]
+            self.priority_select = discord.ui.Select(
+                placeholder="Mark priority characters (optional)…",
+                options=options,
+                min_values=0,
+                max_values=len(options),
+                row=0,
             )
-            for c in selected_chars[:25]
-        ]
+            self.priority_select.callback = self._on_priority_select
+            self.add_item(self.priority_select)
 
-        self.priority_select = discord.ui.Select(
-            placeholder="Mark priority characters (optional)…",
-            options=options,
-            min_values=0,
-            max_values=len(options),
-            row=0,
+        is_tentative = signup_status == SignupStatus.tentative
+        confirm_btn = discord.ui.Button(
+            label="Confirm Tentative Sign Up" if is_tentative else "Confirm Sign Up",
+            style=discord.ButtonStyle.primary if is_tentative else discord.ButtonStyle.success,
+            emoji="❓" if is_tentative else "✅",
+            row=1,
         )
-        self.priority_select.callback = self._on_priority_select
-        self.add_item(self.priority_select)
+        confirm_btn.callback = self.confirm
+        self.add_item(confirm_btn)
 
     async def _on_priority_select(self, interaction: discord.Interaction):
         """Acknowledge the select interaction; values are read when Confirm is pressed."""
         await interaction.response.defer()
 
-    @discord.ui.button(
-        label="Confirm Sign Up",
-        style=discord.ButtonStyle.success,
-        emoji="✅",
-        row=1,
-    )
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def confirm(self, interaction: discord.Interaction):
         priority_ids = {int(v) for v in (self.priority_select.values or [])}
         discord_user_id = interaction.user.id
         raid_id = self.raid_id
+        signup_status = self.signup_status
         loop = asyncio.get_event_loop()
 
         def _upsert_all():
@@ -388,7 +389,7 @@ class SignupPrioritySelectView(discord.ui.View):
                     )
                     if existing:
                         existing.signup_type = signup_type
-                        existing.status = SignupStatus.signed
+                        existing.status = signup_status
                     else:
                         session.add(
                             Signup(
@@ -396,7 +397,7 @@ class SignupPrioritySelectView(discord.ui.View):
                                 discord_user_id=discord_user_id,
                                 character_id=char["id"],
                                 signup_type=signup_type,
-                                status=SignupStatus.signed,
+                                status=signup_status,
                             )
                         )
                 session.commit()
@@ -405,31 +406,49 @@ class SignupPrioritySelectView(discord.ui.View):
 
         await loop.run_in_executor(None, _upsert_all)
 
-        lines = [
-            f"• **{c['char_name']}**{' ⭐ priority' if c['id'] in priority_ids else ''}"
-            for c in self.selected_chars
-        ]
+        is_tentative = signup_status == SignupStatus.tentative
+        if is_tentative:
+            lines = [f"• **{c['char_name']}**" for c in self.selected_chars]
+            reply_prefix = "❓ Tentatively signed up for the raid:"
+            log_emoji = "❓"
+            log_action = "tentatively signed up"
+        else:
+            lines = [
+                f"• **{c['char_name']}**{' ⭐ priority' if c['id'] in priority_ids else ''}"
+                for c in self.selected_chars
+            ]
+            reply_prefix = "✅ Signed up for the raid:"
+            log_emoji = "✅"
+            log_action = "signed up"
+
         await interaction.response.edit_message(
-            content=f"✅ Signed up for the raid:\n" + "\n".join(lines),
+            content=f"{reply_prefix}\n" + "\n".join(lines),
             view=None,
         )
+
+        log_message = (
+            f"{log_emoji} {interaction.user.mention} {log_action} with: "
+            + ", ".join(f"**{c['char_name']}**" for c in self.selected_chars)
+        )
+        await _post_to_raid_log(interaction.client, raid_id, log_message)
         await update_raid_embed(interaction.client, raid_id)
 
 
 class SignupCharacterSelectView(discord.ui.View):
     """
-    Step 1 of the multi-character sign-up flow.
+    Step 1 of the sign-up flow.
 
     Shows the player's characters (grouped by name) in a multi-select.
     Each option shows the character name, class, and all their specs/GS.
     After selecting, transitions to SignupPrioritySelectView.
     """
 
-    def __init__(self, char_groups: list[dict], raid_id: int):
+    def __init__(self, char_groups: list[dict], raid_id: int, signup_status: SignupStatus = SignupStatus.signed):
         super().__init__(timeout=120)
         self.raid_id = raid_id
         self.char_groups = char_groups
         self.groups_by_id = {g["id"]: g for g in char_groups}
+        self.signup_status = signup_status
 
         options = []
         for g in char_groups[:25]:
@@ -462,7 +481,6 @@ class SignupCharacterSelectView(discord.ui.View):
         selected_groups = [
             self.groups_by_id[sid] for sid in selected_ids if sid in self.groups_by_id
         ]
-        # Convert groups to char dicts expected by SignupPrioritySelectView
         selected_chars = [
             {
                 "id": g["id"],
@@ -475,103 +493,20 @@ class SignupCharacterSelectView(discord.ui.View):
         ]
 
         names = ", ".join(f"**{c['char_name']}**" for c in selected_chars)
-        view = SignupPrioritySelectView(selected_chars, self.raid_id)
-        await interaction.response.edit_message(
-            content=(
+        is_tentative = self.signup_status == SignupStatus.tentative
+        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
+        if is_tentative:
+            next_step_text = f"Selected: {names}\n\nClick **Confirm Tentative Sign Up** to sign up tentatively."
+        else:
+            next_step_text = (
                 f"Selected: {names}\n\n"
                 "Optionally mark any as **priority** below, then click **Confirm Sign Up**."
-            ),
+            )
+        await interaction.response.edit_message(
+            content=next_step_text,
             embed=None,
             view=view,
         )
-
-
-async def _process_signup(
-    interaction: discord.Interaction,
-    raid_id: int,
-    character_id: int,
-    signup_type: SignupType,
-    preferred_role: str | None = None,
-    is_saved: bool = False,
-):
-    """Upsert signup, optionally update character role, and refresh the raid embed."""
-    discord_user_id = interaction.user.id
-    loop = asyncio.get_event_loop()
-
-    def _upsert():
-        session = get_session()
-        try:
-            _upsert_discord_user(session, interaction.user)
-            existing = (
-                session.query(Signup)
-                .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
-                .first()
-            )
-            if existing:
-                existing.character_id = character_id
-                existing.signup_type = signup_type
-                existing.status = SignupStatus.signed
-                existing.is_saved = is_saved
-            else:
-                new_signup = Signup(
-                    raid_id=raid_id,
-                    discord_user_id=discord_user_id,
-                    character_id=character_id,
-                    signup_type=signup_type,
-                    status=SignupStatus.signed,
-                    is_saved=is_saved,
-                )
-                session.add(new_signup)
-
-            # Update character role if a preferred role was specified
-            if preferred_role:
-                from db.models import CharacterRole
-                char = session.get(Character, character_id)
-                if char:
-                    try:
-                        char.role = CharacterRole(preferred_role)
-                    except ValueError:
-                        pass
-
-            session.commit()
-        finally:
-            session.close()
-
-    await loop.run_in_executor(None, _upsert)
-
-    char_info = None
-
-    def _get_char():
-        session = get_session()
-        try:
-            c = session.get(Character, character_id)
-            if c:
-                return {"name": c.char_name, "realm": c.realm, "char_class": c.char_class}
-            return None
-        finally:
-            session.close()
-
-    char_info = await loop.run_in_executor(None, _get_char)
-
-    char_display = (
-        f"{char_info['name']} ({char_info['realm']})" if char_info else "your character"
-    )
-
-    type_label = {
-        SignupType.fill: "Fill",
-        SignupType.prio_role: "Prio (Role)",
-        SignupType.prio_character: "Prio (Character)",
-    }.get(signup_type, signup_type.value)
-
-    saved_label = " ❌ *Saved*" if is_saved else ""
-    msg = f"✅ Signed up as **{char_display}** ({type_label}){saved_label}!"
-    if interaction.response.is_done():
-        await interaction.followup.send(msg, ephemeral=True)
-    else:
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    # Update the raid embed counters
-    await update_raid_embed(interaction.client, raid_id)
 
 
 class SignupView(discord.ui.View):
@@ -592,112 +527,12 @@ class SignupView(discord.ui.View):
             pass
         return None
 
-    async def _handle_button(
+    async def _start_signup_flow(
         self,
         interaction: discord.Interaction,
-        signup_type: SignupType,
-        preferred_role: str | None = None,
+        signup_status: SignupStatus,
     ):
-        raid_id = self._get_raid_id(interaction)
-        if raid_id is None:
-            await interaction.response.send_message(
-                "❌ Could not determine raid ID from this message.", ephemeral=True
-            )
-            return
-
-        # Check raid is still open
-        loop = asyncio.get_event_loop()
-
-        def _check_raid():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                return raid.status if raid else None
-            finally:
-                session.close()
-
-        status = await loop.run_in_executor(None, _check_raid)
-        if status != RaidStatus.open:
-            await interaction.response.send_message(
-                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
-            )
-            return
-
-        discord_user_id = interaction.user.id
-
-        def _get_chars():
-            session = get_session()
-            try:
-                return (
-                    session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id)
-                    .all()
-                )
-            finally:
-                session.close()
-
-        chars = await loop.run_in_executor(None, _get_chars)
-
-        if not chars:
-            await interaction.response.send_message(
-                "❌ You have no registered characters. Use `/register_character` first.",
-                ephemeral=True,
-            )
-            return
-
-        if len(chars) == 1:
-            await _process_signup(interaction, raid_id, chars[0].id, signup_type, preferred_role)
-        else:
-            view = CharacterSelectView(chars, raid_id, signup_type, preferred_role)
-            await interaction.response.send_message(
-                "Choose which character to sign up with:", view=view, ephemeral=True
-            )
-
-    @discord.ui.button(
-        label="Fill",
-        style=discord.ButtonStyle.secondary,
-        custom_id="signup:fill",
-        emoji="📋",
-    )
-    async def btn_fill(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.fill)
-
-    @discord.ui.button(
-        label="Tank",
-        style=discord.ButtonStyle.primary,
-        custom_id="signup:tank",
-        emoji="🛡️",
-    )
-    async def btn_tank(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role, preferred_role="tank")
-
-    @discord.ui.button(
-        label="Healer",
-        style=discord.ButtonStyle.success,
-        custom_id="signup:healer",
-        emoji="💚",
-    )
-    async def btn_healer(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role, preferred_role="healer")
-
-    @discord.ui.button(
-        label="DPS",
-        style=discord.ButtonStyle.danger,
-        custom_id="signup:dps",
-        emoji="⚔️",
-    )
-    async def btn_dps(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_button(interaction, SignupType.prio_role, preferred_role="dps")
-
-    @discord.ui.button(
-        label="Sign Up",
-        style=discord.ButtonStyle.success,
-        custom_id="signup:multi",
-        emoji="✅",
-        row=1,
-    )
-    async def btn_signup(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Show the two-step character sign-up flow."""
+        """Open the two-step character sign-up flow for the given status."""
         raid_id = self._get_raid_id(interaction)
         if raid_id is None:
             await interaction.response.send_message(
@@ -745,19 +580,42 @@ class SignupView(discord.ui.View):
             return
 
         char_groups = _group_chars_by_name(char_dicts)
-        view = SignupCharacterSelectView(char_groups, raid_id)
+        view = SignupCharacterSelectView(char_groups, raid_id, signup_status)
+        is_tentative = signup_status == SignupStatus.tentative
         await interaction.response.send_message(
+            "**Step 1 of 2:** Select the character(s) you want to sign up tentatively with:"
+            if is_tentative else
             "**Step 1 of 2:** Select the character(s) you want to sign up with:",
             view=view,
             ephemeral=True,
         )
 
     @discord.ui.button(
+        label="Sign Up",
+        style=discord.ButtonStyle.success,
+        custom_id="signup:multi",
+        emoji="✅",
+        row=0,
+    )
+    async def btn_signup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._start_signup_flow(interaction, SignupStatus.signed)
+
+    @discord.ui.button(
+        label="Tentative",
+        style=discord.ButtonStyle.primary,
+        custom_id="signup:tentative",
+        emoji="❓",
+        row=0,
+    )
+    async def btn_tentative(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._start_signup_flow(interaction, SignupStatus.tentative)
+
+    @discord.ui.button(
         label="Withdraw",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:withdraw",
         emoji="❌",
-        row=1,
+        row=0,
     )
     async def btn_withdraw(self, interaction: discord.Interaction, button: discord.ui.Button):
         raid_id = self._get_raid_id(interaction)
@@ -771,16 +629,13 @@ class SignupView(discord.ui.View):
         def _withdraw():
             session = get_session()
             try:
-                existing = (
+                removed_count = (
                     session.query(Signup)
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
-                    .first()
+                    .delete()
                 )
-                if existing:
-                    session.delete(existing)
-                    session.commit()
-                    return True
-                return False
+                session.commit()
+                return removed_count > 0
             finally:
                 session.close()
 
@@ -788,6 +643,8 @@ class SignupView(discord.ui.View):
 
         if removed:
             await interaction.response.send_message("✅ Withdrawn from the raid.", ephemeral=True)
+            log_message = f"❌ {interaction.user.mention} withdrew from the raid."
+            await _post_to_raid_log(interaction.client, raid_id, log_message)
             await update_raid_embed(interaction.client, raid_id)
         else:
             await interaction.response.send_message(
@@ -841,7 +698,11 @@ class SignupCog(commands.Cog):
                     .first()
                 )
                 if raid:
-                    return {"id": raid.id, "name": raid.name}
+                    return {
+                        "id": raid.id,
+                        "name": raid.name,
+                        "discord_log_thread_id": raid.discord_log_thread_id,
+                    }
                 return None
             finally:
                 session.close()
@@ -948,14 +809,36 @@ class SignupCog(commands.Cog):
             logger.exception("Failed to process chat character sign-up from %s", discord_user_id)
             return
 
-        reply = (
+        log_message = (
             f"✅ {message.author.mention} signed up for **{raid_info['name']}**:\n"
             + "\n".join(summaries)
         )
+
+        # Delete the user's message to keep the channel clean
         try:
-            await message.reply(reply, mention_author=False)
+            await message.delete()
         except Exception:
             pass
+
+        # Post sign-up summary to the log thread; fall back to channel if no thread exists
+        log_thread_id = raid_info.get("discord_log_thread_id")
+        if log_thread_id:
+            try:
+                thread = self.bot.get_channel(log_thread_id)
+                if thread is None:
+                    thread = await self.bot.fetch_channel(log_thread_id)
+                await thread.send(log_message)
+            except Exception:
+                logger.warning("Failed to post to log thread, falling back to channel")
+                try:
+                    await message.channel.send(log_message)
+                except Exception:
+                    pass
+        else:
+            try:
+                await message.channel.send(log_message)
+            except Exception:
+                pass
 
         # Refresh the raid embed
         await update_raid_embed(self.bot, raid_id)

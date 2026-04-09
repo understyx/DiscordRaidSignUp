@@ -44,6 +44,7 @@ class Raid(Base):
     created_by = Column(BigInteger, nullable=False)  # Discord user ID
     discord_message_id = Column(BigInteger, nullable=True)
     discord_channel_id = Column(BigInteger, nullable=True)
+    discord_log_thread_id = Column(BigInteger, nullable=True)
     signups = relationship("Signup", back_populates="raid", cascade="all, delete-orphan")
     compositions = relationship("Composition", back_populates="raid", cascade="all, delete-orphan")
 
