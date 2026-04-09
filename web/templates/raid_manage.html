@@ -23,49 +23,52 @@
       </h5>
 
       {% for userGroup in signupsByUser %}
-      <div class="user-group mb-3">
-        <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1">
+      {% set grp_id = "ug-" ~ loop.index %}
+      <div class="user-group mb-2">
+        <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
+             style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
+             title="Click to expand/collapse">
           <span>👤</span>
-          <span class="text-muted" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+          <span class="text-muted flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+          <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
         </div>
 
-        {% for charGroup in userGroup.characters %}
-          {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
-          {% set firstSpec = charGroup.specs[0] %}
-          {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-          <div class="char-card card p-2 mb-1"
-               draggable="true"
-               data-char-id="{{ firstSpec.character_id }}"
-               data-char-name="{{ charGroup.char_name }}"
-               data-discord-user-id="{{ charGroup.discord_user_id }}"
-               data-spec="{{ firstSpec.spec or '' }}"
-               ondragstart="onDragStart(event)">
-            <div class="d-flex justify-content-between align-items-start">
+        <div id="{{ grp_id }}">
+          {% for charGroup in userGroup.characters %}
+            {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
+            {% set firstSpec = charGroup.specs[0] %}
+            {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+            <div class="char-card card p-2 mb-1"
+                 draggable="true"
+                 data-char-id="{{ firstSpec.character_id }}"
+                 data-char-name="{{ charGroup.char_name }}"
+                 data-discord-user-id="{{ charGroup.discord_user_id }}"
+                 data-spec="{{ firstSpec.spec or '' }}"
+                 ondragstart="onDragStart(event)">
               <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
-              <small class="text-muted ms-2 char-gs">GS {{ firstSpec.gearscore | int }}</small>
+              {% if charGroup.specs | length > 1 %}
+              {# Multiple specs: show clickable spec buttons so RL can pick #}
+              <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
+                {% for s in charGroup.specs %}
+                <button type="button" draggable="false"
+                        class="spec-btn {% if loop.first %}active{% endif %}"
+                        data-char-id="{{ s.character_id }}"
+                        data-gs="{{ s.gearscore | int }}"
+                        data-spec="{{ s.spec or '' }}"
+                        onclick="selectSpec(this)">
+                  {{ s.spec or "?" }} {{ s.gearscore | int }}
+                </button>
+                {% endfor %}
+              </div>
+              {% else %}
+              <small class="text-muted d-block">
+                {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
+                {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
+              </small>
+              {% endif %}
             </div>
-            {% if charGroup.specs | length > 1 %}
-            {# Multiple specs: show clickable spec buttons so RL can pick #}
-            <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
-              {% for s in charGroup.specs %}
-              <button type="button" draggable="false"
-                      class="spec-btn {% if loop.first %}active{% endif %}"
-                      data-char-id="{{ s.character_id }}"
-                      data-gs="{{ s.gearscore | int }}"
-                      data-spec="{{ s.spec or '' }}"
-                      onclick="selectSpec(this)">
-                {{ s.spec or "?" }} {{ s.gearscore | int }}
-              </button>
-              {% endfor %}
-            </div>
-            {% else %}
-            <small class="text-muted">
-              {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
-              {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
-            </small>
-            {% endif %}
-          </div>
-        {% endfor %}
+          {% endfor %}
+        </div>
       </div>
       {% else %}
       <p class="text-muted text-center mt-4">No sign-ups yet.</p>
@@ -130,8 +133,14 @@
     btn.classList.add('active');
     card.dataset.charId = btn.dataset.charId;
     card.dataset.spec = btn.dataset.spec || '';
-    const gsEl = card.querySelector('.char-gs');
-    if (gsEl) gsEl.textContent = 'GS ' + btn.dataset.gs;
+  }
+
+  function toggleUserGroup(id, header) {
+    const body = document.getElementById(id);
+    const chevron = header.querySelector('.ug-chevron');
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    chevron.textContent = collapsed ? '▾' : '▸';
   }
 
   function onDragStart(event) {
