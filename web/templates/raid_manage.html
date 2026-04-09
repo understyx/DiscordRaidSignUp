@@ -418,6 +418,20 @@
     return null;
   }
 
+  // ── WoW class → hex colour (used for slot background tints) ──────────
+  const WOW_CLASS_COLORS = {
+    'death-knight': '#C41E3A',
+    'druid':        '#FF7C0A',
+    'hunter':       '#AAD372',
+    'mage':         '#3FC7EB',
+    'paladin':      '#F48CBA',
+    'priest':       '#c8ccd4',
+    'rogue':        '#FFF468',
+    'shaman':       '#0070DD',
+    'warlock':      '#8788EE',
+    'warrior':      '#C69B3A',
+  };
+
   // Apply colors to any placeholder-colored spans already in the DOM
   function applyPlaceholderColors() {
     document.querySelectorAll('.placeholder-colored').forEach(el => {
@@ -455,10 +469,12 @@
   applyInitialTints();
 
   // Called when a role icon button is clicked — updates data-slot, border colour, and slot label
-  function setSlotRole(btn, role) {
+  // skipDirty is set internally when the call comes from a drop or remote-state sync
+  function setSlotRole(btn, role, skipDirty) {
     const slotCard = btn.closest('.slot-card');
-    const num = slotCard.dataset.slot.split('_').pop();
-    const newSlot = `${role}_${num}`;
+    const oldSlot  = slotCard.dataset.slot;
+    const num      = oldSlot.split('_').pop();
+    const newSlot  = `${role}_${num}`;
     slotCard.dataset.slot = newSlot;
     slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
     slotCard.classList.add('slot-' + role);
@@ -468,7 +484,22 @@
     const roleEmojis = { tank: '🛡️', healer: '💚', dps: '⚔️' };
     const label = slotCard.querySelector('.slot-label');
     if (label) label.textContent = `${roleEmojis[role] || ''} ${newSlot}`;
-    markDirty();
+
+    if (!skipDirty && !applyingRemote && oldSlot !== newSlot) {
+      // If the slot has content, the old slot needs clearing and the new key needs saving
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      const charId      = assignedDiv && assignedDiv.dataset.charId;
+      const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
+      if (charId || placeholder) {
+        addDirtyChange(oldSlot, { clear: true });
+        if (charId) {
+          addDirtyChange(newSlot, { character_id: charId });
+        } else {
+          addDirtyChange(newSlot, { placeholder_text: placeholder });
+        }
+      }
+      // Empty-slot role changes don't touch the DB (empty slots aren't persisted)
+    }
   }
 
   // Called when a spec button is clicked — updates the card's active char ID and spec
@@ -550,13 +581,13 @@
       // Auto-detect role from the placeholder's data-role and set slot role
       if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
         const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
-        if (roleBtn) setSlotRole(roleBtn, draggedRole);
+        if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
       }
 
       draggedPlaceholder      = null;
       draggedPlaceholderColor = null;
       draggedRole             = null;
-      markDirty();
+      addDirtyChange(slotCard.dataset.slot, { placeholder_text: assignedDiv.dataset.placeholder });
       return;
     }
 
@@ -591,20 +622,23 @@
     // Auto-detect role from the character's data-role and set slot role
     if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
       const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
-      if (roleBtn) setSlotRole(roleBtn, draggedRole);
+      if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
     }
 
+    const finalCharId = draggedCharId;
     draggedCharId        = null;
     draggedCharName      = null;
     draggedCharClass     = null;
     draggedDiscordUserId = null;
     draggedSpec          = null;
     draggedRole          = null;
-    markDirty();
+    addDirtyChange(slotCard.dataset.slot, { character_id: finalCharId });
   }
 
   /* ── Clear a single assigned-char div ─────────────────────────────── */
   function clearAssigned(el) {
+    const slotCard = el.closest('.slot-card');
+    const slot     = slotCard ? slotCard.dataset.slot : null;
     el.innerHTML = '';
     const empty = document.createElement('span');
     empty.className   = 'text-muted small';
@@ -614,35 +648,47 @@
     delete el.dataset.discordUserId;
     delete el.dataset.charClass;
     delete el.dataset.placeholder;
-    applySlotTint(el.closest('.slot-card'), null);
-    markDirty();
+    if (slotCard) applySlotTint(slotCard, null);
+    if (!applyingRemote && slot) {
+      addDirtyChange(slot, { clear: true });
+    }
   }
 
   function clearSlot(btn) {
     clearAssigned(btn.closest('.slot-card').querySelector('.assigned-char'));
   }
 
-  /* ── Dirty tracking & status indicator ────────────────────────────── */
+  /* ── Per-slot dirty tracking ───────────────────────────────────────── */
+  // Map<role_slot, { character_id? | placeholder_text? | clear: true }>
+  const dirtyChanges = new Map();
+  // True while applying remote state — prevents re-marking as dirty
+  let applyingRemote = false;
+
+  function addDirtyChange(slot, change) {
+    dirtyChanges.set(slot, change);
+    markDirty();
+  }
+
+  /* ── Global dirty indicator & debounce timer ───────────────────────── */
   let isDirty   = false;
   let saveTimer = null;
-  const saveBtn = document.getElementById('saveBtn');
+  const saveBtn    = document.getElementById('saveBtn');
   const saveStatus = document.getElementById('saveStatus');
 
   function markDirty() {
     isDirty = true;
     if (saveStatus) saveStatus.textContent = '● unsaved';
-    // Debounced auto-save: 2 s after last change
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => autoSave(), 2000);
   }
 
   function markClean(msg) {
-    isDirty = false;
+    isDirty = dirtyChanges.size > 0;
     clearTimeout(saveTimer);
-    if (saveStatus) saveStatus.textContent = msg || '✓ saved';
+    if (saveStatus) saveStatus.textContent = isDirty ? '● unsaved' : (msg || '✓ saved');
   }
 
-  /* ── Build payload from current DOM state ──────────────────────────── */
+  /* ── Build payload from current DOM state (used by manual save only) ── */
   function buildPayload() {
     const payload = [];
     document.querySelectorAll('.slot-card').forEach(slot => {
@@ -659,23 +705,44 @@
     return payload;
   }
 
-  /* ── Auto-save (no page reload) ───────────────────────────────────── */
+  /* ── Granular auto-save: only send dirty slots via PATCH ───────────── */
   function autoSave() {
-    const payload = buildPayload();
+    if (dirtyChanges.size === 0) {
+      markClean('✓ saved');
+      return;
+    }
+
+    const payload = [];
+    for (const [role_slot, change] of dirtyChanges) {
+      payload.push({ role_slot, ...change });
+    }
+
     fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
-      method: 'POST',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     .then(r => r.json())
     .then(data => {
-      if (data.ok) {
-        markClean('✓ auto-saved');
-        lastKnownVersion = null; // reset so next poll accepts the new state
-      } else {
+      if (!data.ok) {
         if (saveStatus) saveStatus.textContent = '⚠ save error';
         console.warn('Auto-save error:', data.error);
+        return;
       }
+
+      // Remove saved slots from the dirty map
+      for (const s of (data.saved || [])) {
+        dirtyChanges.delete(s.role_slot);
+      }
+
+      // Apply the authoritative full state returned by the server so all
+      // clients converge — but skip any slots the user is still editing
+      if (data.entries) {
+        applyRemoteState(data.entries);
+      }
+
+      markClean('✓ auto-saved');
+      lastKnownVersion = null; // reset so next poll picks up any further changes
     })
     .catch(err => {
       if (saveStatus) saveStatus.textContent = '⚠ save error';
@@ -686,6 +753,7 @@
   /* ── Manual save button (keeps the reload for tab refresh) ─────────── */
   function saveComp() {
     clearTimeout(saveTimer);
+    dirtyChanges.clear();
     const payload = buildPayload();
     fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
       method: 'POST',
@@ -706,13 +774,12 @@
   /* ── Auto-load polling (collaboration) ────────────────────────────── */
   let lastKnownVersion = null;
 
-
   // ── Helper: sync slot role button state to a given role prefix ──────
   function syncSlotRole(slotCard, slot) {
     const prefix = slot.split('_')[0];
     if (!slotCard.classList.contains('slot-' + prefix)) {
       const roleBtn = slotCard.querySelector(`.role-btn[data-role="${prefix}"]`);
-      if (roleBtn) setSlotRole(roleBtn, prefix);
+      if (roleBtn) setSlotRole(roleBtn, prefix, true); // skipDirty
     }
   }
 
@@ -721,68 +788,77 @@
     const remoteMap = {};
     for (const e of entries) remoteMap[e.role_slot] = e;
 
-    document.querySelectorAll('.slot-card').forEach(slotCard => {
-      const slot = slotCard.dataset.slot;
-      const assignedDiv = slotCard.querySelector('.assigned-char');
-      if (!assignedDiv) return;
+    applyingRemote = true;
+    try {
+      document.querySelectorAll('.slot-card').forEach(slotCard => {
+        const slot = slotCard.dataset.slot;
 
-      const remote = remoteMap[slot];
-      const localCharId = assignedDiv.dataset.charId || null;
-      const localPh     = assignedDiv.dataset.placeholder || null;
+        // Never clobber a slot the user is currently editing
+        if (dirtyChanges.has(slot)) return;
 
-      if (!remote) {
-        // Slot should be empty
-        if (localCharId || localPh) clearAssigned(assignedDiv);
-        return;
-      }
+        const assignedDiv = slotCard.querySelector('.assigned-char');
+        if (!assignedDiv) return;
 
-      if (remote.character_id) {
-        if (localCharId !== remote.character_id) {
-          assignedDiv.innerHTML = '';
-          const nameSpan = document.createElement('span');
-          nameSpan.className   = `fw-bold${remote.char_class ? ' cls-' + remote.char_class : ''}`;
-          nameSpan.textContent = remote.char_name || '?';
-          const specSmall = document.createElement('small');
-          specSmall.className   = 'text-muted d-block';
-          specSmall.textContent = remote.spec || '?';
-          assignedDiv.appendChild(nameSpan);
-          assignedDiv.appendChild(specSmall);
-          assignedDiv.dataset.charId = remote.character_id;
-          if (remote.char_class) assignedDiv.dataset.charClass = remote.char_class;
-          if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
-          delete assignedDiv.dataset.placeholder;
-          applySlotTint(slotCard, remote.char_class || null);
-          syncSlotRole(slotCard, slot);
+        const remote      = remoteMap[slot];
+        const localCharId = assignedDiv.dataset.charId || null;
+        const localPh     = assignedDiv.dataset.placeholder || null;
+
+        if (!remote) {
+          // Slot should be empty
+          if (localCharId || localPh) clearAssigned(assignedDiv);
+          return;
         }
-      } else if (remote.placeholder_text) {
-        if (localPh !== remote.placeholder_text) {
-          assignedDiv.innerHTML = '';
-          const label = document.createElement('span');
-          label.className   = 'slot-placeholder-text placeholder-colored';
-          label.textContent = remote.placeholder_text;
-          const color = colorForPlaceholder(remote.placeholder_text);
-          if (color) label.style.color = color;
-          assignedDiv.appendChild(label);
-          delete assignedDiv.dataset.charId;
-          delete assignedDiv.dataset.discordUserId;
-          delete assignedDiv.dataset.charClass;
-          assignedDiv.dataset.placeholder = remote.placeholder_text;
-          applySlotTint(slotCard, null);
-          syncSlotRole(slotCard, slot);
+
+        if (remote.character_id) {
+          if (localCharId !== remote.character_id) {
+            assignedDiv.innerHTML = '';
+            const nameSpan = document.createElement('span');
+            nameSpan.className   = `fw-bold${remote.char_class ? ' cls-' + remote.char_class : ''}`;
+            nameSpan.textContent = remote.char_name || '?';
+            const specSmall = document.createElement('small');
+            specSmall.className   = 'text-muted d-block';
+            specSmall.textContent = remote.spec || '?';
+            assignedDiv.appendChild(nameSpan);
+            assignedDiv.appendChild(specSmall);
+            assignedDiv.dataset.charId = remote.character_id;
+            if (remote.char_class) assignedDiv.dataset.charClass = remote.char_class;
+            if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
+            delete assignedDiv.dataset.placeholder;
+            applySlotTint(slotCard, remote.char_class || null);
+            syncSlotRole(slotCard, slot);
+          }
+        } else if (remote.placeholder_text) {
+          if (localPh !== remote.placeholder_text) {
+            assignedDiv.innerHTML = '';
+            const label = document.createElement('span');
+            label.className   = 'slot-placeholder-text placeholder-colored';
+            label.textContent = remote.placeholder_text;
+            const color = colorForPlaceholder(remote.placeholder_text);
+            if (color) label.style.color = color;
+            assignedDiv.appendChild(label);
+            delete assignedDiv.dataset.charId;
+            delete assignedDiv.dataset.discordUserId;
+            delete assignedDiv.dataset.charClass;
+            assignedDiv.dataset.placeholder = remote.placeholder_text;
+            applySlotTint(slotCard, null);
+            syncSlotRole(slotCard, slot);
+          }
         }
-      }
-    });
+      });
+    } finally {
+      applyingRemote = false;
+    }
   }
 
   function pollRemoteState() {
-    if (isDirty || document.hidden) return; // Don't clobber local edits or poll hidden tabs
+    if (document.hidden) return; // Don't poll hidden tabs
     fetch('/raids/{{ raid.id }}/manage/json?comp={{ current_comp }}')
       .then(r => r.json())
       .then(data => {
         if (!data.ok || !data.entries) return;
         if (data.version && data.version !== lastKnownVersion) {
           if (lastKnownVersion !== null) {
-            // Remote state changed — apply it
+            // Remote state changed — apply non-dirty slots
             applyRemoteState(data.entries);
           }
           lastKnownVersion = data.version;

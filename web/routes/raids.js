@@ -384,7 +384,7 @@ router.get('/:raid_id/manage', async (req, res) => {
   });
 });
 
-// POST /raids/:raid_id/manage (JSON body)
+// POST /raids/:raid_id/manage (JSON body) — full-state save used by manual "Save & Reload"
 router.post('/:raid_id/manage', express.json(), async (req, res) => {
   if (!requireLogin(req, res)) return;
 
@@ -437,19 +437,135 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 
   for (const entry of charEntries) {
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at) VALUES (?, ?, NULL, ?, ?, ?, NOW())',
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, NOW(3), NOW(3))',
       [raidId, parseInt(entry.character_id), entry.role_slot, compNumber, userId]
     );
   }
 
   for (const entry of placeholderEntries) {
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at) VALUES (?, NULL, ?, ?, ?, ?, NOW())',
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
       [raidId, entry.placeholder_text, entry.role_slot, compNumber, userId]
     );
   }
 
   res.json({ ok: true });
+});
+
+// PATCH /raids/:raid_id/manage — granular per-slot auto-save (last-write-wins per slot)
+// Body: array of { role_slot, character_id? | placeholder_text? | clear: true }
+// Only the slots present in the payload are touched; all other slots are left as-is.
+router.patch('/:raid_id/manage', express.json(), async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+
+  const raidId = parseInt(req.params.raid_id);
+  const userId = req.session.user_id;
+  const compNumber = parseInt(req.query.comp) || 1;
+  const body = req.body;
+
+  if (!Array.isArray(body) || body.length === 0) {
+    // Return current composition even for empty payloads
+    const [emptyRows] = await pool.query(
+      `SELECT co.role_slot, co.character_id, co.placeholder_text,
+              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+       FROM compositions co
+       LEFT JOIN characters c ON co.character_id = c.id
+       WHERE co.raid_id = ? AND co.comp_number = ?
+       ORDER BY co.role_slot`,
+      [raidId, compNumber]
+    );
+    const emptyEntries = emptyRows.map(r => ({
+      role_slot: r.role_slot,
+      character_id: r.character_id ? String(r.character_id) : null,
+      placeholder_text: r.placeholder_text || null,
+      char_name: r.char_name || null,
+      char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
+      spec: r.spec || null,
+      discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+    }));
+    return res.json({ ok: true, saved: [], entries: emptyEntries });
+  }
+
+  // Basic validation
+  for (const entry of body) {
+    if (typeof entry !== 'object' || !entry.role_slot) {
+      return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
+    }
+    const hasChar = entry.character_id !== null && entry.character_id !== undefined && entry.character_id !== '';
+    const hasPlaceholder = !!entry.placeholder_text;
+    const isClear = entry.clear === true;
+    if (!hasChar && !hasPlaceholder && !isClear) {
+      return res.json({ ok: false, error: `Entry for ${entry.role_slot} must have character_id, placeholder_text, or clear:true.` });
+    }
+    if (hasChar && isNaN(parseInt(entry.character_id))) {
+      return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
+    }
+  }
+
+  const savedSlots = [];
+
+  for (const entry of body) {
+    const { role_slot } = entry;
+    const charId = (entry.character_id !== null && entry.character_id !== undefined && entry.character_id !== '')
+      ? parseInt(entry.character_id) : null;
+    const placeholderText = entry.placeholder_text || null;
+    const isClear = entry.clear === true;
+
+    if (isClear) {
+      await pool.query(
+        'DELETE FROM compositions WHERE raid_id = ? AND comp_number = ? AND role_slot = ?',
+        [raidId, compNumber, role_slot]
+      );
+      savedSlots.push({ role_slot, cleared: true });
+    } else if (charId !== null) {
+      await pool.query(
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at, updated_at)
+         VALUES (?, ?, NULL, ?, ?, ?, NOW(3), NOW(3))
+         ON DUPLICATE KEY UPDATE
+           character_id    = VALUES(character_id),
+           placeholder_text = NULL,
+           created_by      = VALUES(created_by),
+           updated_at      = NOW(3)`,
+        [raidId, charId, role_slot, compNumber, userId]
+      );
+      savedSlots.push({ role_slot });
+    } else if (placeholderText) {
+      await pool.query(
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at, updated_at)
+         VALUES (?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
+         ON DUPLICATE KEY UPDATE
+           character_id    = NULL,
+           placeholder_text = VALUES(placeholder_text),
+           created_by      = VALUES(created_by),
+           updated_at      = NOW(3)`,
+        [raidId, placeholderText, role_slot, compNumber, userId]
+      );
+      savedSlots.push({ role_slot });
+    }
+  }
+
+  // Return the full current composition so all clients can converge immediately
+  const [rows] = await pool.query(
+    `SELECT co.role_slot, co.character_id, co.placeholder_text,
+            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+     FROM compositions co
+     LEFT JOIN characters c ON co.character_id = c.id
+     WHERE co.raid_id = ? AND co.comp_number = ?
+     ORDER BY co.role_slot`,
+    [raidId, compNumber]
+  );
+
+  const entries = rows.map(r => ({
+    role_slot: r.role_slot,
+    character_id: r.character_id ? String(r.character_id) : null,
+    placeholder_text: r.placeholder_text || null,
+    char_name: r.char_name || null,
+    char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
+    spec: r.spec || null,
+    discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+  }));
+
+  res.json({ ok: true, saved: savedSlots, entries });
 });
 
 // GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
@@ -461,7 +577,7 @@ router.get('/:raid_id/manage/json', async (req, res) => {
 
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.character_id, co.placeholder_text,
-            MAX(co.created_at) OVER () AS max_created_at,
+            MAX(co.updated_at) OVER () AS max_updated_at,
             c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
@@ -470,11 +586,11 @@ router.get('/:raid_id/manage/json', async (req, res) => {
     [raidId, compNumber]
   );
 
-  // Version = ISO string of most recent created_at (computed by DB window function)
-  const version = rows.length > 0 && rows[0].max_created_at
-    ? (rows[0].max_created_at instanceof Date
-        ? rows[0].max_created_at.toISOString()
-        : String(rows[0].max_created_at))
+  // Version = ISO string of most recent updated_at across all slots
+  const version = rows.length > 0 && rows[0].max_updated_at
+    ? (rows[0].max_updated_at instanceof Date
+        ? rows[0].max_updated_at.toISOString()
+        : String(rows[0].max_updated_at))
     : '';
 
   const entries = rows.map(r => ({
