@@ -140,7 +140,7 @@
     const slotCard = select.closest('.slot-card');
     const num = slotCard.dataset.slotNum;
     const role = select.value;
-    slotCard.dataset.slot = role + '_' + num;
+    slotCard.dataset.slot = `${role}_${num}`;
     slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
     slotCard.classList.add('slot-' + role);
   }

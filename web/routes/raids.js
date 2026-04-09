@@ -319,7 +319,9 @@ router.get('/:raid_id/manage', async (req, res) => {
     const match = roleSlot.match(/^(tank|healer|dps)_(\d+)$/);
     if (match) {
       const num = parseInt(match[2]);
-      compBySlot[num] = { char_id: charId, role: match[1] };
+      if (num >= 1 && num <= maxSize) {
+        compBySlot[num] = { char_id: charId, role: match[1] };
+      }
     }
   }
 
