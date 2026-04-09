@@ -631,6 +631,53 @@ class SignupView(discord.ui.View):
         await self._start_signup_flow(interaction, SignupStatus.tentative)
 
     @discord.ui.button(
+        label="Show Characters",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:show_characters",
+        emoji="📋",
+        row=1,
+    )
+    async def btn_show_characters(self, interaction: discord.Interaction, button: discord.ui.Button):
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        def _fetch():
+            session = get_session()
+            try:
+                chars = (
+                    session.query(Character)
+                    .filter_by(discord_user_id=discord_user_id)
+                    .order_by(Character.char_name, Character.gearscore.desc())
+                    .all()
+                )
+                return _chars_to_dicts(chars)
+            finally:
+                session.close()
+
+        char_dicts = await loop.run_in_executor(None, _fetch)
+
+        if not char_dicts:
+            await interaction.response.send_message(
+                "You have no registered characters. Use `/addcharacter` to add one.",
+                ephemeral=True,
+            )
+            return
+
+        char_groups = _group_chars_by_name(char_dicts)
+        lines = []
+        for g in char_groups:
+            parts = [g["char_name"], g["char_class"] or "Unknown"]
+            if g["specs"]:
+                for spec, gs, _ in g["specs"]:
+                    parts.append(spec)
+                    parts.append(f"{gs:.0f}")
+            line = " / ".join(parts)
+            lines.append(line)
+
+        codeblock = "```\n" + "\n".join(lines) + "\n```"
+        await interaction.response.send_message(codeblock, ephemeral=True)
+
+    @discord.ui.button(
         label="Withdraw",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:withdraw",
