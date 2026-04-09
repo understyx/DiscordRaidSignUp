@@ -68,7 +68,7 @@
                          id="prio_grp_{{ slug }}"
                          {% if charGroup.is_prio %}checked{% endif %}
                          onchange="togglePrioGroup(this, {{ slug }})">
-                  <label class="form-check-label text-warning small" for="prio_grp_{{ slug }}">⭐ Priority</label>
+                  <label class="form-check-label text-warning small" for="prio_grp_{{ slug }}">⭐ Preferred</label>
                 </div>
                 {% for s in charGroup.specs %}
                 <input type="checkbox" name="priority_ids" value="{{ s.id }}"
@@ -116,7 +116,7 @@
       {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
       {% if all_sups | length > 0 %}
         {# Tentative signups are handled separately below #}
-        {% set signupTypeLabels = [{"key": "prio_character", "label": "Prio Character"}, {"key": "prio_role", "label": "Prio Role"}, {"key": "fill", "label": "Fill"}] %}
+        {% set signupTypeLabels = [{"key": "prio_character", "label": "Preferred Character"}, {"key": "prio_role", "label": "Preferred Role"}, {"key": "fill", "label": "Fill"}] %}
         {% for item in signupTypeLabels %}
           {% set sups = grouped_signups[item.key] or [] %}
           {% if sups | length > 0 %}

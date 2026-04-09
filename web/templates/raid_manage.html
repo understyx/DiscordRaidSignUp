@@ -171,6 +171,26 @@
   .comp-tab.active { background: var(--wow-gold); color: #0e1117; border-color: var(--wow-gold); font-weight: 600; }
   .comp-tab-add { color: #57a85b; border-color: #57a85b; }
   .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
+
+  /* ── Signup status badges ────────────────────────────────────────────── */
+  .badge-tentative {
+    font-size: 0.62rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255, 204, 0, 0.18);
+    color: #ffc107;
+    border: 1px solid rgba(255, 204, 0, 0.35);
+    white-space: nowrap;
+  }
+  .badge-preferred {
+    font-size: 0.62rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255, 193, 7, 0.15);
+    color: #e8b800;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    white-space: nowrap;
+  }
 </style>
 {% endblock %}
 
@@ -244,6 +264,12 @@
                    data-role="{{ firstSpec.role or '' }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+                {% if charGroup.status == 'tentative' %}
+                <span class="badge-tentative ms-1">❓ Tentative</span>
+                {% endif %}
+                {% if charGroup.signup_type == 'prio_character' or charGroup.signup_type == 'prio_role' %}
+                <span class="badge-preferred ms-1">⭐ Preferred</span>
+                {% endif %}
                 {% if charGroup.specs | length > 1 %}
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
                   {% for s in charGroup.specs %}
