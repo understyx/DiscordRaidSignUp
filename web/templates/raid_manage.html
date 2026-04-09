@@ -140,6 +140,16 @@
   }
   .slot-remove-btn:hover { opacity: 1; }
 
+  /* ── Slot group separator ────────────────────────────────────────────── */
+  .slot-group {
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding-bottom: 0.4rem;
+  }
+  .slot-group:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
   /* ── Comp tabs ──────────────────────────────────────────────────────── */
   .comp-tabs {
     display: flex;
@@ -267,45 +277,49 @@
     <div class="roster-col-main">
       <div class="card p-3">
         <h5 class="mb-3">🎯 Raid Roster</h5>
-        <div class="row g-2" id="rosterSlots">
-          {% for slot in slots %}
-          {% set slot_prefix = slot.split("_")[0] %}
-          {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-          {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
-          {% set assigned_char_id = comp_map[slot] %}
-          <div class="col-6 col-md-4">
-            <div class="slot-card card h-100 text-center slot-{{ slot_prefix }}"
-                 data-slot="{{ slot }}"
-                 ondragover="event.preventDefault()"
-                 ondrop="onDrop(event)">
-              <div class="slot-actions">
-                <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
-                <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
-                <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
-                <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
+        <div id="rosterSlots">
+          {% for group in slots | batch(5) %}
+          <div class="row g-2 mb-2 slot-group">
+            {% for slot in group %}
+            {% set slot_prefix = slot.split("_")[0] %}
+            {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+            {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
+            {% set assigned_char_id = comp_map[slot] %}
+            <div class="col">
+              <div class="slot-card card h-100 text-center slot-{{ slot_prefix }}"
+                   data-slot="{{ slot }}"
+                   ondragover="event.preventDefault()"
+                   ondrop="onDrop(event)">
+                <div class="slot-actions">
+                  <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
+                  <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
+                  <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
+                  <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
+                </div>
+                <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
+                {% if assigned_char_id %}
+                  {% for s in signups %}
+                    {% if s.character.id | string == assigned_char_id %}
+                    {% set c = s.character %}
+                    {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+                    <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
+                      <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
+                      <small class="text-muted">{{ c.spec or "?" }}</small>
+                    </div>
+                    {% endif %}
+                  {% endfor %}
+                {% elif placeholder_map[slot] %}
+                <div class="assigned-char" data-placeholder="{{ placeholder_map[slot] }}">
+                  <span class="slot-placeholder-text placeholder-colored">{{ placeholder_map[slot] }}</span>
+                </div>
+                {% else %}
+                <div class="assigned-char text-muted small">
+                  — empty —
+                </div>
+                {% endif %}
               </div>
-              <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
-              {% if assigned_char_id %}
-                {% for s in signups %}
-                  {% if s.character.id | string == assigned_char_id %}
-                  {% set c = s.character %}
-                  {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                  <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
-                    <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
-                    <small class="text-muted">{{ c.spec or "?" }}</small>
-                  </div>
-                  {% endif %}
-                {% endfor %}
-              {% elif placeholder_map[slot] %}
-              <div class="assigned-char" data-placeholder="{{ placeholder_map[slot] }}">
-                <span class="slot-placeholder-text placeholder-colored">{{ placeholder_map[slot] }}</span>
-              </div>
-              {% else %}
-              <div class="assigned-char text-muted small">
-                — empty —
-              </div>
-              {% endif %}
             </div>
+            {% endfor %}
           </div>
           {% endfor %}
         </div>
@@ -414,6 +428,46 @@
   }
   applyPlaceholderColors();
 
+  // ── Class color background tint ──────────────────────────────────────
+  const CLASS_BG_COLORS = {
+    'paladin':      '#F48CBA',
+    'warrior':      '#C69B3A',
+    'death-knight': '#e05060',
+    'druid':        '#FF7C0A',
+    'priest':       '#c8ccd4',
+    'shaman':       '#2e9fe0',
+    'hunter':       '#AAD372',
+    'mage':         '#3FC7EB',
+    'rogue':        '#e8d850',
+    'warlock':      '#9d9eec',
+  };
+
+  function hexToRgb(hex) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : null;
+  }
+
+  function applySlotTint(slotCard, charClass) {
+    const hex = charClass && CLASS_BG_COLORS[charClass];
+    if (hex) {
+      const [r,g,b] = hexToRgb(hex);
+      slotCard.style.backgroundColor = `rgba(${r},${g},${b},0.12)`;
+    } else {
+      slotCard.style.backgroundColor = '';
+    }
+  }
+
+  // Apply tints to already-rendered slots on page load
+  function applyInitialTints() {
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (assignedDiv && assignedDiv.dataset.charClass) {
+        applySlotTint(slotCard, assignedDiv.dataset.charClass);
+      }
+    });
+  }
+  applyInitialTints();
+
   // Called when a role icon button is clicked — updates data-slot, border colour, and slot label
   function setSlotRole(btn, role) {
     const slotCard = btn.closest('.slot-card');
@@ -451,6 +505,18 @@
     chevron.textContent = collapsed ? '▾' : '▸';
   }
 
+  // ── Detect role from spec name (fallback when DB role field is empty) ──
+  function specToRole(spec) {
+    if (!spec) return null;
+    const s = spec.toLowerCase();
+    if (s.includes('holy') || s.includes('disc') || s.includes('discipline') ||
+        s.includes('resto') || s.includes('restoration') || s.includes('mistweaver')) return 'healer';
+    if (s.includes('prot') || s.includes('protection') || s.includes('blood') ||
+        s.includes('bear') || s.includes('guardian') || s.includes('brewmaster') ||
+        s.includes('vengeance')) return 'tank';
+    return 'dps';
+  }
+
   /* ── Drag start: character card ────────────────────────────────────── */
   function onDragStart(event) {
     draggedPlaceholder      = null;
@@ -460,7 +526,7 @@
     draggedCharClass        = event.currentTarget.dataset.charClass || null;
     draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
     draggedSpec             = event.currentTarget.dataset.spec || null;
-    draggedRole             = event.currentTarget.dataset.role || null;
+    draggedRole             = event.currentTarget.dataset.role || specToRole(draggedSpec);
     event.dataTransfer.effectAllowed = 'move';
   }
 
@@ -495,6 +561,8 @@
       delete assignedDiv.dataset.charId;
       delete assignedDiv.dataset.discordUserId;
       assignedDiv.dataset.placeholder = draggedPlaceholder;
+      delete assignedDiv.dataset.charClass;
+      applySlotTint(slotCard, null);
 
       // Auto-detect role from the placeholder's data-role and set slot role
       if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
@@ -535,6 +603,7 @@
     if (draggedCharClass) assignedDiv.dataset.charClass = draggedCharClass;
     delete assignedDiv.dataset.placeholder;
     if (draggedDiscordUserId) assignedDiv.dataset.discordUserId = draggedDiscordUserId;
+    applySlotTint(slotCard, draggedCharClass);
 
     // Auto-detect role from the character's data-role and set slot role
     if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
@@ -562,6 +631,7 @@
     delete el.dataset.discordUserId;
     delete el.dataset.charClass;
     delete el.dataset.placeholder;
+    applySlotTint(el.closest('.slot-card'), null);
     markDirty();
   }
 
@@ -698,6 +768,7 @@
           if (remote.char_class) assignedDiv.dataset.charClass = remote.char_class;
           if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
           delete assignedDiv.dataset.placeholder;
+          applySlotTint(slotCard, remote.char_class || null);
           syncSlotRole(slotCard, slot);
         }
       } else if (remote.placeholder_text) {
@@ -711,7 +782,9 @@
           assignedDiv.appendChild(label);
           delete assignedDiv.dataset.charId;
           delete assignedDiv.dataset.discordUserId;
+          delete assignedDiv.dataset.charClass;
           assignedDiv.dataset.placeholder = remote.placeholder_text;
+          applySlotTint(slotCard, null);
           syncSlotRole(slotCard, slot);
         }
       }
