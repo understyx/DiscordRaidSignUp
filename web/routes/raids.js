@@ -317,8 +317,13 @@ router.get('/:raid_id/manage', async (req, res) => {
     [raidId, currentComp]
   );
   const compMap = {};
+  const placeholderMap = {};
   for (const c of existingComp) {
-    compMap[c.role_slot] = String(c.character_id);
+    if (c.character_id) {
+      compMap[c.role_slot] = String(c.character_id);
+    } else if (c.placeholder_text) {
+      placeholderMap[c.role_slot] = c.placeholder_text;
+    }
   }
 
   const maxSize = raid.max_size || 25;
@@ -351,6 +356,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     signupsByUser,
     slots,
     comp_map: compMap,
+    placeholder_map: placeholderMap,
     max_size: maxSize,
     comp_by_slot: compBySlot,
     comp_numbers: compNumbers,
@@ -371,25 +377,30 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
   const body = req.body;
 
   if (!Array.isArray(body)) {
-    return res.json({ ok: false, error: 'Body must be a list of {character_id, role_slot} entries.' });
+    return res.json({ ok: false, error: 'Body must be a list of {character_id?, placeholder_text?, role_slot} entries.' });
   }
 
   for (const entry of body) {
-    if (
-      typeof entry !== 'object' ||
-      !('character_id' in entry) ||
-      !('role_slot' in entry)
-    ) {
-      return res.json({ ok: false, error: 'Each entry must have character_id and role_slot fields.' });
+    if (typeof entry !== 'object' || !('role_slot' in entry)) {
+      return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
     }
-    if (isNaN(parseInt(entry.character_id))) {
+    const hasChar = 'character_id' in entry && entry.character_id !== null && entry.character_id !== '';
+    const hasPlaceholder = 'placeholder_text' in entry && entry.placeholder_text;
+    if (!hasChar && !hasPlaceholder) {
+      return res.json({ ok: false, error: 'Each entry must have either character_id or placeholder_text.' });
+    }
+    if (hasChar && isNaN(parseInt(entry.character_id))) {
       return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
     }
   }
 
-  if (body.length > 0) {
+  // Separate character entries from placeholder entries
+  const charEntries = body.filter(e => e.character_id !== null && e.character_id !== undefined && e.character_id !== '');
+  const placeholderEntries = body.filter(e => !e.character_id && e.placeholder_text);
+
+  if (charEntries.length > 0) {
     // Validate: each Discord user may only appear once in the composition
-    const charIds = body.map(e => parseInt(e.character_id));
+    const charIds = charEntries.map(e => parseInt(e.character_id));
     const placeholders = charIds.map(() => '?').join(', ');
     const [chars] = await pool.query(
       `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders})`,
@@ -407,14 +418,58 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 
   await pool.query('DELETE FROM compositions WHERE raid_id = ? AND comp_number = ?', [raidId, compNumber]);
 
-  for (const entry of body) {
+  for (const entry of charEntries) {
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, role_slot, comp_number, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at) VALUES (?, ?, NULL, ?, ?, ?, NOW())',
       [raidId, parseInt(entry.character_id), entry.role_slot, compNumber, userId]
     );
   }
 
+  for (const entry of placeholderEntries) {
+    await pool.query(
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, comp_number, created_by, created_at) VALUES (?, NULL, ?, ?, ?, ?, NOW())',
+      [raidId, entry.placeholder_text, entry.role_slot, compNumber, userId]
+    );
+  }
+
   res.json({ ok: true });
+});
+
+// GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
+router.get('/:raid_id/manage/json', async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+
+  const raidId = parseInt(req.params.raid_id);
+  const compNumber = parseInt(req.query.comp) || 1;
+
+  const [rows] = await pool.query(
+    `SELECT co.role_slot, co.character_id, co.placeholder_text, co.created_at,
+            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+     FROM compositions co
+     LEFT JOIN characters c ON co.character_id = c.id
+     WHERE co.raid_id = ? AND co.comp_number = ?
+     ORDER BY co.role_slot`,
+    [raidId, compNumber]
+  );
+
+  // Version = ISO string of most recent created_at
+  let version = null;
+  for (const r of rows) {
+    const ts = r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at || '');
+    if (!version || ts > version) version = ts;
+  }
+
+  const entries = rows.map(r => ({
+    role_slot: r.role_slot,
+    character_id: r.character_id ? String(r.character_id) : null,
+    placeholder_text: r.placeholder_text || null,
+    char_name: r.char_name || null,
+    char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
+    spec: r.spec || null,
+    discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+  }));
+
+  res.json({ ok: true, version: version || '', entries });
 });
 
 // GET /raids/:raid_id/comp
@@ -438,7 +493,7 @@ router.get('/:raid_id/comp', async (req, res) => {
 
   const [comps] = await pool.query(
     `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id
-     FROM compositions co JOIN characters c ON co.character_id = c.id
+     FROM compositions co LEFT JOIN characters c ON co.character_id = c.id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, currentComp]
@@ -448,7 +503,9 @@ router.get('/:raid_id/comp', async (req, res) => {
   for (const comp of comps) {
     const entry = {
       ...comp,
-      character: {
+      is_placeholder: !comp.character_id,
+      placeholder_text: comp.placeholder_text || null,
+      character: comp.character_id ? {
         id: comp.c_id,
         char_name: comp.char_name,
         realm: comp.realm,
@@ -457,7 +514,7 @@ router.get('/:raid_id/comp', async (req, res) => {
         gearscore: comp.gearscore,
         role: comp.role,
         discord_user_id: comp.char_discord_user_id,
-      },
+      } : null,
     };
     const prefix = comp.role_slot.split('_')[0];
     if (groups[prefix]) {

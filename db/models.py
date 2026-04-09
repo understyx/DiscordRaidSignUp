@@ -81,7 +81,8 @@ class Composition(Base):
     __tablename__ = "compositions"
     id = Column(Integer, primary_key=True, autoincrement=True)
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
-    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
+    character_id = Column(Integer, ForeignKey("characters.id"), nullable=True)  # NULL for placeholder slots
+    placeholder_text = Column(String(100), nullable=True)  # e.g. "🛡️ Prot Paladin" when character_id is NULL
     role_slot = Column(String(50), nullable=False)  # e.g. "tank_1", "healer_3", "dps_10"
     comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
     created_by = Column(BigInteger, nullable=False)
