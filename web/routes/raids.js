@@ -67,7 +67,7 @@ router.get('/:raid_id', async (req, res) => {
     [userId]
   );
 
-  // Fetch ALL signups for this user in this raid (one per character)
+  // Fetch ALL signups for this user in this raid (one per character/spec)
   const [mySignupRows] = await pool.query(
     `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
      FROM signups s JOIN characters c ON s.character_id = c.id
@@ -84,6 +84,29 @@ router.get('/:raid_id', async (req, res) => {
     };
   }
 
+  // Group user's characters by char_name so each character shows once with all specs
+  const charGroupMap = {};
+  for (const c of userChars) {
+    if (!charGroupMap[c.char_name]) {
+      charGroupMap[c.char_name] = {
+        char_name: c.char_name,
+        char_class: c.char_class,
+        specs: [],
+      };
+    }
+    charGroupMap[c.char_name].specs.push({
+      id: c.id,
+      spec: c.spec,
+      gearscore: c.gearscore,
+      role: c.role,
+    });
+  }
+  const userCharGroups = Object.values(charGroupMap).map(g => {
+    const is_signed = g.specs.some(s => mySignupMap[String(s.id)] !== undefined);
+    const is_prio   = g.specs.some(s => mySignupMap[String(s.id)]?.signup_type === 'prio_character');
+    return { ...g, is_signed, is_prio };
+  });
+
   const [allSignups] = await pool.query(
     `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
      FROM signups s JOIN characters c ON s.character_id = c.id
@@ -91,31 +114,35 @@ router.get('/:raid_id', async (req, res) => {
     [raidId]
   );
 
+  // Merge signups by (discord_user_id + char_name) within each signup_type bucket
   const grouped = { fill: [], prio_role: [], prio_character: [] };
   for (const s of allSignups) {
-    const signup = {
-      ...s,
-      character: {
-        id: s.c_id,
-        char_name: s.char_name,
-        realm: s.realm,
-        char_class: s.char_class,
-        spec: s.spec,
-        gearscore: s.gearscore,
-        role: s.role,
-      },
-    };
     const key = s.signup_type || 'fill';
-    if (grouped[key]) {
-      grouped[key].push(signup);
+    const bucket = grouped[key] || grouped.fill;
+    const mergeKey = `${s.discord_user_id}__${s.char_name}`;
+    const existing = bucket.find(e => e._mergeKey === mergeKey);
+    if (existing) {
+      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore });
     } else {
-      grouped.fill.push(signup);
+      bucket.push({
+        ...s,
+        _mergeKey: mergeKey,
+        discord_user_id: s.discord_user_id,
+        character: {
+          id: s.c_id,
+          char_name: s.char_name,
+          realm: s.realm,
+          char_class: s.char_class,
+          role: s.role,
+          specs: [{ spec: s.spec, gearscore: s.gearscore }],
+        },
+      });
     }
   }
 
   res.render('raid_detail.html', {
     raid,
-    user_chars: userChars,
+    user_char_groups: userCharGroups,
     my_signup_map: mySignupMap,
     my_signup_count: mySignupRows.length,
     grouped_signups: grouped,
@@ -191,13 +218,12 @@ router.post('/:raid_id/withdraw', async (req, res) => {
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
 
-  const [[existing]] = await pool.query(
-    'SELECT id FROM signups WHERE raid_id = ? AND discord_user_id = ?',
+  const [result] = await pool.query(
+    'DELETE FROM signups WHERE raid_id = ? AND discord_user_id = ?',
     [raidId, userId]
   );
 
-  if (existing) {
-    await pool.query('DELETE FROM signups WHERE id = ?', [existing.id]);
+  if (result.affectedRows > 0) {
     req.session.flash = '✅ Withdrawn from raid.';
   } else {
     req.session.flash = 'You were not signed up.';
@@ -238,12 +264,11 @@ router.get('/:raid_id/manage', async (req, res) => {
     },
   }));
 
-  // Group signups by discord user for the pool panel
+  // Group signups by discord user, then by char_name within each user
   const userSignupMap = {};
   for (const s of signups) {
     const uid = String(s.discord_user_id);
     if (!userSignupMap[uid]) {
-      // Build a readable label: "username – display_name" or just username/id
       let label;
       if (s.du_username && s.du_display_name && s.du_display_name !== s.du_username) {
         label = `${s.du_username} – ${s.du_display_name}`;
@@ -254,7 +279,25 @@ router.get('/:raid_id/manage', async (req, res) => {
       }
       userSignupMap[uid] = { discord_user_id: uid, display_label: label, characters: [] };
     }
-    userSignupMap[uid].characters.push(s);
+
+    // Find or create a character group by char_name
+    let charGroup = userSignupMap[uid].characters.find(cg => cg.char_name === s.character.char_name);
+    if (!charGroup) {
+      charGroup = {
+        char_name: s.character.char_name,
+        char_class: s.character.char_class,
+        discord_user_id: uid,
+        signup_type: s.signup_type,
+        specs: [],
+      };
+      userSignupMap[uid].characters.push(charGroup);
+    }
+    charGroup.specs.push({
+      character_id: s.character.id,
+      spec: s.character.spec,
+      gearscore: s.character.gearscore,
+      role: s.character.role,
+    });
   }
   const signupsByUser = Object.values(userSignupMap);
 

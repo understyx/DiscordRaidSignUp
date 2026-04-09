@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,53 +9,106 @@
     rel="stylesheet"
   />
   <style>
-    body { background-color: #1a1a2e; color: #e0e0e0; }
-    .navbar { background-color: #16213e !important; }
-    .navbar-brand, .nav-link { color: #c9aa71 !important; }
+    /* ── Base colours ──────────────────────────────────────────────────── */
+    :root {
+      --wow-gold:   #c9aa71;
+      --wow-gold-h: #a88a51;
+      --bg-base:    #0e1117;
+      --bg-nav:     #13181f;
+      --bg-card:    #181e28;
+      --bg-card-2:  #1d2535;
+      --border-dim: #2a3347;
+    }
+
+    body  { background-color: var(--bg-base); color: #d8dce8; }
+    .text-muted { color: #8a95b0 !important; }
+
+    /* ── Navbar ────────────────────────────────────────────────────────── */
+    .navbar { background-color: var(--bg-nav) !important; border-bottom: 1px solid var(--border-dim); }
+    .navbar-brand, .nav-link { color: var(--wow-gold) !important; }
     .nav-link:hover { color: #fff !important; }
-    .card { background-color: #16213e; border: 1px solid #0f3460; color: #e0e0e0; }
-    .table { color: #e0e0e0; }
-    .table-hover tbody tr:hover { background-color: #0f3460; }
-    .btn-wow { background-color: #c9aa71; color: #1a1a2e; border: none; }
-    .btn-wow:hover { background-color: #a88a51; }
 
-    /* WoW class colors */
-    .cls-death-knight { color: #C41E3A; }
-    .cls-druid { color: #FF7C0A; }
-    .cls-hunter { color: #AAD372; }
-    .cls-mage { color: #3FC7EB; }
-    .cls-paladin { color: #F48CBA; }
-    .cls-priest { color: #FFFFFF; }
-    .cls-rogue { color: #FFF468; }
-    .cls-shaman { color: #0070DD; }
-    .cls-warlock { color: #8788EE; }
-    .cls-warrior { color: #C69B3A; }
+    /* ── Cards ─────────────────────────────────────────────────────────── */
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      color: #d8dce8;
+    }
 
-    .badge-open { background-color: #28a745; }
-    .badge-locked { background-color: #dc3545; }
-    .badge-posted { background-color: #17a2b8; }
-    footer { border-top: 1px solid #0f3460; margin-top: 3rem; padding: 1rem 0; color: #888; }
+    /* ── Tables ─────────────────────────────────────────────────────────── */
+    .table { color: #d8dce8; --bs-table-bg: var(--bg-card); --bs-table-border-color: var(--border-dim); }
+    .table-hover tbody tr:hover { --bs-table-hover-bg: #1f2d45; }
+    thead.table-dark { --bs-table-bg: #13181f; }
 
-    /* Role-coloured slot borders in the roster */
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn-wow { background-color: var(--wow-gold); color: #0e1117; border: none; font-weight: 600; }
+    .btn-wow:hover, .btn-wow:focus { background-color: var(--wow-gold-h); color: #0e1117; }
+
+    /* ── Badges ─────────────────────────────────────────────────────────── */
+    .badge-open   { background-color: #1e7e34; color: #fff; }
+    .badge-locked { background-color: #a71d2a; color: #fff; }
+    .badge-posted { background-color: #117a8b; color: #fff; }
+
+    /* ── Alerts ─────────────────────────────────────────────────────────── */
+    .alert-info { background-color: #1a2840; border-color: #2a4a70; color: #8ec5f7; }
+
+    /* ── WoW class text colours ─────────────────────────────────────────── */
+    .cls-death-knight { color: #e05060; }
+    .cls-druid        { color: #FF7C0A; }
+    .cls-hunter       { color: #AAD372; }
+    .cls-mage         { color: #3FC7EB; }
+    .cls-paladin      { color: #F48CBA; }
+    .cls-priest       { color: #c8ccd4; }
+    .cls-rogue        { color: #e8d850; }
+    .cls-shaman       { color: #2e9fe0; }
+    .cls-warlock      { color: #9d9eec; }
+    .cls-warrior      { color: #C69B3A; }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    footer { border-top: 1px solid var(--border-dim); margin-top: 3rem; padding: 1rem 0; color: #556677; }
+
+    /* ── Role slot borders ───────────────────────────────────────────────── */
     .slot-tank   { border-left: 3px solid #5b9bd5 !important; }
     .slot-healer { border-left: 3px solid #57a85b !important; }
     .slot-dps    { border-left: 3px solid #c94040 !important; }
 
-    /* Role-coloured section headers in comp view */
+    /* ── Role section headers (comp view) ────────────────────────────────── */
     .role-section-tank   { border-left: 4px solid #5b9bd5; }
     .role-section-healer { border-left: 4px solid #57a85b; }
     .role-section-dps    { border-left: 4px solid #c94040; }
 
-    /* Sign-up pool user group header */
-    .user-group-header { background: rgba(255,255,255,0.05); border-radius: 4px; }
+    /* ── Sign-up pool ────────────────────────────────────────────────────── */
+    .user-group-header { background: rgba(255,255,255,0.04); border-radius: 4px; }
 
-    /* Char card drag handle visual */
-    .char-card { cursor: grab; transition: box-shadow 0.15s; }
-    .char-card:hover { box-shadow: 0 0 0 2px #c9aa71; }
+    /* ── Draggable character card ─────────────────────────────────────────── */
+    .char-card { cursor: grab; transition: box-shadow 0.15s; background-color: var(--bg-card-2); }
+    .char-card:hover { box-shadow: 0 0 0 2px var(--wow-gold); }
+    .char-card:active { cursor: grabbing; }
 
-    /* Comp character cards */
+    /* ── Spec selector buttons (inside char card) ───────────────────────── */
+    .spec-btn {
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid var(--border-dim);
+      background: transparent;
+      color: #8a95b0;
+      transition: background 0.1s, color 0.1s;
+    }
+    .spec-btn.active, .spec-btn:hover {
+      background: var(--wow-gold);
+      color: #0e1117;
+      border-color: var(--wow-gold);
+    }
+
+    /* ── Comp character cards ─────────────────────────────────────────────── */
     .comp-char-card { transition: box-shadow 0.15s; }
-    .comp-char-card:hover { box-shadow: 0 0 0 2px #c9aa71; }
+    .comp-char-card:hover { box-shadow: 0 0 0 2px var(--wow-gold); }
+
+    /* ── Roster slot cards ───────────────────────────────────────────────── */
+    .slot-card { background-color: var(--bg-card-2); }
+    .slot-card .assigned-char { min-height: 40px; }
   </style>
 </head>
 <body>

@@ -29,25 +29,39 @@
           <span class="text-muted" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
         </div>
 
-        {% for s in userGroup.characters %}
-          {% set c = s.character %}
-          {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+        {% for charGroup in userGroup.characters %}
+          {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
+          {% set firstSpec = charGroup.specs[0] %}
           {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
-          <div class="char-card card p-2 mb-1 border-secondary"
+          <div class="char-card card p-2 mb-1"
                draggable="true"
-               data-char-id="{{ c.id }}"
-               data-char-name="{{ c.char_name }}"
-               data-discord-user-id="{{ s.discord_user_id }}"
-               id="char-{{ c.id }}"
+               data-char-id="{{ firstSpec.character_id }}"
+               data-char-name="{{ charGroup.char_name }}"
+               data-discord-user-id="{{ charGroup.discord_user_id }}"
                ondragstart="onDragStart(event)">
             <div class="d-flex justify-content-between align-items-start">
-              <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
-              <small class="text-muted ms-2">GS {{ c.gearscore | int }}</small>
+              <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+              <small class="text-muted ms-2 char-gs">GS {{ firstSpec.gearscore | int }}</small>
             </div>
+            {% if charGroup.specs | length > 1 %}
+            {# Multiple specs: show clickable spec buttons so RL can pick #}
+            <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
+              {% for s in charGroup.specs %}
+              <button type="button" draggable="false"
+                      class="spec-btn {% if loop.first %}active{% endif %}"
+                      data-char-id="{{ s.character_id }}"
+                      data-gs="{{ s.gearscore | int }}"
+                      onclick="selectSpec(this)">
+                {{ s.spec or "?" }} {{ s.gearscore | int }}
+              </button>
+              {% endfor %}
+            </div>
+            {% else %}
             <small class="text-muted">
-              {% if c.role %}{{ role_emojis[c.role] or "" }}{% endif %}
-              {{ c.char_class or "?" }} – {{ c.spec or "?" }}
+              {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
+              {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
             </small>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -105,6 +119,16 @@
   let draggedCharName = null;
   let draggedDiscordUserId = null;
 
+  // Called when a spec button is clicked — updates the card's active char ID
+  function selectSpec(btn) {
+    const card = btn.closest('.char-card');
+    card.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    card.dataset.charId = btn.dataset.charId;
+    const gsEl = card.querySelector('.char-gs');
+    if (gsEl) gsEl.textContent = 'GS ' + btn.dataset.gs;
+  }
+
   function onDragStart(event) {
     draggedCharId = event.currentTarget.dataset.charId;
     draggedCharName = event.currentTarget.dataset.charName;
@@ -120,21 +144,13 @@
     if (draggedDiscordUserId) {
       document.querySelectorAll(".assigned-char[data-discord-user-id]").forEach(el => {
         if (el.dataset.discordUserId === draggedDiscordUserId && el.dataset.charId !== draggedCharId) {
-          el.innerHTML = "";
-          const empty = document.createElement("span");
-          empty.className = "text-muted small";
-          empty.style.minHeight = "40px";
-          empty.textContent = "— empty —";
-          el.appendChild(empty);
-          delete el.dataset.charId;
-          delete el.dataset.discordUserId;
+          clearAssigned(el);
         }
       });
     }
 
     const slotCard = event.currentTarget;
     const assignedDiv = slotCard.querySelector(".assigned-char");
-    // Use DOM construction to avoid XSS from character names
     assignedDiv.innerHTML = "";
     const nameSpan = document.createElement("span");
     nameSpan.className = "fw-bold";
@@ -155,17 +171,20 @@
     draggedDiscordUserId = null;
   }
 
-  function clearSlot(btn) {
-    const slotCard = btn.closest(".slot-card");
-    const assignedDiv = slotCard.querySelector(".assigned-char");
-    assignedDiv.innerHTML = "";
+  function clearAssigned(el) {
+    el.innerHTML = "";
     const empty = document.createElement("span");
     empty.className = "text-muted small";
     empty.style.minHeight = "40px";
     empty.textContent = "— empty —";
-    assignedDiv.appendChild(empty);
-    delete assignedDiv.dataset.charId;
-    delete assignedDiv.dataset.discordUserId;
+    el.appendChild(empty);
+    delete el.dataset.charId;
+    delete el.dataset.discordUserId;
+  }
+
+  function clearSlot(btn) {
+    const slotCard = btn.closest(".slot-card");
+    clearAssigned(slotCard.querySelector(".assigned-char"));
   }
 
   function saveComp() {
