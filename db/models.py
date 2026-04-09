@@ -87,6 +87,9 @@ class Composition(Base):
     comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
     created_by = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="compositions")
     character = relationship("Character")
 
