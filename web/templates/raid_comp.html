@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ raid.name }} Composition – RaidBot{% endblock %}
+{% block extra_head %}
+<style>
+  .comp-placeholder-card {
+    border-style: dashed !important;
+    opacity: 0.85;
+  }
+</style>
+{% endblock %}
 {% block content %}
 <h2 class="mb-1">📋 {{ raid.name }}</h2>
 <p class="text-muted mb-3">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%Y-%m-%d %H:%M") }} UTC</p>
@@ -24,15 +32,22 @@
     <h4 class="mb-3">{{ ri.label }} <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ entries | length }}</span></h4>
     <div class="row g-2">
       {% for comp in entries %}
-        {% set c = comp.character %}
-        {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
         <div class="col-6 col-md-3">
+          {% if comp.is_placeholder %}
+          <div class="card p-2 h-100 border-secondary text-center comp-char-card comp-placeholder-card">
+            <div class="small text-muted mb-1">{{ comp.role_slot }}</div>
+            <span class="fw-bold fst-italic placeholder-spec-text" data-placeholder="{{ comp.placeholder_text }}">{{ comp.placeholder_text }}</span>
+          </div>
+          {% else %}
+          {% set c = comp.character %}
+          {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
           <div class="card p-2 h-100 border-secondary text-center comp-char-card">
             <div class="small text-muted mb-1">{{ comp.role_slot }}</div>
             <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
             <small class="cls-{{ cls_key }} d-block" style="opacity:0.8;">{{ c.spec or "?" }}</small>
             <small class="text-muted d-block" style="font-size:0.7rem;">GS {{ c.gearscore | int }}</small>
           </div>
+          {% endif %}
         </div>
       {% endfor %}
     </div>
@@ -44,4 +59,35 @@
   <a href="/raids/{{ raid.id }}" class="btn btn-outline-light me-2">← Back to Raid</a>
   <a href="/raids/{{ raid.id }}/manage?comp={{ current_comp }}" class="btn btn-outline-warning">Edit Composition</a>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Apply class colours to placeholder spec text using the same lookup as the manage page
+  const PLACEHOLDER_COLORS = {
+    'Paladin':   '#F48CBA',
+    'Warrior':   '#C69B3A',
+    'Death Knight': '#e05060',
+    'DK':        '#e05060',
+    'Druid':     '#FF7C0A',
+    'Priest':    '#c8ccd4',
+    'Shaman':    '#2e9fe0',
+    'Hunter':    '#AAD372',
+    'Mage':      '#3FC7EB',
+    'Rogue':     '#e8d850',
+    'Warlock':   '#9d9eec',
+  };
+
+  function colorForPlaceholder(text) {
+    for (const [kw, color] of Object.entries(PLACEHOLDER_COLORS)) {
+      if (text.includes(kw)) return color;
+    }
+    return null;
+  }
+
+  document.querySelectorAll('.placeholder-spec-text').forEach(el => {
+    const color = colorForPlaceholder(el.dataset.placeholder || el.textContent);
+    if (color) el.style.color = color;
+  });
+</script>
 {% endblock %}

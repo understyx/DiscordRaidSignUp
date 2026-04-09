@@ -175,7 +175,8 @@
         <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
           <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
         </form>
-        <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save Composition</button>
+        <span id="saveStatus" class="text-muted me-2" style="font-size:0.78rem;"></span>
+        <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save &amp; Reload</button>
         <form method="post" action="/raids/{{ raid.id }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">
           <button class="btn btn-info btn-sm">📋 Finalize &amp; Post</button>
         </form>
@@ -230,6 +231,7 @@
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
+                   data-role="{{ firstSpec.role or '' }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                 {% if charGroup.specs | length > 1 %}
@@ -294,6 +296,10 @@
                   </div>
                   {% endif %}
                 {% endfor %}
+              {% elif placeholder_map[slot] %}
+              <div class="assigned-char" data-placeholder="{{ placeholder_map[slot] }}">
+                <span class="slot-placeholder-text placeholder-colored">{{ placeholder_map[slot] }}</span>
+              </div>
               {% else %}
               <div class="assigned-char text-muted small">
                 — empty —
@@ -313,47 +319,47 @@
 
         <div class="placeholder-group-label">🛡️ Tanks</div>
         <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"           style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"   style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"   style="color:#C69B3A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"       style="color:#e05060;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"   style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"           data-role="tank" data-color="#c4cad8"  style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"   data-role="tank" data-color="#F48CBA"  style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"   data-role="tank" data-color="#C69B3A"  style="color:#C69B3A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"       data-role="tank" data-color="#e05060"  style="color:#e05060;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"   data-role="tank" data-color="#FF7C0A"  style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
         </div>
 
         <div class="placeholder-group-label">💚 Healers</div>
         <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Healer"         style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">💚 Healer</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Paladin"   style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Priest"    style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Disc Priest"    style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Disc Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Druid"    style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Druid</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Shaman"   style="color:#2e9fe0;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Healer"         data-role="healer" data-color="#c4cad8"  style="color:#c4cad8;"      ondragstart="onPlaceholderDragStart(event)">💚 Healer</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Paladin"   data-role="healer" data-color="#F48CBA"  style="color:#F48CBA;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Holy Priest"    data-role="healer" data-color="#c8ccd4"  style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Holy Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Disc Priest"    data-role="healer" data-color="#c8ccd4"  style="color:#c8ccd4;"      ondragstart="onPlaceholderDragStart(event)">💚 Disc Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Druid"    data-role="healer" data-color="#FF7C0A"  style="color:#FF7C0A;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="💚 Resto Shaman"   data-role="healer" data-color="#2e9fe0"  style="color:#2e9fe0;"      ondragstart="onPlaceholderDragStart(event)">💚 Resto Shaman</span>
         </div>
 
         <div class="placeholder-group-label">⚔️ DPS</div>
         <div class="d-flex flex-column gap-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ DPS"             style="color:#c4cad8;"     ondragstart="onPlaceholderDragStart(event)">⚔️ DPS</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arms Warrior"    style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arms Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fury Warrior"    style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fury Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Ret Paladin"     style="color:#F48CBA;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Ret Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Shadow Priest"   style="color:#c8ccd4;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Shadow Priest</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Balance Druid"   style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Balance Druid</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Feral (Cat)"     style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Feral (Cat)</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ MM Hunter"       style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ MM Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ BM Hunter"       style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ BM Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Surv Hunter"     style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Surv Hunter</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arcane Mage"     style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arcane Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fire Mage"       style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fire Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost Mage"      style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost Mage</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Combat Rogue"    style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Combat Rogue</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Mutilate Rogue"  style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Mutilate Rogue</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Elem Shaman"     style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Elem Shaman</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Enh Shaman"      style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Enh Shaman</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Affli Warlock"   style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Affli Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Destro Warlock"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Destro Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ DPS"             data-role="dps" data-color="#c4cad8"  style="color:#c4cad8;"     ondragstart="onPlaceholderDragStart(event)">⚔️ DPS</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arms Warrior"    data-role="dps" data-color="#C69B3A"  style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arms Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fury Warrior"    data-role="dps" data-color="#C69B3A"  style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fury Warrior</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Ret Paladin"     data-role="dps" data-color="#F48CBA"  style="color:#F48CBA;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Ret Paladin</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Shadow Priest"   data-role="dps" data-color="#c8ccd4"  style="color:#c8ccd4;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Shadow Priest</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Balance Druid"   data-role="dps" data-color="#FF7C0A"  style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Balance Druid</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Feral (Cat)"     data-role="dps" data-color="#FF7C0A"  style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Feral (Cat)</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ MM Hunter"       data-role="dps" data-color="#AAD372"  style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ MM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ BM Hunter"       data-role="dps" data-color="#AAD372"  style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ BM Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Surv Hunter"     data-role="dps" data-color="#AAD372"  style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Surv Hunter</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Arcane Mage"     data-role="dps" data-color="#3FC7EB"  style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Arcane Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Fire Mage"       data-role="dps" data-color="#3FC7EB"  style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Fire Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost Mage"      data-role="dps" data-color="#3FC7EB"  style="color:#3FC7EB;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost Mage</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Combat Rogue"    data-role="dps" data-color="#e8d850"  style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Combat Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Mutilate Rogue"  data-role="dps" data-color="#e8d850"  style="color:#e8d850;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Mutilate Rogue</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Elem Shaman"     data-role="dps" data-color="#2e9fe0"  style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Elem Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Enh Shaman"      data-role="dps" data-color="#2e9fe0"  style="color:#2e9fe0;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Enh Shaman</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Affli Warlock"   data-role="dps" data-color="#9d9eec"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Affli Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Destro Warlock"  data-role="dps" data-color="#9d9eec"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Destro Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    data-role="dps" data-color="#9d9eec"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        data-role="dps" data-color="#e05060"  style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       data-role="dps" data-color="#e05060"  style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
         </div>
 
       </div>
@@ -365,12 +371,48 @@
 
 {% block scripts %}
 <script>
-  let draggedCharId       = null;
-  let draggedCharName     = null;
-  let draggedCharClass    = null;
+  let draggedCharId        = null;
+  let draggedCharName      = null;
+  let draggedCharClass     = null;
   let draggedDiscordUserId = null;
-  let draggedSpec         = null;
-  let draggedPlaceholder  = null;
+  let draggedSpec          = null;
+  let draggedRole          = null;   // detected role for auto-slot-assignment
+  let draggedPlaceholder   = null;
+  let draggedPlaceholderColor = null;
+
+  // ── Placeholder color lookup (by keyword in placeholder text) ────────
+  const PLACEHOLDER_COLORS = {
+    'Paladin':        '#F48CBA',
+    'Warrior':        '#C69B3A',
+    'Death Knight':   '#e05060',
+    'Blood DK':       '#e05060',
+    'Frost DK':       '#e05060',
+    'Unholy DK':      '#e05060',
+    'Druid':          '#FF7C0A',
+    'Priest':         '#c8ccd4',
+    'Shaman':         '#2e9fe0',
+    'Hunter':         '#AAD372',
+    'Mage':           '#3FC7EB',
+    'Rogue':          '#e8d850',
+    'Warlock':        '#9d9eec',
+  };
+
+  function colorForPlaceholder(text) {
+    for (const [kw, color] of Object.entries(PLACEHOLDER_COLORS)) {
+      if (text.includes(kw)) return color;
+    }
+    return null;
+  }
+
+  // Apply colors to any placeholder-colored spans already in the DOM
+  function applyPlaceholderColors() {
+    document.querySelectorAll('.placeholder-colored').forEach(el => {
+      const text = el.textContent || '';
+      const color = colorForPlaceholder(text);
+      if (color) el.style.color = color;
+    });
+  }
+  applyPlaceholderColors();
 
   // Called when a role icon button is clicked — updates data-slot, border colour, and slot label
   function setSlotRole(btn, role) {
@@ -386,6 +428,7 @@
     const roleEmojis = { tank: '🛡️', healer: '💚', dps: '⚔️' };
     const label = slotCard.querySelector('.slot-label');
     if (label) label.textContent = `${roleEmojis[role] || ''} ${newSlot}`;
+    markDirty();
   }
 
   // Called when a spec button is clicked — updates the card's active char ID and spec
@@ -395,6 +438,8 @@
     btn.classList.add('active');
     card.dataset.charId = btn.dataset.charId;
     card.dataset.spec   = btn.dataset.spec || '';
+    // Update role hint from the spec button's data-role if present
+    if (btn.dataset.role) card.dataset.role = btn.dataset.role;
   }
 
   /* ── Collapse / expand sign-up user groups ─────────────────────────── */
@@ -408,23 +453,27 @@
 
   /* ── Drag start: character card ────────────────────────────────────── */
   function onDragStart(event) {
-    draggedPlaceholder   = null;
-    draggedCharId        = event.currentTarget.dataset.charId;
-    draggedCharName      = event.currentTarget.dataset.charName;
-    draggedCharClass     = event.currentTarget.dataset.charClass || null;
-    draggedDiscordUserId = event.currentTarget.dataset.discordUserId || null;
-    draggedSpec          = event.currentTarget.dataset.spec || null;
+    draggedPlaceholder      = null;
+    draggedPlaceholderColor = null;
+    draggedCharId           = event.currentTarget.dataset.charId;
+    draggedCharName         = event.currentTarget.dataset.charName;
+    draggedCharClass        = event.currentTarget.dataset.charClass || null;
+    draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
+    draggedSpec             = event.currentTarget.dataset.spec || null;
+    draggedRole             = event.currentTarget.dataset.role || null;
     event.dataTransfer.effectAllowed = 'move';
   }
 
   /* ── Drag start: placeholder chip ─────────────────────────────────── */
   function onPlaceholderDragStart(event) {
-    draggedCharId        = null;
-    draggedCharName      = null;
-    draggedCharClass     = null;
-    draggedDiscordUserId = null;
-    draggedSpec          = null;
-    draggedPlaceholder   = event.currentTarget.dataset.placeholder;
+    draggedCharId           = null;
+    draggedCharName         = null;
+    draggedCharClass        = null;
+    draggedDiscordUserId    = null;
+    draggedSpec             = null;
+    draggedRole             = event.currentTarget.dataset.role || null;
+    draggedPlaceholder      = event.currentTarget.dataset.placeholder;
+    draggedPlaceholderColor = event.currentTarget.dataset.color || null;
     event.dataTransfer.effectAllowed = 'copy';
   }
 
@@ -434,17 +483,29 @@
     const slotCard    = event.currentTarget;
     const assignedDiv = slotCard.querySelector('.assigned-char');
 
-    /* Placeholder drop — visual only, nothing saved to DB */
+    /* Placeholder drop */
     if (draggedPlaceholder) {
       assignedDiv.innerHTML = '';
       const label = document.createElement('span');
-      label.className   = 'slot-placeholder-text';
+      label.className   = 'slot-placeholder-text placeholder-colored';
       label.textContent = draggedPlaceholder;
+      const color = draggedPlaceholderColor || colorForPlaceholder(draggedPlaceholder);
+      if (color) label.style.color = color;
       assignedDiv.appendChild(label);
       delete assignedDiv.dataset.charId;
       delete assignedDiv.dataset.discordUserId;
       assignedDiv.dataset.placeholder = draggedPlaceholder;
-      draggedPlaceholder = null;
+
+      // Auto-detect role from the placeholder's data-role and set slot role
+      if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
+        const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
+        if (roleBtn) setSlotRole(roleBtn, draggedRole);
+      }
+
+      draggedPlaceholder      = null;
+      draggedPlaceholderColor = null;
+      draggedRole             = null;
+      markDirty();
       return;
     }
 
@@ -473,44 +534,81 @@
     assignedDiv.dataset.charId = draggedCharId;
     if (draggedCharClass) assignedDiv.dataset.charClass = draggedCharClass;
     delete assignedDiv.dataset.placeholder;
-    if (draggedDiscordUserId) {
-      assignedDiv.dataset.discordUserId = draggedDiscordUserId;
+    if (draggedDiscordUserId) assignedDiv.dataset.discordUserId = draggedDiscordUserId;
+
+    // Auto-detect role from the character's data-role and set slot role
+    if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
+      const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
+      if (roleBtn) setSlotRole(roleBtn, draggedRole);
     }
+
     draggedCharId        = null;
     draggedCharName      = null;
     draggedCharClass     = null;
     draggedDiscordUserId = null;
     draggedSpec          = null;
+    draggedRole          = null;
+    markDirty();
   }
 
   /* ── Clear a single assigned-char div ─────────────────────────────── */
   function clearAssigned(el) {
     el.innerHTML = '';
     const empty = document.createElement('span');
-    empty.className       = 'text-muted small';
-    empty.textContent     = '— empty —';
+    empty.className   = 'text-muted small';
+    empty.textContent = '— empty —';
     el.appendChild(empty);
     delete el.dataset.charId;
     delete el.dataset.discordUserId;
     delete el.dataset.charClass;
     delete el.dataset.placeholder;
+    markDirty();
   }
 
   function clearSlot(btn) {
     clearAssigned(btn.closest('.slot-card').querySelector('.assigned-char'));
   }
 
-  /* ── Save composition (placeholder-only slots are skipped) ─────────── */
-  function saveComp() {
+  /* ── Dirty tracking & status indicator ────────────────────────────── */
+  let isDirty   = false;
+  let saveTimer = null;
+  const saveBtn = document.getElementById('saveBtn');
+  const saveStatus = document.getElementById('saveStatus');
+
+  function markDirty() {
+    isDirty = true;
+    if (saveStatus) saveStatus.textContent = '● unsaved';
+    // Debounced auto-save: 2 s after last change
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => autoSave(), 2000);
+  }
+
+  function markClean(msg) {
+    isDirty = false;
+    clearTimeout(saveTimer);
+    if (saveStatus) saveStatus.textContent = msg || '✓ saved';
+  }
+
+  /* ── Build payload from current DOM state ──────────────────────────── */
+  function buildPayload() {
     const payload = [];
     document.querySelectorAll('.slot-card').forEach(slot => {
       const assignedDiv = slot.querySelector('.assigned-char');
-      const charId = assignedDiv ? assignedDiv.dataset.charId : null;
+      if (!assignedDiv) return;
+      const charId = assignedDiv.dataset.charId;
+      const placeholder = assignedDiv.dataset.placeholder;
       if (charId) {
         payload.push({ character_id: parseInt(charId), role_slot: slot.dataset.slot });
+      } else if (placeholder) {
+        payload.push({ placeholder_text: placeholder, role_slot: slot.dataset.slot });
       }
     });
+    return payload;
+  }
 
+  /* ── Auto-save (no page reload) ───────────────────────────────────── */
+  function autoSave() {
+    const payload = buildPayload();
     fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -519,7 +617,31 @@
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        // Reload so comp tabs and next-comp link reflect the newly saved state
+        markClean('✓ auto-saved');
+        lastKnownVersion = null; // reset so next poll accepts the new state
+      } else {
+        if (saveStatus) saveStatus.textContent = '⚠ save error';
+        console.warn('Auto-save error:', data.error);
+      }
+    })
+    .catch(err => {
+      if (saveStatus) saveStatus.textContent = '⚠ save error';
+      console.warn('Auto-save failed:', err);
+    });
+  }
+
+  /* ── Manual save button (keeps the reload for tab refresh) ─────────── */
+  function saveComp() {
+    clearTimeout(saveTimer);
+    const payload = buildPayload();
+    fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
         window.location.reload();
       } else {
         alert('Error: ' + (data.error || 'Unable to save composition. Please try again.'));
@@ -527,5 +649,96 @@
     })
     .catch(err => alert('Save failed: ' + err));
   }
+
+  /* ── Auto-load polling (collaboration) ────────────────────────────── */
+  let lastKnownVersion = null;
+
+
+  // ── Helper: sync slot role button state to a given role prefix ──────
+  function syncSlotRole(slotCard, slot) {
+    const prefix = slot.split('_')[0];
+    if (!slotCard.classList.contains('slot-' + prefix)) {
+      const roleBtn = slotCard.querySelector(`.role-btn[data-role="${prefix}"]`);
+      if (roleBtn) setSlotRole(roleBtn, prefix);
+    }
+  }
+
+  function applyRemoteState(entries) {
+    // Build a map of slot -> entry for quick lookup
+    const remoteMap = {};
+    for (const e of entries) remoteMap[e.role_slot] = e;
+
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const slot = slotCard.dataset.slot;
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+
+      const remote = remoteMap[slot];
+      const localCharId = assignedDiv.dataset.charId || null;
+      const localPh     = assignedDiv.dataset.placeholder || null;
+
+      if (!remote) {
+        // Slot should be empty
+        if (localCharId || localPh) clearAssigned(assignedDiv);
+        return;
+      }
+
+      if (remote.character_id) {
+        if (localCharId !== remote.character_id) {
+          assignedDiv.innerHTML = '';
+          const nameSpan = document.createElement('span');
+          nameSpan.className   = `fw-bold${remote.char_class ? ' cls-' + remote.char_class : ''}`;
+          nameSpan.textContent = remote.char_name || '?';
+          const specSmall = document.createElement('small');
+          specSmall.className   = 'text-muted d-block';
+          specSmall.textContent = remote.spec || '?';
+          assignedDiv.appendChild(nameSpan);
+          assignedDiv.appendChild(specSmall);
+          assignedDiv.dataset.charId = remote.character_id;
+          if (remote.char_class) assignedDiv.dataset.charClass = remote.char_class;
+          if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
+          delete assignedDiv.dataset.placeholder;
+          syncSlotRole(slotCard, slot);
+        }
+      } else if (remote.placeholder_text) {
+        if (localPh !== remote.placeholder_text) {
+          assignedDiv.innerHTML = '';
+          const label = document.createElement('span');
+          label.className   = 'slot-placeholder-text placeholder-colored';
+          label.textContent = remote.placeholder_text;
+          const color = colorForPlaceholder(remote.placeholder_text);
+          if (color) label.style.color = color;
+          assignedDiv.appendChild(label);
+          delete assignedDiv.dataset.charId;
+          delete assignedDiv.dataset.discordUserId;
+          assignedDiv.dataset.placeholder = remote.placeholder_text;
+          syncSlotRole(slotCard, slot);
+        }
+      }
+    });
+  }
+
+  function pollRemoteState() {
+    if (isDirty || document.hidden) return; // Don't clobber local edits or poll hidden tabs
+    fetch('/raids/{{ raid.id }}/manage/json?comp={{ current_comp }}')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok || !data.entries) return;
+        if (data.version && data.version !== lastKnownVersion) {
+          if (lastKnownVersion !== null) {
+            // Remote state changed — apply it
+            applyRemoteState(data.entries);
+          }
+          lastKnownVersion = data.version;
+        }
+      })
+      .catch(() => {}); // Silently ignore poll errors
+  }
+
+  // Start polling every 3 seconds; resume immediately when tab becomes visible
+  setInterval(pollRemoteState, 3000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRemoteState(); });
+  // Seed the initial version immediately
+  pollRemoteState();
 </script>
 {% endblock %}
