@@ -83,6 +83,7 @@ class Composition(Base):
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
     role_slot = Column(String(50), nullable=False)  # e.g. "tank_1", "healer_3", "dps_10"
+    comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
     created_by = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="compositions")

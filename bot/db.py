@@ -27,6 +27,13 @@ def _run_migrations():
                 "ALTER TABLE raids ADD COLUMN discord_log_thread_id BIGINT NULL"
             ))
 
+        if inspector.has_table("compositions"):
+            comp_columns = {col["name"] for col in inspector.get_columns("compositions")}
+            if "comp_number" not in comp_columns:
+                conn.execute(text(
+                    "ALTER TABLE compositions ADD COLUMN comp_number INT NOT NULL DEFAULT 1"
+                ))
+
 
 _run_migrations()
 
