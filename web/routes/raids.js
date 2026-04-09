@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
      LEFT JOIN (
        SELECT raid_id, COUNT(DISTINCT discord_user_id) AS player_count FROM signups GROUP BY raid_id
      ) s ON s.raid_id = r.id
-     ORDER BY (r.status = 'open') DESC, r.date ASC`
+     ORDER BY r.id DESC`
   );
 
   const raidData = raids.map(r => ({

@@ -4,15 +4,13 @@ import asyncio
 import datetime
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
-from db.models import Character, Composition, Raid, RaidStatus, Signup
+from db.models import Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +38,7 @@ def is_officer():
     return app_commands.check(predicate)
 
 
-def _build_signup_embed(raid: Raid, signups: list[Signup]) -> discord.Embed:
+def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
     unique_players = len(set(
         s.discord_user_id for s in signups if s.discord_user_id
     ))
@@ -63,7 +61,7 @@ def _build_signup_embed(raid: Raid, signups: list[Signup]) -> discord.Embed:
     embed.add_field(name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True)
     embed.add_field(
         name="👥 Players Signed Up",
-        value=f"{unique_players} / {raid.max_size}",
+        value=str(unique_players),
         inline=False,
     )
     embed.set_footer(text=f"Raid ID: {raid.id}")
@@ -231,202 +229,6 @@ class RaidCog(commands.Cog):
     @is_officer()
     async def create_raid(self, interaction: discord.Interaction):
         await interaction.response.send_modal(CreateRaidModal())
-
-    # ── /view_signups ──────────────────────────────────────────────────────
-    @app_commands.command(name="view_signups", description="View sign-ups for a raid.")
-    @app_commands.describe(raid_id="The raid ID")
-    @is_officer()
-    async def view_signups(self, interaction: discord.Interaction, raid_id: int):
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        loop = asyncio.get_event_loop()
-
-        def _fetch():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                if raid is None:
-                    return None, []
-                signups = (
-                    session.query(Signup)
-                    .filter_by(raid_id=raid_id)
-                    .join(Character)
-                    .order_by(Character.role, Character.gearscore.desc())
-                    .all()
-                )
-                # Detach data
-                result = []
-                for s in signups:
-                    result.append(
-                        {
-                            "signup_type": s.signup_type.value if s.signup_type else "fill",
-                            "char_name": s.character.char_name if s.character else "?",
-                            "char_class": s.character.char_class if s.character else "?",
-                            "gearscore": s.character.gearscore if s.character else 0,
-                            "role": s.character.role.value if (s.character and s.character.role) else "?",
-                        }
-                    )
-                return (
-                    {"id": raid.id, "name": raid.name},
-                    result,
-                )
-            finally:
-                session.close()
-
-        raid_info, signups = await loop.run_in_executor(None, _fetch)
-
-        if raid_info is None:
-            await interaction.followup.send(f"❌ Raid #{raid_id} not found.", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title=f"Sign-ups for {raid_info['name']} (ID {raid_info['id']})",
-            color=discord.Color.blurple(),
-        )
-
-        groups: dict[str, list[str]] = {}
-        for s in signups:
-            key = f"{s['signup_type']} / {s['role']}"
-            groups.setdefault(key, [])
-            groups[key].append(f"{s['char_name']} ({s['char_class']}) GS: {s['gearscore']:.0f}")
-
-        for group, entries in groups.items():
-            embed.add_field(name=group.upper(), value="\n".join(entries) or "—", inline=False)
-
-        if not groups:
-            embed.description = "No sign-ups yet."
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # ── /lock_raid ─────────────────────────────────────────────────────────
-    @app_commands.command(name="lock_raid", description="Lock a raid (no more sign-ups).")
-    @app_commands.describe(raid_id="The raid ID to lock")
-    @is_officer()
-    async def lock_raid(self, interaction: discord.Interaction, raid_id: int):
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        loop = asyncio.get_event_loop()
-
-        def _lock():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                if raid is None:
-                    return None
-                raid.status = RaidStatus.locked
-                session.commit()
-                return {
-                    "id": raid.id,
-                    "name": raid.name,
-                    "discord_message_id": raid.discord_message_id,
-                    "discord_channel_id": raid.discord_channel_id,
-                }
-            finally:
-                session.close()
-
-        raid_info = await loop.run_in_executor(None, _lock)
-
-        if raid_info is None:
-            await interaction.followup.send(f"❌ Raid #{raid_id} not found.", ephemeral=True)
-            return
-
-        # Try to edit the original embed
-        if raid_info["discord_channel_id"] and raid_info["discord_message_id"]:
-            try:
-                channel = self.bot.get_channel(raid_info["discord_channel_id"])
-                if channel:
-                    msg = await channel.fetch_message(raid_info["discord_message_id"])
-
-                    def _fetch_signups():
-                        session = get_session()
-                        try:
-                            raid = session.get(Raid, raid_id)
-                            sups = session.query(Signup).filter_by(raid_id=raid_id).all()
-                            return raid, sups
-                        finally:
-                            session.close()
-
-                    raid, sups = await loop.run_in_executor(None, _fetch_signups)
-                    embed = _build_signup_embed(raid, sups)
-
-                    # Disable all buttons
-                    from bot.cogs.signup import SignupView
-                    locked_view = discord.ui.View()
-                    await msg.edit(embed=embed, view=locked_view)
-            except Exception as e:
-                logger.warning(f"Could not edit raid message: {e}")
-
-        await interaction.followup.send(
-            f"🔒 Raid **{raid_info['name']}** (#{raid_id}) is now locked.", ephemeral=True
-        )
-
-    # ── /post_comp ─────────────────────────────────────────────────────────
-    @app_commands.command(name="post_comp", description="Post the finalized raid composition.")
-    @app_commands.describe(raid_id="The raid ID")
-    @is_officer()
-    async def post_comp(self, interaction: discord.Interaction, raid_id: int):
-        await interaction.response.defer(thinking=True)
-        loop = asyncio.get_event_loop()
-
-        def _fetch():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                if raid is None:
-                    return None, []
-                comps = (
-                    session.query(Composition)
-                    .filter_by(raid_id=raid_id)
-                    .join(Character, Composition.character_id == Character.id)
-                    .order_by(Composition.role_slot)
-                    .all()
-                )
-                result = []
-                for c in comps:
-                    result.append(
-                        {
-                            "role_slot": c.role_slot,
-                            "char_name": c.character.char_name if c.character else "?",
-                            "char_class": c.character.char_class if c.character else "?",
-                            "spec": c.character.spec if c.character else "?",
-                            "gearscore": c.character.gearscore if c.character else 0,
-                        }
-                    )
-                return {"id": raid.id, "name": raid.name, "raid_instance": raid.raid_instance}, result
-            finally:
-                session.close()
-
-        raid_info, comp_entries = await loop.run_in_executor(None, _fetch)
-
-        if raid_info is None:
-            await interaction.followup.send(f"❌ Raid #{raid_id} not found.")
-            return
-
-        if not comp_entries:
-            await interaction.followup.send(f"❌ No composition set for raid #{raid_id}.")
-            return
-
-        embed = discord.Embed(
-            title=f"📋 Composition: {raid_info['name']} – {raid_info['raid_instance']}",
-            color=discord.Color.gold(),
-        )
-
-        groups: dict[str, list[str]] = {}
-        for entry in comp_entries:
-            prefix = entry["role_slot"].split("_")[0]  # tank, healer, dps
-            groups.setdefault(prefix, [])
-            groups[prefix].append(
-                f"`{entry['role_slot']}` {entry['char_name']} ({entry['char_class']}) – {entry['spec']} GS {entry['gearscore']:.0f}"
-            )
-
-        role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"}
-        for role in ("tank", "healer", "dps"):
-            if role in groups:
-                embed.add_field(
-                    name=f"{role_emojis.get(role, '')} {role.capitalize()}s",
-                    value="\n".join(groups[role]),
-                    inline=False,
-                )
-
-        await interaction.followup.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):
