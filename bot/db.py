@@ -34,6 +34,7 @@ def _run_migrations():
                     "ALTER TABLE compositions ADD COLUMN comp_number INT NOT NULL DEFAULT 1"
                 ))
             if "placeholder_text" not in comp_columns:
+                # placeholder slots have no character, so character_id must be nullable
                 conn.execute(text(
                     "ALTER TABLE compositions MODIFY COLUMN character_id INT NULL"
                 ))
