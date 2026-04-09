@@ -213,21 +213,50 @@
       </div>
     </div>
 
-    {# ── Right column: Placeholder pool ──────────────────────────────── #}
-    <div class="roster-col-side">
-      <div class="card p-3">
-        <h5 class="mb-2">🗂️ Placeholders</h5>
-        <p class="text-muted mb-1" style="font-size:0.72rem;">
-          Drag a label onto a roster slot to mark it as reserved (not saved to DB).
-        </p>
-
-        <div class="placeholder-group-label">🛡️ Tanks</div>
-        <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Tank"          ondragstart="onPlaceholderDragStart(event)">🛡️ Tank</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Warrior"  ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Warrior</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Prot Paladin"  ondragstart="onPlaceholderDragStart(event)">🛡️ Prot Paladin</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Feral (Bear)"  ondragstart="onPlaceholderDragStart(event)">🛡️ Feral (Bear)</span>
-          <span class="placeholder-chip" draggable="true" data-placeholder="🛡️ Blood DK"      ondragstart="onPlaceholderDragStart(event)">🛡️ Blood DK</span>
+  {# ── Right: Roster Slots ───────────────────────────────────────────── #}
+  <div class="col-md-8">
+    <div class="card p-3">
+      <h5 class="mb-3">🎯 Raid Roster</h5>
+      <div class="row g-2" id="rosterSlots">
+        {% for i in range(1, max_size + 1) %}
+        {% set slot_data = comp_by_slot[i] or {} %}
+        {% set slot_role = slot_data.role or "dps" %}
+        {% set assigned_char_id = slot_data.char_id or "" %}
+        <div class="col-6 col-md-4">
+          <div class="slot-card card p-2 h-100 text-center slot-{{ slot_role }}"
+               data-slot-num="{{ i }}"
+               data-slot="{{ slot_role }}_{{ i }}"
+               ondragover="event.preventDefault()"
+               ondrop="onDrop(event)">
+            <div class="d-flex align-items-center justify-content-between mb-1 gap-1">
+              <select class="role-select form-select form-select-sm bg-dark text-light border-secondary"
+                      style="font-size:0.7rem; padding:1px 4px; width:auto; flex:1;"
+                      onchange="updateSlotRole(this)">
+                <option value="tank" {% if slot_role == "tank" %}selected{% endif %}>🛡️ Tank</option>
+                <option value="healer" {% if slot_role == "healer" %}selected{% endif %}>💚 Healer</option>
+                <option value="dps" {% if slot_role == "dps" %}selected{% endif %}>⚔️ DPS</option>
+              </select>
+              <small class="text-muted ms-1">{{ i }}</small>
+            </div>
+            {% if assigned_char_id %}
+              {% for s in signups %}
+                {% if s.character.id | string == assigned_char_id %}
+                {% set c = s.character %}
+                {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+                <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}">
+                  <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span><br>
+                  <small class="text-muted">{{ c.char_class or "?" }}</small><br>
+                  <small class="text-muted">{{ c.spec or "?" }}</small>
+                </div>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+            <div class="assigned-char text-muted small" style="min-height:40px;">
+              — empty —
+            </div>
+            {% endif %}
+            <button class="btn btn-outline-secondary btn-sm mt-1" onclick="clearSlot(this)">✕</button>
+          </div>
         </div>
 
         <div class="placeholder-group-label">💚 Healers</div>
@@ -281,7 +310,17 @@
   let draggedSpec         = null;
   let draggedPlaceholder  = null;
 
-  /* ── Spec button click: switch active spec on a char card ──────────── */
+  // Called when the role selector is changed — updates data-slot and border colour
+  function updateSlotRole(select) {
+    const slotCard = select.closest('.slot-card');
+    const num = slotCard.dataset.slotNum;
+    const role = select.value;
+    slotCard.dataset.slot = `${role}_${num}`;
+    slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
+    slotCard.classList.add('slot-' + role);
+  }
+
+  // Called when a spec button is clicked — updates the card's active char ID and spec
   function selectSpec(btn) {
     const card = btn.closest('.char-card');
     card.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
