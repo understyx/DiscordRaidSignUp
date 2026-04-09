@@ -428,27 +428,13 @@
   }
   applyPlaceholderColors();
 
-  // ── Class color background tint ──────────────────────────────────────
-  const CLASS_BG_COLORS = {
-    'paladin':      '#F48CBA',
-    'warrior':      '#C69B3A',
-    'death-knight': '#e05060',
-    'druid':        '#FF7C0A',
-    'priest':       '#c8ccd4',
-    'shaman':       '#2e9fe0',
-    'hunter':       '#AAD372',
-    'mage':         '#3FC7EB',
-    'rogue':        '#e8d850',
-    'warlock':      '#9d9eec',
-  };
-
   function hexToRgb(hex) {
     const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
     return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : null;
   }
 
   function applySlotTint(slotCard, charClass) {
-    const hex = charClass && CLASS_BG_COLORS[charClass];
+    const hex = charClass && WOW_CLASS_COLORS[charClass];
     if (hex) {
       const [r,g,b] = hexToRgb(hex);
       slotCard.style.backgroundColor = `rgba(${r},${g},${b},0.12)`;
@@ -509,11 +495,8 @@
   function specToRole(spec) {
     if (!spec) return null;
     const s = spec.toLowerCase();
-    if (s.includes('holy') || s.includes('disc') || s.includes('discipline') ||
-        s.includes('resto') || s.includes('restoration') || s.includes('mistweaver')) return 'healer';
-    if (s.includes('prot') || s.includes('protection') || s.includes('blood') ||
-        s.includes('bear') || s.includes('guardian') || s.includes('brewmaster') ||
-        s.includes('vengeance')) return 'tank';
+    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
+    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
     return 'dps';
   }
 
