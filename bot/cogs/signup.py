@@ -66,7 +66,13 @@ def _parse_character_lines(text: str) -> list[dict]:
 
         CharName / CharClass / Spec1 / GS1 [/ Spec2 / GS2 ...] [⭐ or ❌]
 
-    ⭐  = priority character
+    Priority (⭐ or ★) placement controls which specs are marked as priority:
+      - ⭐ after a spec name (before the GS): only that spec is priority
+        e.g. ``Shadow ⭐ / 6500 / Disc / 6300``  →  only Shadow is priority
+      - ⭐ after the *last* GS (end of line): all specs for that character are priority
+        e.g. ``Survival / 6500 ⭐``  →  Survival (and any other listed specs) are priority
+      - ⭐ after any middle GS: only that spec is priority
+
     ❌  = saved character (already saved this lockout)
 
     Returns a list of dicts with keys:
@@ -83,19 +89,19 @@ def _parse_character_lines(text: str) -> list[dict]:
         if not line or not _CHAR_LINE_RE.match(line):
             continue
 
-        is_prio = "⭐" in line or "★" in line
         is_saved = "❌" in line or "✗" in line
 
-        # Strip flag characters before splitting
-        clean = line.replace("⭐", "").replace("★", "").replace("❌", "").replace("✗", "").strip()
+        # Strip only saved markers before splitting; keep star markers in place
+        # so we can detect per-spec priority later.
+        clean = line.replace("❌", "").replace("✗", "").strip()
 
         parts = [p.strip() for p in clean.split("/")]
         # Need at least: CharName / CharClass / Spec / GS
         if len(parts) < 4:
             continue
 
-        char_name = parts[0].strip()
-        char_class = parts[1].strip()
+        char_name = parts[0].replace("⭐", "").replace("★", "").strip()
+        char_class = parts[1].replace("⭐", "").replace("★", "").strip()
         if not char_name or not char_class:
             continue
 
@@ -106,11 +112,27 @@ def _parse_character_lines(text: str) -> list[dict]:
         if len(spec_gs) < 2:
             continue
 
+        # ⭐ in the very last part (trailing star after final GS) means all specs
+        # for this character are priority.
+        last_has_star = "⭐" in spec_gs[-1] or "★" in spec_gs[-1]
+
         i = 0
         while i + 1 < len(spec_gs):
-            spec = spec_gs[i].strip()
+            spec_raw = spec_gs[i]
+            gs_raw = spec_gs[i + 1]
+
+            spec_has_star = "⭐" in spec_raw or "★" in spec_raw
+            gs_has_star = "⭐" in gs_raw or "★" in gs_raw
+
+            # This spec is priority if: line-level star (last GS), star in the
+            # spec name segment, or star in this GS segment.
+            spec_is_prio = last_has_star or spec_has_star or gs_has_star
+
+            spec = spec_raw.replace("⭐", "").replace("★", "").strip()
+            gs_clean = gs_raw.replace("⭐", "").replace("★", "").strip()
+
             try:
-                gs = parse_gs(spec_gs[i + 1])
+                gs = parse_gs(gs_clean)
             except ValueError:
                 i += 2
                 continue
@@ -125,7 +147,7 @@ def _parse_character_lines(text: str) -> list[dict]:
                             "char_class": char_class,
                             "spec": spec,
                             "gearscore": gs,
-                            "is_prio": is_prio,
+                            "is_prio": spec_is_prio,
                             "is_saved": is_saved,
                         }
                     )
@@ -843,28 +865,29 @@ class SignupCog(commands.Cog):
                             "char_name": entry["char_name"],
                             "char_class": entry["char_class"],
                             "specs": [],
-                            "is_prio": entry["is_prio"],
                             "is_saved": entry["is_saved"],
                         }
                     char_spec_info[key]["specs"].append(
-                        f"{entry['spec']} GS {entry['gearscore']:.0f}"
+                        {
+                            "spec": entry["spec"],
+                            "gearscore": entry["gearscore"],
+                            "is_prio": entry["is_prio"],
+                        }
                     )
-                    if entry["is_prio"]:
-                        char_spec_info[key]["is_prio"] = True
 
                 session.commit()
 
                 # Build summaries grouped by character name
                 summaries = []
                 for data in char_spec_info.values():
-                    flag = ""
-                    if data["is_prio"]:
-                        flag = " ⭐"
-                    elif data["is_saved"]:
-                        flag = " ❌"
-                    specs_str = " / ".join(data["specs"])
+                    spec_parts = []
+                    for s in data["specs"]:
+                        star = " ⭐" if s["is_prio"] else ""
+                        spec_parts.append(f"{s['spec']}{star} GS {s['gearscore']:.0f}")
+                    specs_str = " / ".join(spec_parts)
+                    saved_flag = " ❌" if data["is_saved"] else ""
                     summaries.append(
-                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{flag}"
+                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}"
                     )
                 return summaries
             finally:
