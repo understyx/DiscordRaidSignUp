@@ -339,6 +339,16 @@ router.get('/:raid_id/manage', async (req, res) => {
       }
     }
   }
+  // Also honour the role stored with placeholder slots
+  for (const roleSlot of Object.keys(placeholderMap)) {
+    const match = roleSlot.match(/^(tank|healer|dps)_(\d+)$/);
+    if (match) {
+      const num = parseInt(match[2]);
+      if (num >= 1 && num <= maxSize && !compBySlot[num]) {
+        compBySlot[num] = { role: match[1] };
+      }
+    }
+  }
 
   // Build slots array: "role_number" strings for each slot 1..maxSize
   const slots = [];
