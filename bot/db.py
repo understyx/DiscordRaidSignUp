@@ -41,6 +41,19 @@ def _run_migrations():
                 conn.execute(text(
                     "ALTER TABLE compositions ADD COLUMN placeholder_text VARCHAR(100) NULL AFTER character_id"
                 ))
+            if "updated_at" not in comp_columns:
+                conn.execute(text(
+                    "ALTER TABLE compositions ADD COLUMN updated_at DATETIME(3) NOT NULL"
+                    " DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
+                ))
+                conn.execute(text(
+                    "UPDATE compositions SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = 0"
+                ))
+            comp_unique_keys = {uc["name"] for uc in inspector.get_unique_constraints("compositions")}
+            if "uq_comp_slot" not in comp_unique_keys:
+                conn.execute(text(
+                    "ALTER TABLE compositions ADD UNIQUE KEY uq_comp_slot (raid_id, comp_number, role_slot)"
+                ))
 
 
 _run_migrations()
