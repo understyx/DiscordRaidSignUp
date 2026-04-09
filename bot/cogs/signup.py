@@ -470,36 +470,32 @@ class SignupCharacterSelectView(discord.ui.View):
     """
     Step 1 of the sign-up flow.
 
-    Shows the player's characters (grouped by name) in a multi-select.
-    Each option shows the character name, class, and all their specs/GS.
-    After selecting, transitions to SignupPrioritySelectView.
+    Shows the player's individual character specs in a multi-select so they
+    can choose exactly which spec(s) to sign up with.  After selecting,
+    transitions to SignupPrioritySelectView.
     """
 
-    def __init__(self, char_groups: list[dict], raid_id: int, signup_status: SignupStatus = SignupStatus.signed):
+    def __init__(self, char_dicts: list[dict], raid_id: int, signup_status: SignupStatus = SignupStatus.signed):
         super().__init__(timeout=120)
         self.raid_id = raid_id
-        self.char_groups = char_groups
-        self.groups_by_id = {g["id"]: g for g in char_groups}
+        self.char_dicts = char_dicts
+        self.chars_by_id = {c["id"]: c for c in char_dicts}
         self.signup_status = signup_status
 
         options = []
-        for g in char_groups[:25]:
-            label = f"{g['char_name']} ({g['char_class'] or '?'})"[:100]
-            if g["specs"]:
-                spec_parts = [f"{s} {gs:.0f}" for s, gs, _ in g["specs"][:4]]
-                desc = " / ".join(spec_parts)
-            else:
-                desc = g["char_class"] or "?"
+        for c in char_dicts[:25]:
+            label = _char_label(c)[:100]
+            description = _char_display_description(c)[:100]
             options.append(
                 discord.SelectOption(
                     label=label,
-                    description=desc[:100],
-                    value=str(g["id"]),
+                    description=description,
+                    value=str(c["id"]),
                 )
             )
 
         self.char_select = discord.ui.Select(
-            placeholder="Choose characters to sign up with…",
+            placeholder="Choose spec(s) to sign up with…",
             options=options,
             min_values=1,
             max_values=len(options),
@@ -510,29 +506,9 @@ class SignupCharacterSelectView(discord.ui.View):
 
     async def _on_select(self, interaction: discord.Interaction):
         selected_ids = {int(v) for v in interaction.data["values"]}
-        selected_groups = [
-            self.groups_by_id[sid] for sid in selected_ids if sid in self.groups_by_id
+        selected_chars = [
+            self.chars_by_id[sid] for sid in selected_ids if sid in self.chars_by_id
         ]
-        selected_chars = []
-        for g in selected_groups:
-            if g["specs"]:
-                # Expand multi-spec characters into one entry per spec
-                for spec, gs, char_id in g["specs"]:
-                    selected_chars.append({
-                        "id": char_id,
-                        "char_name": g["char_name"],
-                        "char_class": g["char_class"],
-                        "spec": spec,
-                        "gearscore": gs,
-                    })
-            else:
-                selected_chars.append({
-                    "id": g["id"],
-                    "char_name": g["char_name"],
-                    "char_class": g["char_class"],
-                    "spec": g["spec"],
-                    "gearscore": g["gearscore"],
-                })
 
         names = ", ".join(_char_label(c) for c in selected_chars)
         is_tentative = self.signup_status == SignupStatus.tentative
@@ -621,13 +597,12 @@ class SignupView(discord.ui.View):
             )
             return
 
-        char_groups = _group_chars_by_name(char_dicts)
-        view = SignupCharacterSelectView(char_groups, raid_id, signup_status)
+        view = SignupCharacterSelectView(char_dicts, raid_id, signup_status)
         is_tentative = signup_status == SignupStatus.tentative
         await interaction.response.send_message(
-            "**Step 1 of 2:** Select the character(s) you want to sign up tentatively with:"
+            "**Step 1 of 2:** Select the spec(s) you want to sign up tentatively with:"
             if is_tentative else
-            "**Step 1 of 2:** Select the character(s) you want to sign up with:",
+            "**Step 1 of 2:** Select the spec(s) you want to sign up with:",
             view=view,
             ephemeral=True,
         )
