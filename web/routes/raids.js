@@ -250,6 +250,17 @@ router.get('/:raid_id/manage', async (req, res) => {
     },
   }));
 
+  // Group signups by discord user for the pool panel
+  const userSignupMap = {};
+  for (const s of signups) {
+    const uid = String(s.discord_user_id);
+    if (!userSignupMap[uid]) {
+      userSignupMap[uid] = { discord_user_id: uid, characters: [] };
+    }
+    userSignupMap[uid].characters.push(s);
+  }
+  const signupsByUser = Object.values(userSignupMap);
+
   const [existingComp] = await pool.query(
     'SELECT * FROM compositions WHERE raid_id = ?',
     [raidId]
@@ -273,6 +284,7 @@ router.get('/:raid_id/manage', async (req, res) => {
   res.render('raid_manage.html', {
     raid,
     signups,
+    signupsByUser,
     slots,
     comp_map: compMap,
     flash: popFlash(req),
@@ -305,6 +317,24 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
     }
   }
 
+  if (body.length > 0) {
+    // Validate: each Discord user may only appear once in the composition
+    const charIds = body.map(e => parseInt(e.character_id));
+    const placeholders = charIds.map(() => '?').join(', ');
+    const [chars] = await pool.query(
+      `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders})`,
+      charIds
+    );
+    const seenUsers = new Set();
+    for (const char of chars) {
+      const uid = String(char.discord_user_id);
+      if (seenUsers.has(uid)) {
+        return res.json({ ok: false, error: 'Each Discord user can only have one character in the raid composition. Please remove duplicate assignments.' });
+      }
+      seenUsers.add(uid);
+    }
+  }
+
   await pool.query('DELETE FROM compositions WHERE raid_id = ?', [raidId]);
 
   for (const entry of body) {
@@ -327,7 +357,7 @@ router.get('/:raid_id/comp', async (req, res) => {
   if (!raid) return res.redirect('/raids');
 
   const [comps] = await pool.query(
-    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
+    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id
      FROM compositions co JOIN characters c ON co.character_id = c.id
      WHERE co.raid_id = ?
      ORDER BY co.role_slot`,
@@ -346,6 +376,7 @@ router.get('/:raid_id/comp', async (req, res) => {
         spec: comp.spec,
         gearscore: comp.gearscore,
         role: comp.role,
+        discord_user_id: comp.char_discord_user_id,
       },
     };
     const prefix = comp.role_slot.split('_')[0];
