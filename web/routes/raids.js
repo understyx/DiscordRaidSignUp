@@ -778,7 +778,11 @@ router.post('/:raid_id/post_comp', async (req, res) => {
     // Post the selected comp (or all comps if no specific one was selected) to Discord
     const compsToPost = compNumber !== null ? [compNumber] : allCompNumbers;
 
-    if (raid.discord_channel_id) {
+    // Prefer the dedicated sign-up log thread; fall back to the original raid channel
+    const discordTargetId = raid.discord_log_thread_id || raid.discord_channel_id;
+
+    if (discordTargetId) {
+      let anyFailed = false;
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
           `SELECT co.*, c.char_name, c.char_class, c.spec, c.gearscore, c.role
@@ -807,12 +811,18 @@ router.post('/:raid_id/post_comp', async (req, res) => {
         }
 
         const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length);
-        const result = await postToDiscordChannel(String(raid.discord_channel_id), payload);
+        const result = await postToDiscordChannel(String(discordTargetId), payload);
         if (!result.ok) {
+          allPosted = false;
           console.error(`[post_comp] Failed to post comp ${cn} for raid ${raidId}: ${result.reason}`);
+          console.debug(`[post_comp] Debug — target channel id: ${discordTargetId} (log_thread_id: ${raid.discord_log_thread_id}, channel_id: ${raid.discord_channel_id})`);
         }
       }
-      req.session.flash = `📋 Raid '${raid.name}' marked as posted and composition sent to Discord.`;
+      if (allPosted) {
+        req.session.flash = `📋 Raid '${raid.name}' marked as posted and composition sent to Discord.`;
+      } else {
+        req.session.flash = `📋 Raid '${raid.name}' marked as posted, but one or more compositions could not be sent to Discord. Check server logs for details.`;
+      }
     } else {
       req.session.flash = `📋 Raid '${raid.name}' marked as posted. (No Discord channel linked — create the raid via bot to enable auto-posting.)`;
     }
