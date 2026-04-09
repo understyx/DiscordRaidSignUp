@@ -182,15 +182,6 @@
     border: 1px solid rgba(255, 204, 0, 0.35);
     white-space: nowrap;
   }
-  .badge-preferred {
-    font-size: 0.62rem;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: rgba(255, 193, 7, 0.15);
-    color: #e8b800;
-    border: 1px solid rgba(255, 193, 7, 0.3);
-    white-space: nowrap;
-  }
 </style>
 {% endblock %}
 
@@ -246,6 +237,7 @@
                title="Click to expand/collapse">
             <span>👤</span>
             <span class="text-muted flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+            {% if userGroup.is_tentative %}<span class="badge-tentative">❓</span>{% endif %}
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
 
@@ -253,7 +245,6 @@
             {% for charGroup in userGroup.characters %}
               {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
               {% set firstSpec = charGroup.specs[0] %}
-              {% set role_emojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
               <div class="char-card card p-2 mb-1"
                    draggable="true"
                    data-char-id="{{ firstSpec.character_id }}"
@@ -264,13 +255,6 @@
                    data-role="{{ firstSpec.role or '' }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
-                {% if charGroup.status == 'tentative' %}
-                <span class="badge-tentative ms-1">❓ Tentative</span>
-                {% endif %}
-                {% if charGroup.signup_type == 'prio_character' or charGroup.signup_type == 'prio_role' %}
-                <span class="badge-preferred ms-1">⭐ Preferred</span>
-                {% endif %}
-                {% if charGroup.specs | length > 1 %}
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
                   {% for s in charGroup.specs %}
                   <button type="button" draggable="false"
@@ -279,16 +263,10 @@
                           data-gs="{{ s.gearscore | int }}"
                           data-spec="{{ s.spec or '' }}"
                           onclick="selectSpec(this)">
-                    {{ s.spec or "?" }} {{ s.gearscore | int }}
+                    {% if s.is_prio %}⭐ {% endif %}{{ s.spec or "?" }} {{ s.gearscore | int }}
                   </button>
                   {% endfor %}
                 </div>
-                {% else %}
-                <small class="text-muted d-block">
-                  {% if firstSpec.role %}{{ role_emojis[firstSpec.role] or "" }}{% endif %}
-                  {{ firstSpec.spec or "?" }} – GS {{ firstSpec.gearscore | int }}
-                </small>
-                {% endif %}
               </div>
             {% endfor %}
           </div>
