@@ -33,32 +33,41 @@
       {% if raid.status == "open" %}
         {% if user_chars %}
         <form method="post" action="/raids/{{ raid.id }}/signup">
-          <div class="mb-2">
-            <label class="form-label small">Character</label>
-            <select name="character_id" class="form-select bg-dark text-light border-secondary">
-              {% for c in user_chars %}
-              <option value="{{ c.id }}"
-                {% if my_signup and my_signup.character_id == c.id %}selected{% endif %}>
-                {{ c.char_name }} ({{ c.realm }}) – {{ c.char_class or "?" }} GS {{ c.gearscore | int }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
           <div class="mb-3">
-            <label class="form-label small">Sign-up Type</label>
-            <select name="signup_type" class="form-select bg-dark text-light border-secondary">
-              <option value="fill" {% if my_signup and my_signup.signup_type == "fill" %}selected{% endif %}>Fill</option>
-              <option value="prio_role" {% if my_signup and my_signup.signup_type == "prio_role" %}selected{% endif %}>Prio Role</option>
-              <option value="prio_character" {% if my_signup and my_signup.signup_type == "prio_character" %}selected{% endif %}>Prio Character</option>
-            </select>
+            <label class="form-label small fw-bold">Select characters to sign up:</label>
+            {% for c in user_chars %}
+            {% set cid_str = c.id | string %}
+            {% set is_signed = my_signup_map[cid_str] is defined %}
+            {% set is_prio = is_signed and my_signup_map[cid_str].signup_type == "prio_character" %}
+            {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+            <div class="border border-secondary rounded p-2 mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox"
+                       name="character_ids" value="{{ c.id }}"
+                       id="char_{{ c.id }}"
+                       {% if is_signed %}checked{% endif %}>
+                <label class="form-check-label cls-{{ cls_key }}" for="char_{{ c.id }}">
+                  <span class="fw-bold">{{ c.char_name }}</span>
+                  <small class="text-muted ms-1">{{ c.char_class or "?" }} – {{ c.spec or "?" }} GS {{ c.gearscore | int }}</small>
+                </label>
+              </div>
+              <div class="form-check ms-3 mt-1">
+                <input class="form-check-input" type="checkbox"
+                       name="priority_ids" value="{{ c.id }}"
+                       id="prio_{{ c.id }}"
+                       {% if is_prio %}checked{% endif %}>
+                <label class="form-check-label text-warning small" for="prio_{{ c.id }}">⭐ Priority</label>
+              </div>
+            </div>
+            {% endfor %}
           </div>
           <div class="d-grid gap-2">
             <button type="submit" class="btn btn-wow">
-              {% if my_signup %}Update Sign-up{% else %}Sign Up{% endif %}
+              {% if my_signup_count > 0 %}Update Sign-up{% else %}Sign Up{% endif %}
             </button>
           </div>
         </form>
-        {% if my_signup %}
+        {% if my_signup_count > 0 %}
         <form method="post" action="/raids/{{ raid.id }}/withdraw" class="mt-2">
           <div class="d-grid">
             <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
@@ -73,9 +82,9 @@
         {% endif %}
       {% else %}
         <p class="text-muted">This raid is no longer accepting sign-ups.</p>
-        {% if my_signup %}
+        {% if my_signup_count > 0 %}
         <div class="alert alert-secondary p-2 small">
-          You are signed up as <strong>{{ my_signup.character.char_name }}</strong> ({{ my_signup.signup_type }}).
+          You are signed up with {{ my_signup_count }} character{{ 's' if my_signup_count != 1 else '' }}.
         </div>
         {% endif %}
       {% endif %}

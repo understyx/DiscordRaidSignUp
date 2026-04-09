@@ -26,10 +26,10 @@ router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const [raids] = await pool.query(
-    `SELECT r.*, COALESCE(s.signup_count, 0) AS signup_count
+    `SELECT r.*, COALESCE(s.player_count, 0) AS signup_count
      FROM raids r
      LEFT JOIN (
-       SELECT raid_id, COUNT(*) AS signup_count FROM signups GROUP BY raid_id
+       SELECT raid_id, COUNT(DISTINCT discord_user_id) AS player_count FROM signups GROUP BY raid_id
      ) s ON s.raid_id = r.id
      ORDER BY (r.status = 'open') DESC, r.date ASC`
   );
@@ -46,39 +46,6 @@ router.get('/', async (req, res) => {
   });
 });
 
-// GET /raids/create
-router.get('/create', (req, res) => {
-  if (!requireLogin(req, res)) return;
-
-  res.render('create_raid.html', {
-    flash: popFlash(req),
-    user: currentUser(req),
-  });
-});
-
-// POST /raids/create
-router.post('/create', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
-
-  const { name, raid_instance, date, description = '', max_size = 25 } = req.body;
-
-  const raidDate = new Date(date);
-  if (isNaN(raidDate.getTime())) {
-    req.session.flash = '❌ Invalid date format.';
-    return res.redirect('/raids/create');
-  }
-
-  const userId = req.session.user_id;
-  const [result] = await pool.query(
-    `INSERT INTO raids (name, date, description, raid_instance, max_size, status, created_by)
-     VALUES (?, ?, ?, ?, ?, 'open', ?)`,
-    [name, raidDate, description, raid_instance, parseInt(max_size), userId]
-  );
-
-  req.session.flash = `✅ Raid '${name}' created!`;
-  res.redirect(`/raids/${result.insertId}`);
-});
-
 // GET /raids/:raid_id
 router.get('/:raid_id', async (req, res) => {
   if (!requireLogin(req, res)) return;
@@ -89,35 +56,31 @@ router.get('/:raid_id', async (req, res) => {
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
   if (!raid) return res.redirect('/raids');
 
-  const [[{ signup_count }]] = await pool.query(
-    'SELECT COUNT(*) AS signup_count FROM signups WHERE raid_id = ?',
+  const [[{ player_count }]] = await pool.query(
+    'SELECT COUNT(DISTINCT discord_user_id) AS player_count FROM signups WHERE raid_id = ?',
     [raidId]
   );
-  raid.signup_count = signup_count;
+  raid.signup_count = player_count;
 
   const [userChars] = await pool.query(
     'SELECT * FROM characters WHERE discord_user_id = ?',
     [userId]
   );
 
-  const [[mySignupRow]] = await pool.query(
-    'SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role FROM signups s JOIN characters c ON s.character_id = c.id WHERE s.raid_id = ? AND s.discord_user_id = ?',
+  // Fetch ALL signups for this user in this raid (one per character)
+  const [mySignupRows] = await pool.query(
+    `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
+     FROM signups s JOIN characters c ON s.character_id = c.id
+     WHERE s.raid_id = ? AND s.discord_user_id = ?`,
     [raidId, userId]
   );
 
-  let mySignup = null;
-  if (mySignupRow) {
-    mySignup = {
-      ...mySignupRow,
-      character: {
-        id: mySignupRow.c_id,
-        char_name: mySignupRow.char_name,
-        realm: mySignupRow.realm,
-        char_class: mySignupRow.char_class,
-        spec: mySignupRow.spec,
-        gearscore: mySignupRow.gearscore,
-        role: mySignupRow.role,
-      },
+  // Build a map of character_id -> signup for easy template lookup
+  const mySignupMap = {};
+  for (const row of mySignupRows) {
+    mySignupMap[String(row.character_id)] = {
+      signup_type: row.signup_type,
+      status: row.status,
     };
   }
 
@@ -153,7 +116,8 @@ router.get('/:raid_id', async (req, res) => {
   res.render('raid_detail.html', {
     raid,
     user_chars: userChars,
-    my_signup: mySignup,
+    my_signup_map: mySignupMap,
+    my_signup_count: mySignupRows.length,
     grouped_signups: grouped,
     signup_types: ['fill', 'prio_role', 'prio_character'],
     flash: popFlash(req),
@@ -167,7 +131,6 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
-  const { character_id, signup_type = 'fill' } = req.body;
 
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
   if (!raid || raid.status !== 'open') {
@@ -175,23 +138,45 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
     return res.redirect(`/raids/${raidId}`);
   }
 
-  const validTypes = ['fill', 'prio_role', 'prio_character'];
-  const stype = validTypes.includes(signup_type) ? signup_type : 'fill';
+  // Support multi-select: character_ids[] and priority_ids[]
+  let characterIds = req.body.character_ids || req.body.character_id;
+  if (!Array.isArray(characterIds)) {
+    characterIds = characterIds ? [characterIds] : [];
+  }
+  characterIds = characterIds.map(id => parseInt(id)).filter(id => !isNaN(id));
 
-  const [[existing]] = await pool.query(
-    'SELECT id FROM signups WHERE raid_id = ? AND discord_user_id = ?',
-    [raidId, userId]
-  );
+  let priorityIds = req.body.priority_ids || [];
+  if (!Array.isArray(priorityIds)) {
+    priorityIds = [priorityIds];
+  }
+  const prioritySet = new Set(priorityIds.map(id => parseInt(id)));
 
-  if (existing) {
-    await pool.query(
-      "UPDATE signups SET character_id = ?, signup_type = ?, status = 'signed' WHERE id = ?",
-      [parseInt(character_id), stype, existing.id]
+  if (characterIds.length === 0) {
+    req.session.flash = '❌ Please select at least one character.';
+    return res.redirect(`/raids/${raidId}`);
+  }
+
+  // Verify all selected characters belong to this user
+  if (characterIds.length > 0) {
+    const placeholders = characterIds.map(() => '?').join(', ');
+    const [owned] = await pool.query(
+      `SELECT id FROM characters WHERE id IN (${placeholders}) AND discord_user_id = ?`,
+      [...characterIds, userId]
     );
-  } else {
+    if (owned.length !== characterIds.length) {
+      req.session.flash = '❌ Invalid character selection.';
+      return res.redirect(`/raids/${raidId}`);
+    }
+  }
+
+  // Delete all existing signups for this user in this raid, then re-insert
+  await pool.query('DELETE FROM signups WHERE raid_id = ? AND discord_user_id = ?', [raidId, userId]);
+
+  for (const charId of characterIds) {
+    const stype = prioritySet.has(charId) ? 'prio_character' : 'fill';
     await pool.query(
       "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status) VALUES (?, ?, ?, ?, 'signed')",
-      [raidId, userId, parseInt(character_id), stype]
+      [raidId, userId, charId, stype]
     );
   }
 
@@ -231,8 +216,11 @@ router.get('/:raid_id/manage', async (req, res) => {
   if (!raid) return res.redirect('/raids');
 
   const [allSignups] = await pool.query(
-    `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
-     FROM signups s JOIN characters c ON s.character_id = c.id
+    `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role,
+            du.username AS du_username, du.display_name AS du_display_name
+     FROM signups s
+     JOIN characters c ON s.character_id = c.id
+     LEFT JOIN discord_users du ON du.discord_user_id = s.discord_user_id
      WHERE s.raid_id = ?`,
     [raidId]
   );
@@ -255,7 +243,16 @@ router.get('/:raid_id/manage', async (req, res) => {
   for (const s of signups) {
     const uid = String(s.discord_user_id);
     if (!userSignupMap[uid]) {
-      userSignupMap[uid] = { discord_user_id: uid, characters: [] };
+      // Build a readable label: "username – display_name" or just username/id
+      let label;
+      if (s.du_username && s.du_display_name && s.du_display_name !== s.du_username) {
+        label = `${s.du_username} – ${s.du_display_name}`;
+      } else if (s.du_username) {
+        label = s.du_username;
+      } else {
+        label = uid;
+      }
+      userSignupMap[uid] = { discord_user_id: uid, display_label: label, characters: [] };
     }
     userSignupMap[uid].characters.push(s);
   }

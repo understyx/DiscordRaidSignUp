@@ -19,14 +19,14 @@
   <div class="col-md-4">
     <div class="card p-3 mb-3" style="min-height: 400px;">
       <h5 class="mb-3">📝 Sign-ups
-        <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ signups | length }} player{{ 's' if signups | length != 1 else '' }}</span>
+        <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}</span>
       </h5>
 
       {% for userGroup in signupsByUser %}
       <div class="user-group mb-3">
         <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1">
           <span>👤</span>
-          <span class="text-muted font-monospace" style="font-size:0.78rem;" aria-label="Discord user ID">{{ userGroup.discord_user_id | discordId }}</span>
+          <span class="text-muted" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
         </div>
 
         {% for s in userGroup.characters %}
