@@ -464,7 +464,26 @@ router.patch('/:raid_id/manage', express.json(), async (req, res) => {
   const body = req.body;
 
   if (!Array.isArray(body) || body.length === 0) {
-    return res.json({ ok: true, entries: [] });
+    // Return current composition even for empty payloads
+    const [emptyRows] = await pool.query(
+      `SELECT co.role_slot, co.character_id, co.placeholder_text,
+              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+       FROM compositions co
+       LEFT JOIN characters c ON co.character_id = c.id
+       WHERE co.raid_id = ? AND co.comp_number = ?
+       ORDER BY co.role_slot`,
+      [raidId, compNumber]
+    );
+    const emptyEntries = emptyRows.map(r => ({
+      role_slot: r.role_slot,
+      character_id: r.character_id ? String(r.character_id) : null,
+      placeholder_text: r.placeholder_text || null,
+      char_name: r.char_name || null,
+      char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
+      spec: r.spec || null,
+      discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+    }));
+    return res.json({ ok: true, saved: [], entries: emptyEntries });
   }
 
   // Basic validation
