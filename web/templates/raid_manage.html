@@ -439,6 +439,7 @@
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
+                   data-all-specs="{{ charGroup.specs | map(attribute='spec') | select | join(',') }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
@@ -854,8 +855,8 @@
     document.querySelectorAll('.user-group').forEach(group => {
       let anyVisible = false;
       group.querySelectorAll('.char-card').forEach(card => {
-        const cardRole = specToRole(card.dataset.spec || '');
-        const show = role === 'all' || cardRole === role;
+        const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
+        const show = role === 'all' || allSpecs.some(s => specToRole(s) === role);
         card.style.display = show ? '' : 'none';
         if (show) anyVisible = true;
       });
