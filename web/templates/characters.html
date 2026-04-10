@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}My Characters – RaidBot{% endblock %}
+{% block content %}
+<h2 class="mb-4">⚔️ My Characters</h2>
+
+{% if chars %}
+<div class="table-responsive mb-3">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Character</th>
+        <th>Realm</th>
+        <th>Class</th>
+        <th>Spec(s)</th>
+        <th>GS</th>
+        <th>Last Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in chars %}
+      {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+      <tr>
+        <td class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</td>
+        <td class="text-muted">{{ c.realm }}</td>
+        <td class="cls-{{ cls_key }}">{{ c.char_class or "—" }}</td>
+        <td>{{ c.spec or "—" }}</td>
+        <td>{{ c.gearscore | int }}</td>
+        <td>{{ c.last_updated | dateformat("%Y-%m-%d") if c.last_updated else "—" }}</td>
+        <td class="text-end">
+          <div class="d-flex gap-2 justify-content-end">
+            <form method="post" action="/characters/register">
+              <input type="hidden" name="char_name" value="{{ c.char_name }}" />
+              <input type="hidden" name="realm" value="{{ c.realm }}" />
+              <button type="submit" class="btn btn-sm btn-outline-secondary" title="Refresh from armory">🔄</button>
+            </form>
+            <form method="post" action="/characters/{{ c.id }}/delete"
+                  onsubmit="return confirm('Delete {{ c.char_name }}?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">✕</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card p-4 text-center text-muted mb-3">
+  No characters registered yet. Add one below!
+</div>
+{% endif %}
+
+<button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm" aria-expanded="false">
+  ➕ Add new character
+</button>
+
+<div class="collapse mt-3" id="addCharForm">
+  <div class="card p-3">
+    <h6 class="mb-3">Register / Refresh Character</h6>
+    <form method="post" action="/characters/register" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small">Character Name</label>
+        <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
+               required maxlength="50" placeholder="e.g. Arthas" />
+      </div>
+      <div class="col-auto">
+        <label class="form-label small">Realm</label>
+        <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
+               value="Icecrown" maxlength="50" />
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-wow">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
