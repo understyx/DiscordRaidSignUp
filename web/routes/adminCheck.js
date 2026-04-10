@@ -12,7 +12,7 @@
  */
 
 const fetch = require('node-fetch');
-const pool = require('./db');
+const pool = require('../db');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 

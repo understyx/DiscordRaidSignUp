@@ -558,8 +558,8 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 // Body: array of { role_slot, slot_role?, character_id? | placeholder_text? | clear: true }
 // Only the slots present in the payload are touched; all other slots are left as-is.
 router.patch('/:raid_id/manage', express.json(), async (req, res) => {
-  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
   if (!req.session.user_id) return res.status(401).json({ ok: false });
+  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
@@ -678,8 +678,8 @@ router.patch('/:raid_id/manage', express.json(), async (req, res) => {
 
 // GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
 router.get('/:raid_id/manage/json', async (req, res) => {
-  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
   if (!req.session.user_id) return res.status(401).json({ ok: false });
+  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidId = parseInt(req.params.raid_id);
   const compNumber = parseInt(req.query.comp) || 1;
