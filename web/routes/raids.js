@@ -78,6 +78,20 @@ function requireLogin(req, res) {
   return true;
 }
 
+function requireAdmin(req, res) {
+  if (!req.session.user_id) {
+    res.redirect('/auth/login');
+    return false;
+  }
+  // is_admin defaults to true when undefined (e.g. old sessions before feature was added)
+  if (req.session.is_admin === false) {
+    req.session.flash = '❌ You do not have permission to perform this action.';
+    res.redirect('/raids');
+    return false;
+  }
+  return true;
+}
+
 function popFlash(req) {
   const msg = req.session.flash || null;
   delete req.session.flash;
@@ -85,7 +99,11 @@ function popFlash(req) {
 }
 
 function currentUser(req) {
-  return { id: req.session.user_id, username: req.session.username };
+  return {
+    id: req.session.user_id,
+    username: req.session.username,
+    is_admin: req.session.is_admin !== false,
+  };
 }
 
 // GET /raids
@@ -308,7 +326,7 @@ router.post('/:raid_id/withdraw', async (req, res) => {
 
 // GET /raids/:raid_id/manage
 router.get('/:raid_id/manage', async (req, res) => {
-  if (!requireLogin(req, res)) return;
+  if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
 
@@ -468,7 +486,7 @@ router.get('/:raid_id/manage', async (req, res) => {
 
 // POST /raids/:raid_id/manage (JSON body) — full-state save used by manual "Save & Reload"
 router.post('/:raid_id/manage', express.json(), async (req, res) => {
-  if (!requireLogin(req, res)) return;
+  if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
@@ -541,6 +559,7 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
 // Only the slots present in the payload are touched; all other slots are left as-is.
 router.patch('/:raid_id/manage', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
+  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
@@ -660,6 +679,7 @@ router.patch('/:raid_id/manage', express.json(), async (req, res) => {
 // GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
 router.get('/:raid_id/manage/json', async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
+  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidId = parseInt(req.params.raid_id);
   const compNumber = parseInt(req.query.comp) || 1;
@@ -761,7 +781,7 @@ router.get('/:raid_id/comp', async (req, res) => {
 
 // POST /raids/:raid_id/lock
 router.post('/:raid_id/lock', async (req, res) => {
-  if (!requireLogin(req, res)) return;
+  if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
@@ -776,7 +796,7 @@ router.post('/:raid_id/lock', async (req, res) => {
 
 // POST /raids/:raid_id/post_comp
 router.post('/:raid_id/post_comp', async (req, res) => {
-  if (!requireLogin(req, res)) return;
+  if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
   const compNumber = req.query.comp ? parseInt(req.query.comp) : null;

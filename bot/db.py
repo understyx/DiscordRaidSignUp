@@ -92,6 +92,18 @@ def _run_migrations():
 
 _run_migrations()
 
+# Ensure guild_admin_roles table exists (not covered by create_all for pre-existing DBs)
+with engine.begin() as _conn:
+    _conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS guild_admin_roles (
+            guild_id BIGINT NOT NULL,
+            role_id  BIGINT NOT NULL,
+            PRIMARY KEY (guild_id, role_id)
+        )
+        """
+    ))
+
 
 def get_session():
     return SessionLocal()

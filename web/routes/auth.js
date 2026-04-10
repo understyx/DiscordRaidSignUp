@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
 const pool = require('../db');
+const { resolveIsAdmin } = require('./adminCheck');
 
 const router = express.Router();
 
@@ -66,6 +67,13 @@ router.get('/callback', async (req, res) => {
     req.session.username = userData.username;
     req.session.avatar = userData.avatar || null;
     req.session.flash = `Welcome, ${userData.username}!`;
+
+    // Determine and cache admin status for this session.
+    try {
+      req.session.is_admin = await resolveIsAdmin(userData.id);
+    } catch (_adminErr) {
+      req.session.is_admin = true; // fail open on error
+    }
 
     // Cache Discord user info in the database for display in raid management
     try {
