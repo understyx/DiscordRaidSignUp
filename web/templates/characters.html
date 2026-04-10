@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}My Characters – RaidBot{% endblock %}
+{% block extra_head %}
+<style>
+  .row-group-alt { --bs-table-bg: var(--bg-card-2); }
+</style>
+{% endblock %}
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
 
@@ -19,10 +24,17 @@
     <tbody>
       {% for group in charGroups %}
       {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+      {% set alt = "row-group-alt" if loop.index is even else "" %}
+      {% set group_id = group.rows[0].id %}
       {% for row in group.rows %}
-      <tr>
+      <tr class="{{ alt }}">
         {% if loop.index == 1 %}
-        <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.name }}</td>
+        <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
+          {{ group.name }}
+          <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
+                  data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
+                  title="Add Spec">➕</button>
+        </td>
         <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
         <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
         {% endif %}
@@ -50,6 +62,26 @@
         </td>
       </tr>
       {% endfor %}
+      <tr class="{{ alt }}">
+        <td colspan="6" class="p-0 border-0">
+          <div class="collapse" id="add-spec-{{ group_id }}">
+            <div class="p-2">
+              <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
+                <input type="hidden" name="char_name" value="{{ group.name }}" />
+                <input type="hidden" name="realm" value="{{ group.realm }}" />
+                <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
+                <input type="text" name="spec"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:120px" placeholder="New spec" maxlength="50" />
+                <input type="text" name="gearscore"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:80px" placeholder="GS" maxlength="10" />
+                <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
+              </form>
+            </div>
+          </div>
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
