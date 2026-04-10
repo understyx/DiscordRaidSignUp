@@ -798,33 +798,12 @@ class SignupCog(commands.Cog):
             try:
                 _upsert_discord_user(session, message.author)
 
-                # Build a map of char_name_lower -> set of specs present in this message.
-                # Used to remove stale signups for specs the player is no longer posting.
-                new_specs_by_char: dict[str, set[str]] = {}
-                for entry in parsed:
-                    key = entry["char_name"].lower()
-                    new_specs_by_char.setdefault(key, set()).add(entry["spec"].lower())
-
-                # Remove existing signups for this raid+user where the spec is no longer
-                # being posted (e.g. player switched from Fury to Arms).
-                for char_name_lower, new_specs in new_specs_by_char.items():
-                    stale_chars = (
-                        session.query(Character)
-                        .filter(
-                            Character.discord_user_id == discord_user_id,
-                            Character.char_name.ilike(char_name_lower),
-                            Character.is_deleted == False,  # noqa: E712
-                        )
-                        .all()
-                    )
-                    for stale_char in stale_chars:
-                        char_spec = (stale_char.spec or "").lower()
-                        if char_spec not in new_specs:
-                            session.query(Signup).filter_by(
-                                raid_id=raid_id,
-                                discord_user_id=discord_user_id,
-                                character_id=stale_char.id,
-                            ).delete()
+                # Remove ALL existing signups for this user+raid so the new message
+                # fully overwrites the old sign-up instead of merging with it.
+                session.query(Signup).filter_by(
+                    raid_id=raid_id,
+                    discord_user_id=discord_user_id,
+                ).delete()
 
                 # Accumulate spec info per char_name for grouped summary display
                 char_spec_info: dict[str, dict] = {}
