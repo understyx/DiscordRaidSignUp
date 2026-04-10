@@ -49,6 +49,26 @@ function compTabLabel(compNumber, compLabels) {
   return (compLabels && compLabels[compNumber]) || `Raid ${compNumber}`;
 }
 
+/**
+ * Collect unique Discord user IDs (in order of appearance) from all role groups.
+ */
+function collectUniqueUserIds(groups) {
+  const seen = new Set();
+  const ids = [];
+  for (const roleKey of ['tank', 'healer', 'dps']) {
+    for (const e of groups[roleKey] || []) {
+      if (!e.is_placeholder && e.character && e.character.discord_user_id) {
+        const id = e.character.discord_user_id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          ids.push(id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
 function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
   const label = compTabLabel(compNumber, compLabels);
   const compLabel = totalComps > 1 ? ` – ${label}` : '';
@@ -68,7 +88,8 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
     const lines = entries.map(e => {
       if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
       const c = e.character;
-      return `**${c.char_name}** — ${c.spec || c.char_class || '?'} (${Math.floor(c.gearscore || 0)} GS)`;
+      const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
+      return `**${c.char_name}** — ${c.spec || c.char_class || '?'}${mention}`;
     });
     fields.push({
       name: `${roleLabel} [${entries.length}]`,
@@ -77,7 +98,12 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
     });
   }
 
+  // Collect unique user IDs so pings in the message content trigger real notifications.
+  const allIds = collectUniqueUserIds(groups);
+  const content = allIds.map(id => `<@${id}>`).join(' ');
+
   return {
+    content: content || undefined,
     embeds: [
       {
         title: `📋 ${raid.name}${compLabel}`,
@@ -919,7 +945,7 @@ router.post('/:raid_id/post_comp', async (req, res) => {
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
           `SELECT co.slot_role, co.character_id, co.placeholder_text,
-                  c.char_name, c.char_class, c.spec, c.gearscore, c.role
+                  c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
            WHERE co.raid_id = ? AND co.comp_number = ?
@@ -936,8 +962,8 @@ router.post('/:raid_id/post_comp', async (req, res) => {
               char_name: comp.char_name,
               char_class: comp.char_class,
               spec: comp.spec,
-              gearscore: comp.gearscore,
               role: comp.role,
+              discord_user_id: comp.char_discord_user_id ? String(comp.char_discord_user_id) : null,
             } : null,
           };
           const roleKey = comp.slot_role || 'dps';
