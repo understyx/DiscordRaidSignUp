@@ -372,6 +372,12 @@ router.get('/:raid_id/manage', async (req, res) => {
     },
   }));
 
+  // Build a direct character_id → signup lookup for the roster slot rendering
+  const signupByCharId = {};
+  for (const s of signups) {
+    signupByCharId[String(s.character.id)] = s;
+  }
+
   // Group signups by discord user, then by char_name within each user
   const userSignupMap = {};
   for (const s of signups) {
@@ -518,6 +524,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     raid,
     signups,
     signupsByUser,
+    signup_by_char_id: signupByCharId,
     slots,
     comp_map: compMap,
     placeholder_map: placeholderMap,
