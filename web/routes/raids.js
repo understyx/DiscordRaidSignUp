@@ -472,6 +472,19 @@ router.get('/:raid_id/manage', async (req, res) => {
   // Fetch custom comp labels
   const compLabels = await fetchCompLabels(raidId);
 
+  // Build map of character_id -> [comp_numbers] across ALL comps for this raid.
+  // Used by the left-panel to show which characters are already placed.
+  const [allCompAssignments] = await pool.query(
+    'SELECT character_id, comp_number FROM compositions WHERE raid_id = ? AND character_id IS NOT NULL',
+    [raidId]
+  );
+  const charsInComps = {};
+  for (const row of allCompAssignments) {
+    const cid = String(row.character_id);
+    if (!charsInComps[cid]) charsInComps[cid] = [];
+    charsInComps[cid].push(row.comp_number);
+  }
+
   // Build per-comp role-count summaries for the post confirmation modal
   const compSummaries = {};
   for (const cn of compNumbers) {
@@ -508,6 +521,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     current_comp: currentComp,
     next_comp: nextComp,
     comp_summaries: compSummaries,
+    chars_in_comps: charsInComps,
     flash: popFlash(req),
     user: currentUser(req),
   });

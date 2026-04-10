@@ -204,6 +204,23 @@
     outline: none;
   }
 
+  /* ── In-comp indicator for left-panel character cards ────────────────── */
+  .char-card.in-comp {
+    border-color: var(--wow-gold) !important;
+    opacity: 0.75;
+  }
+  .char-in-comp-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    color: var(--wow-gold);
+    border: 1px solid rgba(201, 170, 113, 0.4);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 5px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
   /* ── Signup status badges ────────────────────────────────────────────── */
   .badge-tentative {
     font-size: 0.62rem;
@@ -537,6 +554,63 @@
   }
   applyInitialTints();
 
+  /* ── In-comp status indicators for the left-panel character cards ────── */
+  // Returns the set of character IDs currently assigned in the visible roster slots.
+  function getAssignedCharIdsFromDom() {
+    const ids = new Set();
+    document.querySelectorAll('.assigned-char[data-char-id]').forEach(el => {
+      ids.add(el.dataset.charId);
+    });
+    return ids;
+  }
+
+  function updateCharInCompStatus() {
+    const currentCompIds = getAssignedCharIdsFromDom();
+
+    document.querySelectorAll('.char-card').forEach(card => {
+      // Collect all character IDs that belong to this card (one per spec).
+      const allCharIds = new Set();
+      card.querySelectorAll('.spec-btn[data-char-id]').forEach(btn => allCharIds.add(btn.dataset.charId));
+      if (card.dataset.charId) allCharIds.add(card.dataset.charId);
+
+      // Which comp numbers is this card's character already assigned to?
+      const assignedComps = [];
+      for (const cid of allCharIds) {
+        // Current comp: check live DOM state (more up-to-date than server data).
+        if (currentCompIds.has(cid) && !assignedComps.includes(CURRENT_COMP)) {
+          assignedComps.push(CURRENT_COMP);
+        }
+        // Other comps: use the server-rendered snapshot.
+        const serverComps = CHARS_IN_COMPS[cid] || [];
+        for (const cn of serverComps) {
+          if (cn !== CURRENT_COMP && !assignedComps.includes(cn)) {
+            assignedComps.push(cn);
+          }
+        }
+      }
+      assignedComps.sort((a, b) => a - b);
+
+      let badge = card.querySelector('.char-in-comp-badge');
+      if (assignedComps.length > 0) {
+        card.classList.add('in-comp');
+        const labels = assignedComps.map(cn => compTabLabel(cn)).join(', ');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'char-in-comp-badge';
+          // Insert after the character-name span (first element child).
+          const nameSpan = card.querySelector('span.fw-bold');
+          if (nameSpan) nameSpan.after(badge);
+          else card.prepend(badge);
+        }
+        badge.textContent = '✓ ' + labels;
+        badge.title = 'Assigned to: ' + labels;
+      } else {
+        card.classList.remove('in-comp');
+        if (badge) badge.remove();
+      }
+    });
+  }
+
   // Called when a role icon button is clicked — updates data-slot-role, border colour, and slot label
   // skipDirty is set internally when the call comes from a drop or remote-state sync
   function setSlotRole(btn, role, skipDirty) {
@@ -699,6 +773,7 @@
     draggedSpec          = null;
     draggedRole          = null;
     addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, character_id: finalCharId });
+    updateCharInCompStatus();
   }
 
   /* ── Clear a single assigned-char div ─────────────────────────────── */
@@ -718,6 +793,7 @@
     if (!applyingRemote && slot) {
       addDirtyChange(slot, { clear: true });
     }
+    if (!applyingRemote) updateCharInCompStatus();
   }
 
   function clearSlot(btn) {
@@ -913,6 +989,7 @@
     } finally {
       applyingRemote = false;
     }
+    updateCharInCompStatus();
   }
 
   function pollRemoteState() {
@@ -943,6 +1020,10 @@
   const CURRENT_COMP = {{ current_comp }};
   const COMP_SUMMARIES = {{ comp_summaries | tojson | safe }};
   const COMP_LABELS = {{ comp_labels | tojson | safe }};
+  // character_id (string) -> [comp_numbers] — populated server-side at page load
+  const CHARS_IN_COMPS = {{ chars_in_comps | tojson | safe }};
+  // Refresh in-comp badges now that all constants are available.
+  updateCharInCompStatus();
 
   function compTabLabel(cn) {
     return COMP_LABELS[cn] || ('Raid ' + cn);
