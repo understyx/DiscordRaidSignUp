@@ -162,11 +162,12 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
   }
 
   const conn = await pool.getConnection();
+  let createdUsers = 0;
+  let totalChars = 0;
   try {
     const [[raid]] = await conn.query('SELECT id FROM raids WHERE id = ?', [raidId]);
     if (!raid) {
       req.session.flash = '❌ Raid not found.';
-      conn.release();
       return res.redirect('/raids');
     }
 
@@ -174,7 +175,6 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
 
     const NUM_USERS = 25;
     const usedIds = new Set();
-    let totalChars = 0;
 
     for (let i = 0; i < NUM_USERS; i++) {
       const fakeId = _randomFakeId(usedIds);
@@ -186,6 +186,7 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
          ON DUPLICATE KEY UPDATE username = VALUES(username), display_name = VALUES(display_name), updated_at = NOW()`,
         [fakeId, username, username]
       );
+      createdUsers++;
 
       const charCount = _randInt(2, 10);
       for (let j = 0; j < charCount; j++) {
@@ -215,12 +216,12 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
     await conn.commit();
   } catch (err) {
     await conn.rollback();
-    conn.release();
     throw err;
+  } finally {
+    conn.release();
   }
-  conn.release();
 
-  req.session.flash = `✅ Seeded ${NUM_USERS} fake players with ${totalChars} characters signed up for this raid.`;
+  req.session.flash = `✅ Seeded ${createdUsers} fake players with ${totalChars} total character sign-ups for this raid.`;
   res.redirect(`/raids/${raidId}/manage`);
 });
 
