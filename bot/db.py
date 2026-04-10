@@ -55,6 +55,40 @@ def _run_migrations():
                     "ALTER TABLE compositions ADD UNIQUE KEY uq_comp_slot (raid_id, comp_number, role_slot)"
                 ))
 
+            # Migration 005: absolute slot system
+            # Add slot_role column, convert role_slot to "slot_N" format,
+            # and deduplicate any double-booked slot numbers.
+            if "slot_role" not in comp_columns:
+                conn.execute(text(
+                    "ALTER TABLE compositions"
+                    " ADD COLUMN slot_role VARCHAR(20) NOT NULL DEFAULT 'dps' AFTER role_slot"
+                ))
+                # Populate slot_role from the role prefix in the existing role_slot values.
+                # All rows have slot_role='dps' (the column default) at this point,
+                # so the WHERE clause matches everything and every row is correctly set.
+                conn.execute(text(
+                    "UPDATE compositions"
+                    " SET slot_role = SUBSTRING_INDEX(role_slot, '_', 1)"
+                    " WHERE role_slot NOT LIKE 'slot\\_%'"
+                ))
+                # Remove duplicate slot numbers: keep the row with the lowest id
+                # for each (raid_id, comp_number, slot_number).
+                conn.execute(text(
+                    "DELETE c1 FROM compositions c1"
+                    " JOIN compositions c2"
+                    "   ON  c2.raid_id     = c1.raid_id"
+                    "   AND c2.comp_number = c1.comp_number"
+                    "   AND SUBSTRING_INDEX(c2.role_slot, '_', -1)"
+                    "     = SUBSTRING_INDEX(c1.role_slot, '_', -1)"
+                    "   AND c2.id < c1.id"
+                ))
+                # Convert role_slot values from "role_N" to "slot_N" format
+                conn.execute(text(
+                    "UPDATE compositions"
+                    " SET role_slot = CONCAT('slot_', SUBSTRING_INDEX(role_slot, '_', -1))"
+                    " WHERE role_slot NOT LIKE 'slot\\_%'"
+                ))
+
 
 _run_migrations()
 
