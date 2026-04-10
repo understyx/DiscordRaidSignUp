@@ -316,10 +316,10 @@ function SetDisplay(number) {
             SetupDisplay(["melee", "players", "vanquisher", "leather", "raid_buff_01", "raid_buff_07", "offensive_debuff_01", "reduction_debuff_02", "reduction_debuff_03", "reduction_debuff_04", "resource_return_08", "health_return_01", "defensive_dispel_02", "defensive_dispel_04"])
             break;
         case "04": //Restoration
-            SetupDisplay(["heal", "players", "vanquisher", "leather", "raid_buff_01", "resource_return_07", "resource_return_08", "defensive_dispel_02", "defensive_dispel_04", "reduction_debuff_02"])
+            SetupDisplay(["heal", "players", "vanquisher", "leather", "raid_buff_01", "resource_return_07", "resource_return_08", "defensive_dispel_02", "defensive_dispel_04"])
             break;
         case "05": //Beast Mastery
-            SetupDisplay(["range", "players", "protector", "mail", "raid_buff_09", "offensive_dispel_01", "offensive_dispel_02", "offensive_debuff_01", "reduction_debuff_01", "reduction_debuff_02", "reduction_debuff_05"])
+            SetupDisplay(["range", "players", "protector", "mail", "raid_buff_09", "offensive_dispel_01", "offensive_dispel_02", "reduction_debuff_02", "reduction_debuff_04", "reduction_debuff_05"])
             break;
         case "06": // Marksmanship
             SetupDisplay(["range", "players", "protector", "mail", "raid_buff_06", "offensive_dispel_01", "offensive_dispel_02", "reduction_debuff_02", "reduction_debuff_05"])
@@ -373,13 +373,13 @@ function SetDisplay(number) {
             SetupDisplay(["heal", "players", "protector", "mail", "raid_buff_04", "raid_buff_11", "raid_buff_13", "raid_buff_15", "offensive_dispel_01", "resource_return_03", "resource_return_04", "defensive_dispel_02", "defensive_dispel_03", "defensive_dispel_04"])
             break;
         case "23": // Affliction 
-            SetupDisplay(["range", "players", "conqueror", "cloth", "raid_buff_12", "raid_buff_16", "offensive_debuff_04", "offensive_debuff_06", "reduction_debuff_02", "reduction_debuff_04"])
+            SetupDisplay(["range", "players", "conqueror", "cloth", "raid_buff_12", "raid_buff_16", "offensive_dispel_01", "offensive_debuff_04", "offensive_debuff_06", "reduction_debuff_02", "reduction_debuff_04"])
             break;
         case "24": // Demonology
             SetupDisplay(["range", "players", "conqueror", "cloth", "raid_buff_13", "offensive_debuff_04", "offensive_debuff_06", "reduction_debuff_02", "reduction_debuff_04"])
             break;
         case "25": // Destruction 
-            SetupDisplay(["range", "players", "conqueror", "cloth", "raid_buff_18", "offensive_debuff_06", "reduction_debuff_02", "reduction_debuff_04", "resource_return_02"])
+            SetupDisplay(["range", "players", "conqueror", "cloth", "raid_buff_17", "offensive_debuff_06", "reduction_debuff_02", "reduction_debuff_04", "resource_return_02"])
             break;
         case "26": // Arms
             SetupDisplay(["melee", "players", "protector", "plate", "raid_buff_05", "raid_buff_18", "offensive_debuff_01", "offensive_debuff_02", "reduction_debuff_01", "reduction_debuff_03", "reduction_debuff_04"])
