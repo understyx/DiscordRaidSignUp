@@ -1,6 +1,13 @@
 const express = require('express');
 const fetch = require('node-fetch');
+const path = require('path');
+const fs = require('fs');
 const pool = require('../db');
+
+// Load WotLK buff definitions once at startup
+const WOTLK_BUFFS = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', 'wotlk_buffs.json'), 'utf8')
+);
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
@@ -536,6 +543,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     next_comp: nextComp,
     comp_summaries: compSummaries,
     chars_in_comps: charsInComps,
+    wotlk_buffs: WOTLK_BUFFS,
     flash: popFlash(req),
     user: currentUser(req),
   });
