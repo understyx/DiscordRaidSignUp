@@ -750,7 +750,7 @@ router.put('/:raid_id/comp_label', express.json(), async (req, res) => {
   const raidId = parseInt(req.params.raid_id);
   const { comp_number, label } = req.body || {};
 
-  if (!comp_number || typeof label !== 'string') {
+  if (comp_number == null || typeof label !== 'string') {
     return res.status(400).json({ ok: false, error: 'comp_number and label are required' });
   }
 

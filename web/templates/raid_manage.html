@@ -1012,17 +1012,35 @@
   });
 
   /* ── Comp tab inline rename ───────────────────────────────────────── */
+  function buildTabDOM(labelText) {
+    // Build the tab's inner DOM safely — no innerHTML with user content
+    const span = document.createElement('span');
+    span.id = 'activeTabLabel';
+    span.textContent = labelText;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'comp-tab-rename-btn';
+    btn.title = 'Rename this comp tab';
+    btn.textContent = '✏️';
+    btn.addEventListener('click', startTabRename);
+    return [span, btn];
+  }
+
   function startTabRename() {
     const tab = document.getElementById('activeCompTab');
     const labelEl = document.getElementById('activeTabLabel');
     const currentLabel = labelEl.textContent.trim();
 
-    // Swap label + button for an input
-    tab.innerHTML =
-      `<input id="tabRenameInput" class="comp-tab-rename-input" type="text"
-              maxlength="100" value="${currentLabel.replace(/"/g, '&quot;')}"
-              title="Enter a name and press Enter, or Escape to cancel">`;
-    const input = document.getElementById('tabRenameInput');
+    // Swap label + button for an input, using DOM API to avoid XSS
+    tab.replaceChildren();
+    const input = document.createElement('input');
+    input.id = 'tabRenameInput';
+    input.className = 'comp-tab-rename-input';
+    input.type = 'text';
+    input.maxLength = 100;
+    input.value = currentLabel;
+    input.title = 'Enter a name and press Enter, or Escape to cancel';
+    tab.appendChild(input);
     input.focus();
     input.select();
 
@@ -1038,20 +1056,16 @@
         if (data.ok) {
           COMP_LABELS[CURRENT_COMP] = data.label || null;
         }
-      } catch (_) {}
-      const finalLabel = (COMP_LABELS[CURRENT_COMP]) || ('Raid ' + CURRENT_COMP);
-      tab.innerHTML =
-        `<span id="activeTabLabel">${finalLabel}</span>` +
-        `<button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>`;
+      } catch (err) {
+        console.error('[comp_label] rename failed:', err);
+      }
+      const finalLabel = COMP_LABELS[CURRENT_COMP] || ('Raid ' + CURRENT_COMP);
+      tab.replaceChildren(...buildTabDOM(finalLabel));
     }
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-      if (e.key === 'Escape') {
-        tab.innerHTML =
-          `<span id="activeTabLabel">${currentLabel}</span>` +
-          `<button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>`;
-      }
+      if (e.key === 'Escape') { tab.replaceChildren(...buildTabDOM(currentLabel)); }
     });
     input.addEventListener('blur', () => {
       // Only commit if the input is still present (not already replaced by Escape)
