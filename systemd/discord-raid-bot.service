@@ -1,0 +1,21 @@
+[Unit]
+Description=Discord Raid Sign-Up Bot
+After=network-online.target mysql.service mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Change User/Group to whichever system user owns the app files
+User=raidbot
+Group=raidbot
+WorkingDirectory=/opt/DiscordRaidSignUp
+EnvironmentFile=/opt/DiscordRaidSignUp/.env
+ExecStart=/opt/DiscordRaidSignUp/venv/bin/python -m bot.main
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discord-raid-bot
+
+[Install]
+WantedBy=multi-user.target

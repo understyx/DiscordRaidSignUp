@@ -126,6 +126,63 @@ The web app will be available at **http://localhost:8000**.
 
 ---
 
+## Running as systemd Services (recommended for servers)
+
+The `systemd/` directory contains service unit files and an install script so
+both the bot and web server are managed by systemd — they will start at boot,
+restart automatically on failure, and log to the journal.
+
+### Prerequisites
+
+- The app files must be deployed somewhere on the host (e.g. `/opt/DiscordRaidSignUp`).
+- A dedicated system user should own the files (default: `raidbot`).
+  ```bash
+  sudo useradd --system --no-create-home --shell /usr/sbin/nologin raidbot
+  sudo chown -R raidbot:raidbot /opt/DiscordRaidSignUp
+  ```
+- Python virtual environment must exist at `<APP_DIR>/venv`:
+  ```bash
+  python3 -m venv /opt/DiscordRaidSignUp/venv
+  /opt/DiscordRaidSignUp/venv/bin/pip install -r /opt/DiscordRaidSignUp/requirements.txt
+  ```
+- Node.js dependencies must be installed:
+  ```bash
+  cd /opt/DiscordRaidSignUp/web && npm install --production
+  ```
+- The `.env` file must be present at `<APP_DIR>/.env`.
+
+### Install
+
+Run the install script as root (or via `sudo`):
+
+```bash
+sudo bash /opt/DiscordRaidSignUp/systemd/install.sh \
+  --app-dir /opt/DiscordRaidSignUp \
+  --user raidbot
+```
+
+This copies both service files to `/etc/systemd/system/`, enables them to
+start at boot, and starts them immediately.
+
+### Common management commands
+
+```bash
+# Check status
+systemctl status discord-raid-bot
+systemctl status discord-raid-web
+
+# Start / stop / restart
+sudo systemctl start  discord-raid-bot discord-raid-web
+sudo systemctl stop   discord-raid-bot discord-raid-web
+sudo systemctl restart discord-raid-bot discord-raid-web
+
+# Follow live logs
+journalctl -u discord-raid-bot -f
+journalctl -u discord-raid-web -f
+```
+
+---
+
 ## Running with Docker Compose
 
 If you prefer containers, Docker Compose is also supported:
@@ -169,6 +226,10 @@ docker compose exec bot alembic upgrade head
 │   ├── templates/
 │   ├── db.js
 │   └── server.js
+├── systemd/              # systemd service files + install script
+│   ├── discord-raid-bot.service
+│   ├── discord-raid-web.service
+│   └── install.sh
 ├── .env.example          # Environment variable template
 ├── docker-compose.yml
 ├── Dockerfile.bot
