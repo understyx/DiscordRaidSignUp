@@ -3,9 +3,9 @@
 {% block content %}
 <div class="mb-4 d-flex justify-content-between align-items-center">
   <h2>⚔️ Upcoming Raids</h2>
-  {% if user.is_admin %}
-  <form method="post" action="/admin/seed-fake-players" onsubmit="return confirm('Seed 25 fake players with 2–10 characters each?');">
-    <button type="submit" class="btn btn-sm btn-outline-secondary">🧪 Seed Fake Players</button>
+  {% if user.is_admin and dev_mode %}
+  <form method="post" action="/admin/seed-fake-players" onsubmit="return confirm('Seed 25 fake players with 2–10 characters each (DB only, no raid sign-ups)?');">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">🧪 Seed Fake Players (DB)</button>
   </form>
   {% endif %}
 </div>

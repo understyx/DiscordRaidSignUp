@@ -333,6 +333,12 @@
         <form method="post" action="/raids/{{ raid.id }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">
           <button type="button" class="btn btn-info btn-sm" onclick="showPostConfirmModal()">📋 Finalize &amp; Post</button>
         </form>
+        {% if dev_mode %}
+        <form method="post" action="/admin/seed-fake-signups/{{ raid.id }}" class="d-inline"
+              onsubmit="return confirm('Seed 25 fake players with 2–10 characters each and sign them all up for this raid?');">
+          <button type="submit" class="btn btn-outline-secondary btn-sm ms-2">🧪 Seed Fake Signups</button>
+        </form>
+        {% endif %}
       </div>
     </div>
     {# ── Comp tabs ──────────────────────────────────────────────────── #}

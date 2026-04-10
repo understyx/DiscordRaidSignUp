@@ -146,4 +146,82 @@ router.post('/seed-fake-players', async (req, res) => {
   res.redirect('/raids');
 });
 
+// POST /admin/seed-fake-signups/:raid_id
+router.post('/seed-fake-signups/:raid_id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  if (process.env.DEV_MODE !== 'true') {
+    req.session.flash = '❌ This action is only available in dev mode.';
+    return res.redirect('/raids');
+  }
+
+  const raidId = parseInt(req.params.raid_id);
+  if (isNaN(raidId)) {
+    req.session.flash = '❌ Invalid raid ID.';
+    return res.redirect('/raids');
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    const [[raid]] = await conn.query('SELECT id FROM raids WHERE id = ?', [raidId]);
+    if (!raid) {
+      req.session.flash = '❌ Raid not found.';
+      conn.release();
+      return res.redirect('/raids');
+    }
+
+    await conn.beginTransaction();
+
+    const NUM_USERS = 25;
+    const usedIds = new Set();
+    let totalChars = 0;
+
+    for (let i = 0; i < NUM_USERS; i++) {
+      const fakeId = _randomFakeId(usedIds);
+      const username = `FakeUser${_randInt(1000, 9999)}`;
+
+      await conn.query(
+        `INSERT INTO discord_users (discord_user_id, username, display_name, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE username = VALUES(username), display_name = VALUES(display_name), updated_at = NOW()`,
+        [fakeId, username, username]
+      );
+
+      const charCount = _randInt(2, 10);
+      for (let j = 0; j < charCount; j++) {
+        const { name: charClass, specs } = _WOW_CLASSES[_randInt(0, _WOW_CLASSES.length - 1)];
+        const spec = specs[_randInt(0, specs.length - 1)];
+        const role = _CLASS_SPEC_ROLES[`${charClass}.${spec}`] || 'dps';
+        const gearscore = _randInt(4000, 6800);
+        const realm = _REALMS[_randInt(0, _REALMS.length - 1)];
+        const charName = _randomCharName(_randInt(5, 12));
+
+        const [charResult] = await conn.query(
+          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+          [fakeId, charName, realm, charClass, spec, role, gearscore]
+        );
+        const charId = charResult.insertId;
+
+        await conn.query(
+          `INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status)
+           VALUES (?, ?, ?, 'fill', 'signed')`,
+          [raidId, fakeId, charId]
+        );
+        totalChars++;
+      }
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    throw err;
+  }
+  conn.release();
+
+  req.session.flash = `✅ Seeded ${NUM_USERS} fake players with ${totalChars} characters signed up for this raid.`;
+  res.redirect(`/raids/${raidId}/manage`);
+});
+
 module.exports = router;
