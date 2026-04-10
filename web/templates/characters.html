@@ -3,7 +3,7 @@
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
 
-{% if chars %}
+{% if charGroups %}
 <div class="table-responsive mb-3">
   <table class="table table-hover align-middle">
     <thead class="table-dark">
@@ -17,28 +17,39 @@
       </tr>
     </thead>
     <tbody>
-      {% for c in chars %}
-      {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+      {% for group in charGroups %}
+      {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+      {% for row in group.rows %}
       <tr>
-        <td class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</td>
-        <td class="text-muted">{{ c.realm }}</td>
-        <td class="cls-{{ cls_key }}">{{ c.char_class or "—" }}</td>
-        <td>{{ c.spec or "—" }}</td>
+        {% if loop.index == 1 %}
+        <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.name }}</td>
+        <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
+        <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
+        {% endif %}
         <td>
-          <form method="post" action="/characters/{{ c.id }}/update-gs" class="d-flex gap-1 align-items-center">
-            <input type="text" name="gearscore" value="{{ c.gearscore | int if c.gearscore else '' }}"
+          <form method="post" action="/characters/{{ row.id }}/update-spec" class="d-flex gap-1 align-items-center">
+            <input type="text" name="spec" value="{{ row.spec or '' }}"
+                   class="form-control form-control-sm bg-dark text-light border-secondary"
+                   style="width:110px" placeholder="—" />
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Spec">💾</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-1 align-items-center">
+            <input type="text" name="gearscore" value="{{ row.gearscore | int if row.gearscore else '' }}"
                    class="form-control form-control-sm bg-dark text-light border-secondary"
                    style="width:80px" placeholder="—" />
             <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
           </form>
         </td>
         <td class="text-end">
-          <form method="post" action="/characters/{{ c.id }}/delete"
-                onsubmit="return confirm('Hide {{ c.char_name }}? This removes it from your list but keeps old raid history.')">
+          <form method="post" action="/characters/{{ row.id }}/delete"
+                onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from your list but keeps old raid history.')">
             <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
           </form>
         </td>
       </tr>
+      {% endfor %}
       {% endfor %}
     </tbody>
   </table>
