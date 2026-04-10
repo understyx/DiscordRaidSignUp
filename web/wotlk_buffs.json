@@ -266,7 +266,7 @@
     "cat": "Defensive Dispel",
     "preferred": [
       { "cls": "mage",  "spec": null },
-      { "cls": "druid", "spec": null }
+      { "cls": "druid", "spec": null },
       { "cls": "shaman", "spec": "Restoration" }
     ],
     "can_bring": []
@@ -278,7 +278,7 @@
     "cat": "Defensive Dispel",
     "preferred": [
       { "cls": "priest",  "spec": null },
-      { "cls": "paladin", "spec": null }
+      { "cls": "paladin", "spec": null },
       { "cls": "shaman", "spec": null }
     ],
     "can_bring": []
