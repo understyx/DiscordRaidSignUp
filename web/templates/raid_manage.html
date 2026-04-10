@@ -301,7 +301,7 @@
                    data-slot-role="{{ slot_prefix }}"
                    ondragover="event.preventDefault()"
                    ondragenter="this.classList.add('slot-drag-over')"
-                   ondragleave="this.classList.remove('slot-drag-over')"
+                   ondragleave="if (!this.contains(event.relatedTarget)) this.classList.remove('slot-drag-over')"
                    ondrop="onDrop(event)">
                 <div class="slot-actions">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
