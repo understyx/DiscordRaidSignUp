@@ -45,7 +45,7 @@
     "preferred": [
       { "cls": "paladin", "spec": null }
     ],
-    "can_bring": [{ "cls": "warrior", "spec": null },]
+    "can_bring": [{ "cls": "warrior", "spec": null }]
   },
   {
     "id": "ap_pct",
