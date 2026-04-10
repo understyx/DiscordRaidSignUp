@@ -484,7 +484,7 @@
                   <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
                   <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
                 </div>
-                <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
+                <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
                   {% set s = signup_by_char_id[assigned_char_id] %}
                   {% if s %}
@@ -790,7 +790,7 @@
     });
     const roleEmojis = { tank: '🛡️', healer: '💚', dps: '⚔️' };
     const label = slotCard.querySelector('.slot-label');
-    if (label) label.textContent = `${roleEmojis[role] || ''} ${slot}`;
+    if (label) label.textContent = `${roleEmojis[role] || ''}`;
 
     if (!skipDirty && !applyingRemote && oldRole !== role) {
       // If the slot has content, re-save with the new role
