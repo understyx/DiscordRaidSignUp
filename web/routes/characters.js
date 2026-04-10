@@ -31,12 +31,25 @@ router.get('/characters', async (req, res) => {
 
   const userId = req.session.user_id;
   const [chars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
+    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC, id ASC',
     [userId]
   );
 
+  // Group rows by char_name so the template can render merged rows
+  const charGroups = [];
+  const nameMap = {};
+  for (const c of chars) {
+    if (!nameMap[c.char_name]) {
+      const group = { name: c.char_name, realm: c.realm, char_class: c.char_class, rows: [c] };
+      nameMap[c.char_name] = group;
+      charGroups.push(group);
+    } else {
+      nameMap[c.char_name].rows.push(c);
+    }
+  }
+
   res.render('characters.html', {
-    chars,
+    charGroups,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -67,15 +80,23 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
   const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
 
+  // Look for an exact match on name + realm + spec so the same character+spec
+  // just gets its GS refreshed, while a new spec creates a separate row.
+  const specNorm = spec || null;
+  // <=> is MySQL's NULL-safe equality operator: returns true when both sides are NULL,
+  // unlike = which returns NULL for NULL comparisons.
   const [[existing]] = await pool.query(
-    'SELECT id FROM characters WHERE discord_user_id = ? AND char_name = ? AND realm = ?',
-    [userId, charNameCap, realmCap]
+    `SELECT id FROM characters
+     WHERE discord_user_id = ? AND char_name = ? AND realm = ?
+       AND (spec <=> ?)
+     LIMIT 1`,
+    [userId, charNameCap, realmCap, specNorm]
   );
 
   if (existing) {
     await pool.query(
-      'UPDATE characters SET char_class = ?, spec = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-      [charClass, spec, gearscore, existing.id]
+      'UPDATE characters SET char_class = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+      [charClass, gearscore, existing.id]
     );
   } else {
     await pool.query(
@@ -106,6 +127,29 @@ router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: fal
   if (char) {
     await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, char.id]);
     req.session.flash = `✅ GS updated for ${char.char_name}.`;
+  } else {
+    req.session.flash = '❌ Character not found.';
+  }
+
+  res.redirect('/characters');
+});
+
+// POST /characters/:char_id/update-spec
+router.post('/characters/:char_id/update-spec', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const userId = req.session.user_id;
+  const charId = parseInt(req.params.char_id);
+  const spec = (req.body.spec || '').trim() || null;
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (char) {
+    await pool.query('UPDATE characters SET spec = ?, last_updated = NOW() WHERE id = ?', [spec, char.id]);
+    req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } else {
     req.session.flash = '❌ Character not found.';
   }
