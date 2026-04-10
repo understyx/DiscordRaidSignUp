@@ -285,20 +285,52 @@
   }
 
   /* ── In-comp indicator for left-panel character cards ────────────────── */
+  .char-card {
+    position: relative;
+  }
   .char-card.in-comp {
     border-color: var(--wow-gold) !important;
     opacity: 0.75;
   }
-  .char-in-comp-badge {
+  /* Reserve space on the right for the badges so the char name doesn't overlap */
+  .char-card > span.fw-bold {
     display: inline-block;
+    max-width: calc(100% - 56px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .char-in-comp-badges {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    z-index: 1;
+  }
+  .char-in-comp-badge {
+    display: block;
     font-size: 0.6rem;
     color: var(--wow-gold);
     border: 1px solid rgba(201, 170, 113, 0.4);
     border-radius: 3px;
     padding: 0 4px;
-    margin-left: 5px;
-    vertical-align: middle;
     white-space: nowrap;
+    line-height: 1.5;
+  }
+
+  /* ── Player-level assignment indicator on user-group header ─────────── */
+  .user-group-assigned-badge {
+    font-size: 0.6rem;
+    color: var(--wow-gold);
+    border: 1px solid rgba(201, 170, 113, 0.4);
+    border-radius: 3px;
+    padding: 0 4px;
+    white-space: nowrap;
+    line-height: 1.5;
   }
 
   /* ── Signup status badges ────────────────────────────────────────────── */
@@ -380,6 +412,7 @@
         {% set grp_id = "ug-" ~ loop.index %}
         <div class="user-group mb-2">
           <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
+               id="{{ grp_id }}-header"
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
@@ -663,6 +696,9 @@
   function updateCharInCompStatus() {
     const currentCompIds = getAssignedCharIdsFromDom();
 
+    // Track which user-groups have any assigned character (for player-level indicator).
+    const assignedGroupIds = new Set();
+
     document.querySelectorAll('.char-card').forEach(card => {
       // Collect all character IDs that belong to this card (one per spec).
       const allCharIds = new Set();
@@ -686,23 +722,53 @@
       }
       assignedComps.sort((a, b) => a - b);
 
-      let badge = card.querySelector('.char-in-comp-badge');
+      // Remove old badges container and recreate.
+      let badgesContainer = card.querySelector('.char-in-comp-badges');
       if (assignedComps.length > 0) {
         card.classList.add('in-comp');
-        const labels = assignedComps.map(cn => compTabLabel(cn)).join(', ');
-        if (!badge) {
-          badge = document.createElement('span');
-          badge.className = 'char-in-comp-badge';
-          // Insert after the character-name span (first element child).
-          const nameSpan = card.querySelector('span.fw-bold');
-          if (nameSpan) nameSpan.after(badge);
-          else card.prepend(badge);
+        if (!badgesContainer) {
+          badgesContainer = document.createElement('div');
+          badgesContainer.className = 'char-in-comp-badges';
+          card.appendChild(badgesContainer);
         }
-        badge.textContent = '✓ ' + labels;
-        badge.title = 'Assigned to: ' + labels;
+        // Rebuild one badge per assigned comp.
+        badgesContainer.innerHTML = '';
+        for (const cn of assignedComps) {
+          const badge = document.createElement('span');
+          badge.className = 'char-in-comp-badge';
+          badge.textContent = '✓ ' + compTabLabel(cn);
+          badge.title = 'Assigned to: ' + compTabLabel(cn);
+          badgesContainer.appendChild(badge);
+        }
+
+        // Mark the containing user-group as having an assigned character.
+        const ugDiv = card.closest('[id^="ug-"]');
+        if (ugDiv) assignedGroupIds.add(ugDiv.id);
       } else {
         card.classList.remove('in-comp');
-        if (badge) badge.remove();
+        if (badgesContainer) badgesContainer.remove();
+      }
+    });
+
+    // Update player-level (user-group header) assignment indicators.
+    document.querySelectorAll('[id^="ug-"]:not([id$="-header"])').forEach(ugDiv => {
+      const headerId = ugDiv.id + '-header';
+      const header = document.getElementById(headerId);
+      if (!header) return;
+      let playerBadge = header.querySelector('.user-group-assigned-badge');
+      if (assignedGroupIds.has(ugDiv.id)) {
+        if (!playerBadge) {
+          playerBadge = document.createElement('span');
+          playerBadge.className = 'user-group-assigned-badge';
+          playerBadge.title = 'Player has character(s) assigned to a raid';
+          // Insert before the chevron (last child).
+          const chevron = header.querySelector('.ug-chevron');
+          if (chevron) header.insertBefore(playerBadge, chevron);
+          else header.appendChild(playerBadge);
+        }
+        playerBadge.textContent = '✓';
+      } else {
+        if (playerBadge) playerBadge.remove();
       }
     });
   }
