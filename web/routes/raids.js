@@ -774,8 +774,8 @@ router.post('/:raid_id/post_comp', async (req, res) => {
     // Post the selected comp (or all comps if no specific one was selected) to Discord
     const compsToPost = compNumber !== null ? [compNumber] : allCompNumbers;
 
-    // Prefer the dedicated sign-up log thread; fall back to the original raid channel
-    const discordTargetId = raid.discord_log_thread_id || raid.discord_channel_id;
+    // Post the final composition to the main raid channel (not the log thread)
+    const discordTargetId = raid.discord_channel_id;
 
     if (discordTargetId) {
       let allPosted = true;
@@ -812,7 +812,7 @@ router.post('/:raid_id/post_comp', async (req, res) => {
         if (!result.ok) {
           allPosted = false;
           console.error(`[post_comp] Failed to post comp ${cn} for raid ${raidId}: ${result.reason}`);
-          console.debug(`[post_comp] Debug — target channel id: ${discordTargetId} (log_thread_id: ${raid.discord_log_thread_id}, channel_id: ${raid.discord_channel_id})`);
+          console.debug(`[post_comp] Debug — target channel id: ${discordTargetId} (channel_id: ${raid.discord_channel_id})`);
         }
       }
       if (allPosted) {
