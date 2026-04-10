@@ -30,10 +30,8 @@
         <td>
           {% if r.status == "open" %}
             <span class="badge badge-open">🟢 Open</span>
-          {% elif r.status == "locked" %}
-            <span class="badge badge-locked">🔒 Locked</span>
           {% else %}
-            <span class="badge badge-posted">📋 Posted</span>
+            <span class="badge badge-locked">🔒 Locked</span>
           {% endif %}
         </td>
         <td>{{ item.signup_count }} / {{ r.max_size }}</td>

@@ -804,8 +804,6 @@ router.post('/:raid_id/post_comp', async (req, res) => {
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
 
   if (raid) {
-    await pool.query("UPDATE raids SET status = 'posted' WHERE id = ?", [raidId]);
-
     // Determine all comp numbers so we know if this is a multi-comp raid
     const [existingCompNums] = await pool.query(
       'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
@@ -859,17 +857,34 @@ router.post('/:raid_id/post_comp', async (req, res) => {
         }
       }
       if (allPosted) {
-        req.session.flash = `📋 Raid '${raid.name}' marked as posted and composition sent to Discord.`;
+        req.session.flash = `📋 Composition for '${raid.name}' sent to Discord.`;
       } else {
-        req.session.flash = `📋 Raid '${raid.name}' marked as posted, but one or more compositions could not be sent to Discord. Check server logs for details.`;
+        req.session.flash = `📋 Composition for '${raid.name}' could not be fully sent to Discord. Check server logs for details.`;
       }
     } else {
-      req.session.flash = `📋 Raid '${raid.name}' marked as posted. (No Discord channel linked — create the raid via bot to enable auto-posting.)`;
+      req.session.flash = `📋 Composition posted. (No Discord channel linked — create the raid via bot to enable auto-posting.)`;
     }
   }
 
   const compParam = compNumber !== null ? `?comp=${compNumber}` : '';
   res.redirect(`/raids/${raidId}/comp${compParam}`);
+});
+
+// POST /raids/:raid_id/unlock
+router.post('/:raid_id/unlock', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const raidId = parseInt(req.params.raid_id);
+  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+
+  if (raid && raid.status === 'locked') {
+    await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raidId]);
+    req.session.flash = `🟢 Raid '${raid.name}' unlocked and open for sign-ups.`;
+  } else if (raid) {
+    req.session.flash = `ℹ️ Raid '${raid.name}' is already open.`;
+  }
+
+  res.redirect(`/raids/${raidId}/manage`);
 });
 
 module.exports = router;

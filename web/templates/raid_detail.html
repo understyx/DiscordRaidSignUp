@@ -15,10 +15,8 @@
     <div class="text-end">
       {% if raid.status == "open" %}
         <span class="badge badge-open fs-6">🟢 Open</span>
-      {% elif raid.status == "locked" %}
-        <span class="badge badge-locked fs-6">🔒 Locked</span>
       {% else %}
-        <span class="badge badge-posted fs-6">📋 Posted</span>
+        <span class="badge badge-locked fs-6">🔒 Locked</span>
       {% endif %}
       <div class="mt-2 text-muted small">{{ raid.signup_count }} / {{ raid.max_size }} signed up</div>
     </div>
