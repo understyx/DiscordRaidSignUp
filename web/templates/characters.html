@@ -25,7 +25,7 @@
         <td class="text-muted">{{ c.realm }}</td>
         <td class="cls-{{ cls_key }}">{{ c.char_class or "—" }}</td>
         <td>{{ c.spec or "—" }}</td>
-        <td>{{ c.gearscore | int }}</td>
+        <td>{{ c.gearscore | int if c.gearscore else "—" }}</td>
         <td>{{ c.last_updated | dateformat("%Y-%m-%d") if c.last_updated else "—" }}</td>
         <td class="text-end">
           <div class="d-flex gap-2 justify-content-end">
