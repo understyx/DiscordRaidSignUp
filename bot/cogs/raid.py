@@ -174,7 +174,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             await howto_thread.send(
                 "**How to Sign Up for the Raid**\n\n"
                 "**Method 1: Use `/addcharacter` then click the Sign Up button**\n"
-                "1. Register your character: `/addcharacter name:<name> spec1:<spec> gs1:<gearscore>`\n"
+                "1. Register your character: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<gearscore>`\n"
                 "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
                 "3. Select your character(s), optionally mark preferred, then confirm\n\n"
                 "**Method 2: Post your character(s) as a text message in this channel**\n"
