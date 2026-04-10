@@ -228,8 +228,9 @@ router.get('/:raid_id', async (req, res) => {
     const mergeKey = `${s.discord_user_id}__${s.char_name}`;
     const existing = bucket.find(e => e._mergeKey === mergeKey);
     const is_prio = s.signup_type === 'prio_character' || s.signup_type === 'prio_role';
+    const is_saved = !!s.is_saved;
     if (existing) {
-      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio });
+      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved });
     } else {
       bucket.push({
         ...s,
@@ -241,7 +242,7 @@ router.get('/:raid_id', async (req, res) => {
           realm: s.realm,
           char_class: s.char_class,
           role: s.role,
-          specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio }],
+          specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved }],
         },
       });
     }
@@ -409,7 +410,9 @@ router.get('/:raid_id/manage', async (req, res) => {
       gearscore: s.character.gearscore,
       role: s.character.role,
       is_prio: s.signup_type === 'prio_character' || s.signup_type === 'prio_role',
+      is_saved: !!s.is_saved,
     });
+    if (s.is_saved) charGroup.is_saved = true;
   }
   const signupsByUser = Object.values(userSignupMap);
 

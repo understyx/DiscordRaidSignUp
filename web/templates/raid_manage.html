@@ -214,6 +214,15 @@
     border: 1px solid rgba(255, 204, 0, 0.35);
     white-space: nowrap;
   }
+  .badge-saved {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    cursor: default;
+  }
+  .char-saved {
+    opacity: 0.55;
+    border-left: 3px solid #dc3545 !important;
+  }
 </style>
 {% endblock %}
 
@@ -289,7 +298,7 @@
             {% for charGroup in userGroup.characters %}
               {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
               {% set firstSpec = charGroup.specs[0] %}
-              <div class="char-card card p-2 mb-1"
+              <div class="char-card card p-2 mb-1{% if charGroup.is_saved %} char-saved{% endif %}"
                    draggable="true"
                    data-char-id="{{ firstSpec.character_id }}"
                    data-char-name="{{ charGroup.char_name }}"
@@ -299,6 +308,7 @@
                    data-role="{{ firstSpec.role or '' }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+                {% if charGroup.is_saved %}<span class="badge-saved ms-1" title="Already saved this lockout">❌</span>{% endif %}
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
                   {% for s in charGroup.specs %}
                   <button type="button" draggable="false"
