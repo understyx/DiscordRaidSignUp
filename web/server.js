@@ -83,6 +83,12 @@ njkEnv.addFilter('discordId', val => {
   return s.length > 6 ? '\u2026' + s.slice(-6) : s;
 });
 
+// Expose dev_mode flag to all templates
+app.use((req, res, next) => {
+  res.locals.dev_mode = process.env.DEV_MODE === 'true';
+  next();
+});
+
 // Routes
 app.use('/auth', authRouter);
 app.use('/raids', raidsRouter);
