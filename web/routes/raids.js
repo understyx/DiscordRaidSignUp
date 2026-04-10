@@ -426,6 +426,28 @@ router.get('/:raid_id/manage', async (req, res) => {
   // Next comp number for "Add Comp" button
   const nextComp = Math.max(...compNumbers, currentComp) + 1;
 
+  // Build per-comp role-count summaries for the post confirmation modal
+  const compSummaries = {};
+  for (const cn of compNumbers) {
+    compSummaries[cn] = { tank: 0, healer: 0, dps: 0 };
+  }
+  if (compNumbers.length > 1) {
+    const sqlPlaceholders = compNumbers.map(() => '?').join(', ');
+    const [summaryRows] = await pool.query(
+      `SELECT comp_number, slot_role, COUNT(*) AS cnt
+       FROM compositions
+       WHERE raid_id = ? AND comp_number IN (${sqlPlaceholders})
+       GROUP BY comp_number, slot_role`,
+      [raidId, ...compNumbers]
+    );
+    for (const row of summaryRows) {
+      const cn = row.comp_number;
+      if (compSummaries[cn] && ['tank', 'healer', 'dps'].includes(row.slot_role)) {
+        compSummaries[cn][row.slot_role] = Number(row.cnt);
+      }
+    }
+  }
+
   res.render('raid_manage.html', {
     raid,
     signups,
@@ -438,6 +460,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     comp_numbers: compNumbers,
     current_comp: currentComp,
     next_comp: nextComp,
+    comp_summaries: compSummaries,
     flash: popFlash(req),
     user: currentUser(req),
   });

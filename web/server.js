@@ -71,6 +71,9 @@ njkEnv.addFilter('dateformat', (value, fmt) => {
 // int filter
 njkEnv.addFilter('int', val => Math.floor(Number(val)) || 0);
 
+// tojson filter: serialize a value to a JSON string safe for inline <script> use
+njkEnv.addFilter('tojson', val => JSON.stringify(val));
+
 // discordId filter: shows last 6 digits of a Discord snowflake, e.g. "…789012"
 njkEnv.addFilter('discordId', val => {
   const s = String(val || '');
