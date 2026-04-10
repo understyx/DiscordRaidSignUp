@@ -90,6 +90,14 @@ def _run_migrations():
                 ))
 
 
+        if inspector.has_table("characters"):
+            char_columns = {col["name"] for col in inspector.get_columns("characters")}
+            if "is_deleted" not in char_columns:
+                conn.execute(text(
+                    "ALTER TABLE characters ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0"
+                ))
+
+
 _run_migrations()
 
 # Ensure guild_admin_roles table exists (not covered by create_all for pre-existing DBs)
