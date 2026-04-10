@@ -61,7 +61,8 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
     const lines = entries.map(e => {
       if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
       const c = e.character;
-      return `**${c.char_name}** — ${c.spec || c.char_class || '?'} (${Math.floor(c.gearscore || 0)} GS)`;
+      const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
+      return `**${c.char_name}** — ${c.spec || c.char_class || '?'}${mention}`;
     });
     fields.push({
       name: `${roleLabel} [${entries.length}]`,
@@ -911,7 +912,7 @@ router.post('/:raid_id/post_comp', async (req, res) => {
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
           `SELECT co.slot_role, co.character_id, co.placeholder_text,
-                  c.char_name, c.char_class, c.spec, c.gearscore, c.role
+                  c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
            WHERE co.raid_id = ? AND co.comp_number = ?
@@ -928,8 +929,8 @@ router.post('/:raid_id/post_comp', async (req, res) => {
               char_name: comp.char_name,
               char_class: comp.char_class,
               spec: comp.spec,
-              gearscore: comp.gearscore,
               role: comp.role,
+              discord_user_id: comp.char_discord_user_id ? String(comp.char_discord_user_id) : null,
             } : null,
           };
           const roleKey = comp.slot_role || 'dps';
