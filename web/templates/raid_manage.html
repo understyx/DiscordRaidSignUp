@@ -287,6 +287,7 @@
   /* ── In-comp indicator for left-panel character cards ────────────────── */
   .char-card {
     position: relative;
+    --badge-reserved-width: 56px;
   }
   .char-card.in-comp {
     border-color: var(--wow-gold) !important;
@@ -295,7 +296,7 @@
   /* Reserve space on the right for the badges so the char name doesn't overlap */
   .char-card > span.fw-bold {
     display: inline-block;
-    max-width: calc(100% - 56px);
+    max-width: calc(100% - var(--badge-reserved-width, 56px));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -421,7 +422,7 @@
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
 
-          <div id="{{ grp_id }}">
+          <div id="{{ grp_id }}" class="user-group-container">
             {% for charGroup in userGroup.characters %}
               {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
               {% set firstSpec = charGroup.specs[0] %}
@@ -742,7 +743,7 @@
         }
 
         // Mark the containing user-group as having an assigned character.
-        const ugDiv = card.closest('[id^="ug-"]');
+        const ugDiv = card.closest('.user-group-container');
         if (ugDiv) assignedGroupIds.add(ugDiv.id);
       } else {
         card.classList.remove('in-comp');
@@ -751,7 +752,7 @@
     });
 
     // Update player-level (user-group header) assignment indicators.
-    document.querySelectorAll('[id^="ug-"]:not([id$="-header"])').forEach(ugDiv => {
+    document.querySelectorAll('.user-group-container').forEach(ugDiv => {
       const headerId = ugDiv.id + '-header';
       const header = document.getElementById(headerId);
       if (!header) return;
