@@ -366,8 +366,10 @@
                 </div>
                 <div class="slot-label">{{ slot_emoji }} {{ slot }}</div>
                 {% if assigned_char_id %}
+                  {% set ns = namespace(found=false) %}
                   {% for s in signups %}
                     {% if s.character.id | string == assigned_char_id %}
+                    {% set ns.found = true %}
                     {% set c = s.character %}
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                     <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
@@ -376,6 +378,11 @@
                     </div>
                     {% endif %}
                   {% endfor %}
+                  {% if not ns.found %}
+                  <div class="assigned-char text-muted small">
+                    — empty —
+                  </div>
+                  {% endif %}
                 {% elif placeholder_map[slot] %}
                 <div class="assigned-char" data-placeholder="{{ placeholder_map[slot] }}">
                   <span class="slot-placeholder-text placeholder-colored">{{ placeholder_map[slot] }}</span>
