@@ -409,6 +409,13 @@ router.get('/:raid_id/manage', async (req, res) => {
   // Determine active comp from query param (default: 1)
   const currentComp = parseInt(req.query.comp) || 1;
 
+  // Include the current comp even if it hasn't been saved to the DB yet
+  // (e.g. user navigated to a new comp tab but hasn't placed anyone yet)
+  if (!compNumbers.includes(currentComp)) {
+    compNumbers.push(currentComp);
+    compNumbers.sort((a, b) => a - b);
+  }
+
   const [existingComp] = await pool.query(
     'SELECT * FROM compositions WHERE raid_id = ? AND comp_number = ?',
     [raidId, currentComp]
