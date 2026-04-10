@@ -105,7 +105,7 @@ class DevCog(commands.Cog):
 
     @app_commands.command(
         name="seed_fake_users",
-        description="(Dev) Insert 25 fake Discord users with 5–15 random characters each.",
+        description="(Dev) Insert 25 fake Discord users with 2–10 random characters each.",
     )
     @is_officer()
     async def seed_fake_users(self, interaction: discord.Interaction):
@@ -126,7 +126,7 @@ class DevCog(commands.Cog):
                         if fake_id not in used_ids:
                             used_ids.add(fake_id)
                             break
-                    char_count = random.randint(5, 15)
+                    char_count = random.randint(2, 10)
                     chars = _generate_characters(fake_id, char_count)
                     session.add_all(chars)
                     total_chars += char_count
