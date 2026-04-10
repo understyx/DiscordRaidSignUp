@@ -56,7 +56,8 @@
     "preferred": [
       { "cls": "hunter",       "spec": "Marksmanship" },
       { "cls": "shaman",       "spec": "Enhancement" },
-      { "cls": "death knight", "spec": "Blood" }
+      { "cls": "death knight", "spec": "Blood (Tank)" },
+      { "cls": "death knight", "spec": "Blood (DPS)" }
     ],
     "can_bring": []
   },
@@ -78,7 +79,8 @@
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "shaman",       "spec": "Enhancement" },
-      { "cls": "death knight", "spec": "Frost" }
+      { "cls": "death knight", "spec": "Frost (Tank)" },
+      { "cls": "death knight", "spec": "Frost (DPS)" }
     ],
     "can_bring": [
       { "cls": "shaman", "spec": "Elemental" },
@@ -442,6 +444,7 @@
       { "cls": "hunter",   "spec": "Survival" },
       { "cls": "paladin",  "spec": "Retribution" },
       { "cls": "mage",     "spec": "Frost" },
+      { "cls": "mage",     "spec": "Frostfire" },
       { "cls": "warlock",  "spec": "Destruction" }
     ],
     "can_bring": []
