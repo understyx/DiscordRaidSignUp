@@ -172,6 +172,67 @@
   .comp-tab-add { color: #57a85b; border-color: #57a85b; }
   .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
 
+  /* ── Right-panel tab switcher ────────────────────────────────────────── */
+  .right-panel-tab {
+    font-size: 0.75rem;
+    padding: 2px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-card-2);
+    color: #8a95b0;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .right-panel-tab:hover { background: #253050; color: #d8dce8; }
+  .right-panel-tab.active { background: var(--wow-gold); color: #0e1117; border-color: var(--wow-gold); font-weight: 600; }
+
+  /* ── Buff panel ───────────────────────────────────────────────────────── */
+  .buff-category-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #8a95b0;
+    margin: 0.55rem 0 0.15rem;
+  }
+  .buff-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.76rem;
+    padding: 1px 0;
+    transition: opacity 0.2s;
+  }
+  .buff-item.buff-missing { opacity: 0.4; }
+  .buff-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #3a4055;
+  }
+  .buff-item.buff-active   .buff-dot { background: #57a85b; }
+  .buff-item.buff-placeholder .buff-dot { background: #e8a030; border: 1px dashed #e8a030; background: transparent; }
+  .buff-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #556677;
+  }
+  .buff-item.buff-active   .buff-name { color: #d8dce8; }
+  .buff-item.buff-placeholder .buff-name { color: #e8a030; }
+  .buff-desc {
+    font-size: 0.62rem;
+    color: #4a5470;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90px;
+  }
+  .buff-item.buff-active   .buff-desc { color: #6a7a90; }
+  .buff-item.buff-placeholder .buff-desc { color: #b07820; }
+
   /* ── Comp tab inline rename ──────────────────────────────────────────── */
   .comp-tab-rename-btn {
     background: none;
@@ -397,10 +458,18 @@
       </div>
     </div>
 
-    {# ── Right column: Placeholder chips ────────────────── #}
+    {# ── Right column: Placeholders & Raid Buffs tabs ───── #}
     <div class="roster-col-side">
-      <div class="card p-3">
-        <h5 class="mb-3">🔖 Placeholders</h5>
+      <div class="card p-3 d-flex flex-column" style="min-height:100%;">
+
+        {# Tab switcher #}
+        <div class="d-flex gap-1 mb-2 flex-shrink-0">
+          <button type="button" class="right-panel-tab active" id="tabBtnPlaceholders" onclick="switchRightTab('placeholders')">🔖 Placeholders</button>
+          <button type="button" class="right-panel-tab" id="tabBtnBuffs" onclick="switchRightTab('buffs')">✨ Raid Buffs</button>
+        </div>
+
+        {# Placeholders panel #}
+        <div id="panelPlaceholders">
 
         <div class="placeholder-group-label">🛡️ Tanks</div>
         <div class="d-flex flex-column gap-1 mb-1">
@@ -445,6 +514,15 @@
           <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Demo Warlock"    data-role="dps" data-color="#9d9eec"  style="color:#9d9eec;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Demo Warlock</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Frost DK"        data-role="dps" data-color="#e05060"  style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Frost DK</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="⚔️ Unholy DK"       data-role="dps" data-color="#e05060"  style="color:#e05060;"     ondragstart="onPlaceholderDragStart(event)">⚔️ Unholy DK</span>
+        </div>
+
+        </div>{# /panelPlaceholders #}
+
+        {# Raid Buffs panel #}
+        <div id="panelBuffs" style="display:none;">
+          <div id="buffPanelContent">
+            <p class="text-muted small mt-2">Loading buff coverage…</p>
+          </div>
         </div>
 
       </div>
@@ -722,6 +800,7 @@
       draggedRole             = null;
       addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, placeholder_text: assignedDiv.dataset.placeholder });
       clearTimeout(saveTimer);
+      updateBuffPanel();
       autoSave();
       return;
     }
@@ -769,6 +848,7 @@
     draggedRole          = null;
     addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, character_id: finalCharId });
     updateCharInCompStatus();
+    updateBuffPanel();
     clearTimeout(saveTimer);
     autoSave();
   }
@@ -791,6 +871,7 @@
       addDirtyChange(slot, { clear: true });
     }
     if (!applyingRemote) updateCharInCompStatus();
+    if (!applyingRemote) updateBuffPanel();
   }
 
   function clearSlot(btn) {
@@ -987,6 +1068,7 @@
       applyingRemote = false;
     }
     updateCharInCompStatus();
+    updateBuffPanel();
   }
 
   function pollRemoteState() {
@@ -1098,6 +1180,251 @@
     form.action = `/raids/{{ raid.id }}/post_comp`;
     form.submit();
   });
+
+
+  /* ── Right-panel tab switching ────────────────────────────────────── */
+  function switchRightTab(tab) {
+    const isBuffs = tab === 'buffs';
+    document.getElementById('panelPlaceholders').style.display = isBuffs ? 'none' : '';
+    document.getElementById('panelBuffs').style.display = isBuffs ? '' : 'none';
+    document.getElementById('tabBtnPlaceholders').classList.toggle('active', !isBuffs);
+    document.getElementById('tabBtnBuffs').classList.toggle('active', isBuffs);
+    if (isBuffs) renderBuffPanel();
+  }
+
+  /* ── WotLK Raid Buff Definitions ─────────────────────────────────── */
+  // provider: { cls: 'death knight', spec: 'Frost' | null }
+  // spec: null = any spec of that class; otherwise must match normalizeSpec output
+  const WOTLK_RAID_BUFFS = [
+    // ── Stats ──────────────────────────────────────────────────────────
+    { id: 'kings',            name: 'Blessing of Kings',           desc: '+10% All Stats',             cat: 'Stats',
+      providers: [{ cls: 'paladin', spec: null }] },
+    { id: 'fortitude',        name: 'Power Word: Fortitude',       desc: '+Stamina',                   cat: 'Stats',
+      providers: [{ cls: 'priest', spec: null }] },
+    { id: 'motw',             name: 'Mark of the Wild',            desc: '+Stats & Resistances',       cat: 'Stats',
+      providers: [{ cls: 'druid', spec: null }] },
+    { id: 'arcane_brill',     name: 'Arcane Brilliance',           desc: '+Intellect',                 cat: 'Stats',
+      providers: [{ cls: 'mage', spec: null }] },
+    { id: 'cmd_shout',        name: 'Commanding Shout',            desc: '+Stamina',                   cat: 'Stats',
+      providers: [{ cls: 'warrior', spec: null }] },
+    { id: 'blood_pact',       name: 'Blood Pact (Imp)',            desc: '+Stamina',                   cat: 'Stats',
+      providers: [{ cls: 'warlock', spec: null }] },
+    // ── Attack Power ───────────────────────────────────────────────────
+    { id: 'ap_flat',          name: 'Battle Shout / Blessing of Might', desc: '+Attack Power',        cat: 'Attack Power',
+      providers: [{ cls: 'warrior', spec: null }, { cls: 'paladin', spec: null }] },
+    { id: 'ap_pct',           name: 'AP% Aura',                   desc: '+10% AP (Trueshot / Unleashed Rage / Abom\'s Might)',
+      cat: 'Attack Power',
+      providers: [
+        { cls: 'hunter',       spec: 'Marksmanship' },
+        { cls: 'hunter',       spec: 'Beast Mastery' },
+        { cls: 'shaman',       spec: 'Enhancement' },
+        { cls: 'death knight', spec: 'Blood' },
+      ] },
+    // ── Spell Power ────────────────────────────────────────────────────
+    { id: 'sp_totem',         name: 'Spell Power Totem',           desc: '+SP (Flametongue / ToW)',    cat: 'Spell Power',
+      providers: [{ cls: 'shaman', spec: null }] },
+    { id: 'demonic_pact',     name: 'Demonic Pact',               desc: '+10% SP (Demo Warlock)',     cat: 'Spell Power',
+      providers: [{ cls: 'warlock', spec: 'Demonology' }] },
+    { id: 'tow_hit',          name: 'Totem of Wrath',             desc: '+Hit & Spell Crit',          cat: 'Spell Power',
+      providers: [{ cls: 'shaman', spec: 'Elemental' }] },
+    // ── Crit ───────────────────────────────────────────────────────────
+    { id: 'phys_crit',        name: 'Phys Crit Aura',             desc: '+5% Melee/Ranged Crit (LotP / Rampage)',
+      cat: 'Crit',
+      providers: [{ cls: 'druid', spec: 'Feral' }, { cls: 'warrior', spec: 'Fury' }] },
+    { id: 'spell_crit',       name: 'Spell Crit Aura',            desc: '+5% Spell Crit (Moonkin / Elem Oath / Communion)',
+      cat: 'Crit',
+      providers: [
+        { cls: 'druid',   spec: 'Balance' },
+        { cls: 'shaman',  spec: 'Elemental' },
+        { cls: 'paladin', spec: 'Retribution' },
+      ] },
+    // ── Haste ──────────────────────────────────────────────────────────
+    { id: 'melee_haste',      name: 'Melee Haste Aura',           desc: '+Melee Haste (Windfury / Icy Talons)',
+      cat: 'Haste',
+      providers: [
+        { cls: 'shaman',       spec: 'Enhancement' },
+        { cls: 'death knight', spec: 'Frost' },
+        { cls: 'death knight', spec: 'Unholy' },
+      ] },
+    { id: 'all_haste',        name: 'All Haste Aura',             desc: '+Haste (Swift Retribution / Wrath of Air)',
+      cat: 'Haste',
+      providers: [{ cls: 'paladin', spec: 'Retribution' }, { cls: 'shaman', spec: null }] },
+    // ── Mana Regen ─────────────────────────────────────────────────────
+    { id: 'replenishment',    name: 'Replenishment',              desc: '+Mana/sec (Spriest/SV/Lock/Frost Mage/Ret)',
+      cat: 'Mana Regen',
+      providers: [
+        { cls: 'priest',   spec: 'Shadow' },
+        { cls: 'hunter',   spec: 'Survival' },
+        { cls: 'warlock',  spec: null },
+        { cls: 'mage',     spec: 'Frost' },
+        { cls: 'paladin',  spec: 'Retribution' },
+      ] },
+    { id: 'mana_passive',     name: 'Mana Spring / Blessing of Wisdom', desc: '+MP5',               cat: 'Mana Regen',
+      providers: [{ cls: 'shaman', spec: null }, { cls: 'paladin', spec: null }] },
+    // ── Cooldowns ──────────────────────────────────────────────────────
+    { id: 'bloodlust',        name: 'Bloodlust / Heroism',        desc: '+30% Haste for 40s',         cat: 'Cooldown',
+      providers: [{ cls: 'shaman', spec: null }] },
+    { id: 'innervate',        name: 'Innervate',                  desc: 'Mana Regen CD',              cat: 'Cooldown',
+      providers: [{ cls: 'druid', spec: null }] },
+    { id: 'hymn_of_hope',     name: 'Hymn of Hope',               desc: 'Mana CD',                    cat: 'Cooldown',
+      providers: [{ cls: 'priest', spec: null }] },
+    // ── Debuffs ────────────────────────────────────────────────────────
+    { id: 'faerie_fire',      name: 'Faerie Fire',                desc: '-Armor, +Hit chance vs target', cat: 'Debuffs',
+      providers: [{ cls: 'druid', spec: null }] },
+    { id: 'sunder_expose',    name: 'Sunder / Expose Armor',      desc: '-Armor',                     cat: 'Debuffs',
+      providers: [{ cls: 'warrior', spec: null }, { cls: 'rogue', spec: null }] },
+    { id: 'magic_vuln',       name: 'Magic Vulnerability',        desc: '+8-13% Magic dmg taken (CoE / Earth&Moon / Ebon Plague)',
+      cat: 'Debuffs',
+      providers: [
+        { cls: 'warlock',      spec: null },
+        { cls: 'druid',        spec: 'Balance' },
+        { cls: 'death knight', spec: 'Unholy' },
+      ] },
+    { id: 'phys_vuln',        name: 'Physical Vulnerability',     desc: '+4% Phys dmg taken (Blood Frenzy / Savage Combat)',
+      cat: 'Debuffs',
+      providers: [{ cls: 'warrior', spec: 'Arms' }, { cls: 'rogue', spec: 'Combat' }] },
+    { id: 'atk_speed_debuff', name: 'Attack Speed Debuff',        desc: '-Melee Atk Speed (Thunderclap / Frost Fever)',
+      cat: 'Debuffs',
+      providers: [{ cls: 'warrior', spec: null }, { cls: 'death knight', spec: null }] },
+    { id: 'shadow_weaving',   name: 'Shadow Weaving / Misery',    desc: '+Hit debuff, +Shadow dmg',   cat: 'Debuffs',
+      providers: [{ cls: 'priest', spec: 'Shadow' }] },
+    { id: 'hunters_mark',     name: "Hunter's Mark",              desc: '+Ranged AP vs target',        cat: 'Debuffs',
+      providers: [{ cls: 'hunter', spec: null }] },
+  ];
+
+  // Map from predefined placeholder text → { cls: CSS-key, spec: Canonical Spec }
+  const PLACEHOLDER_CLASS_SPEC = {
+    '🛡️ Tank':           { cls: null,            spec: null },
+    '🛡️ Prot Paladin':   { cls: 'paladin',       spec: 'Protection' },
+    '🛡️ Prot Warrior':   { cls: 'warrior',       spec: 'Protection' },
+    '🛡️ Blood DK':       { cls: 'death-knight',  spec: 'Blood' },
+    '🛡️ Feral (Bear)':   { cls: 'druid',         spec: 'Feral' },
+    '💚 Healer':          { cls: null,            spec: null },
+    '💚 Holy Paladin':    { cls: 'paladin',       spec: 'Holy' },
+    '💚 Holy Priest':     { cls: 'priest',        spec: 'Holy' },
+    '💚 Disc Priest':     { cls: 'priest',        spec: 'Discipline' },
+    '💚 Resto Druid':     { cls: 'druid',         spec: 'Restoration' },
+    '💚 Resto Shaman':    { cls: 'shaman',        spec: 'Restoration' },
+    '⚔️ DPS':             { cls: null,            spec: null },
+    '⚔️ Arms Warrior':    { cls: 'warrior',       spec: 'Arms' },
+    '⚔️ Fury Warrior':    { cls: 'warrior',       spec: 'Fury' },
+    '⚔️ Ret Paladin':     { cls: 'paladin',       spec: 'Retribution' },
+    '⚔️ Shadow Priest':   { cls: 'priest',        spec: 'Shadow' },
+    '⚔️ Balance Druid':   { cls: 'druid',         spec: 'Balance' },
+    '⚔️ Feral (Cat)':     { cls: 'druid',         spec: 'Feral' },
+    '⚔️ MM Hunter':       { cls: 'hunter',        spec: 'Marksmanship' },
+    '⚔️ BM Hunter':       { cls: 'hunter',        spec: 'Beast Mastery' },
+    '⚔️ Surv Hunter':     { cls: 'hunter',        spec: 'Survival' },
+    '⚔️ Arcane Mage':     { cls: 'mage',          spec: 'Arcane' },
+    '⚔️ Fire Mage':       { cls: 'mage',          spec: 'Fire' },
+    '⚔️ Frost Mage':      { cls: 'mage',          spec: 'Frost' },
+    '⚔️ Combat Rogue':    { cls: 'rogue',         spec: 'Combat' },
+    '⚔️ Mutilate Rogue':  { cls: 'rogue',         spec: 'Assassination' },
+    '⚔️ Elem Shaman':     { cls: 'shaman',        spec: 'Elemental' },
+    '⚔️ Enh Shaman':      { cls: 'shaman',        spec: 'Enhancement' },
+    '⚔️ Affli Warlock':   { cls: 'warlock',       spec: 'Affliction' },
+    '⚔️ Destro Warlock':  { cls: 'warlock',       spec: 'Destruction' },
+    '⚔️ Demo Warlock':    { cls: 'warlock',       spec: 'Demonology' },
+    '⚔️ Frost DK':        { cls: 'death-knight',  spec: 'Frost' },
+    '⚔️ Unholy DK':       { cls: 'death-knight',  spec: 'Unholy' },
+  };
+
+  // Returns true if (charClass CSS-key, canonicalSpec) matches a buff provider entry.
+  function specMatchesProvider(charClassCss, spec, provider) {
+    // charClassCss: 'death-knight', 'paladin', etc.
+    // provider.cls: 'death knight', 'paladin', etc.
+    const cls = (charClassCss || '').replace(/-/g, ' ').toLowerCase();
+    const provCls = (provider.cls || '').toLowerCase().replace(/-/g, ' ');
+    if (cls !== provCls) return false;
+    if (provider.spec === null) return true; // any spec of this class
+    // Both sides should be canonical spec names from normalizeSpec() — compare exactly.
+    return (spec || '').toLowerCase() === (provider.spec || '').toLowerCase();
+  }
+
+  // Returns Set of buff IDs provided by a given charClass (CSS key) + spec text.
+  function getBuffIdsFromEntry(charClassCss, specText) {
+    const spec = normalizeSpec(charClassCss, specText);
+    const ids = new Set();
+    for (const buff of WOTLK_RAID_BUFFS) {
+      for (const p of buff.providers) {
+        if (specMatchesProvider(charClassCss, spec, p)) { ids.add(buff.id); break; }
+      }
+    }
+    return ids;
+  }
+
+  // Collect buff IDs from all filled roster slots.
+  // Returns { char: Set, placeholder: Set }
+  function collectRosterBuffs() {
+    const charBuffIds = new Set();
+    const phBuffIds   = new Set();
+
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+
+      const charId      = assignedDiv.dataset.charId || null;
+      const charClass   = assignedDiv.dataset.charClass || null; // CSS key
+      const placeholder = assignedDiv.dataset.placeholder || null;
+
+      if (charId && charClass) {
+        const specEl  = assignedDiv.querySelector('small');
+        const rawSpec = specEl ? specEl.textContent.trim() : '';
+        getBuffIdsFromEntry(charClass, rawSpec).forEach(id => charBuffIds.add(id));
+      } else if (placeholder) {
+        const info = PLACEHOLDER_CLASS_SPEC[placeholder];
+        if (info && info.cls) {
+          getBuffIdsFromEntry(info.cls, info.spec || '').forEach(id => phBuffIds.add(id));
+        }
+      }
+    });
+
+    return { char: charBuffIds, placeholder: phBuffIds };
+  }
+
+  // Render (or re-render) the buff panel HTML from scratch.
+  function renderBuffPanel() {
+    const { char: charIds, placeholder: phIds } = collectRosterBuffs();
+    const categories = [];
+    const catMap = {};
+    for (const buff of WOTLK_RAID_BUFFS) {
+      if (!catMap[buff.cat]) { catMap[buff.cat] = []; categories.push(buff.cat); }
+      catMap[buff.cat].push(buff);
+    }
+
+    let html = '';
+    for (const cat of categories) {
+      html += `<div class="buff-category-label">${escapeHtml(cat)}</div>`;
+      for (const buff of catMap[cat]) {
+        const fromChar = charIds.has(buff.id);
+        const fromPh   = phIds.has(buff.id);
+        const cls = fromChar ? 'buff-active' : (fromPh ? 'buff-placeholder' : 'buff-missing');
+        html += `<div class="buff-item ${cls}" data-buff-id="${escapeHtml(buff.id)}" title="${escapeHtml(buff.desc)}">` +
+                `<span class="buff-dot"></span>` +
+                `<span class="buff-name">${escapeHtml(buff.name)}</span>` +
+                `</div>`;
+      }
+    }
+
+    document.getElementById('buffPanelContent').innerHTML = html;
+  }
+
+  // Lightweight DOM-safe HTML escaper for use in innerHTML construction above.
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Update buff panel if it is currently visible.
+  function updateBuffPanel() {
+    if (document.getElementById('panelBuffs').style.display !== 'none') {
+      renderBuffPanel();
+    }
+  }
 
   /* ── Comp tab inline rename ───────────────────────────────────────── */
   function buildTabDOM(labelText) {

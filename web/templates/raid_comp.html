@@ -65,25 +65,15 @@
 
 {% block scripts %}
 <script>
-  // Apply class colours to placeholder spec text using the same lookup as the manage page
-  const PLACEHOLDER_COLORS = {
-    'Paladin':   '#F48CBA',
-    'Warrior':   '#C69B3A',
-    'Death Knight': '#e05060',
-    'DK':        '#e05060',
-    'Druid':     '#FF7C0A',
-    'Priest':    '#c8ccd4',
-    'Shaman':    '#2e9fe0',
-    'Hunter':    '#AAD372',
-    'Mage':      '#3FC7EB',
-    'Rogue':     '#e8d850',
-    'Warlock':   '#9d9eec',
-  };
-
+  // Color placeholder text by class keyword
   function colorForPlaceholder(text) {
-    for (const [kw, color] of Object.entries(PLACEHOLDER_COLORS)) {
-      if (text.includes(kw)) return color;
+    for (const [key, hex] of Object.entries(WOW_CLASS_COLORS)) {
+      // Convert CSS key to class keyword: 'death-knight' → 'DK' / 'Death Knight'
+      const kw = key.replace(/-/g, ' ');
+      if (text.toLowerCase().includes(kw)) return hex;
     }
+    // Extra shorthands
+    if (/\bDK\b/.test(text)) return WOW_CLASS_COLORS['death-knight'];
     return null;
   }
 
@@ -106,6 +96,21 @@
     const g = parseInt(hex.slice(3,5), 16);
     const b = parseInt(hex.slice(5,7), 16);
     card.style.backgroundColor = `rgba(${r},${g},${b},0.12)`;
+  });
+
+  // Normalize displayed spec names using the shared normalizeSpec() function.
+  document.querySelectorAll('.comp-char-card').forEach(card => {
+    const clsEl = card.querySelector('[class*="cls-"]');
+    const specEl = card.querySelector('small.d-block');
+    if (!clsEl || !specEl) return;
+    const clsMatch = Array.from(clsEl.classList).find(c => c.startsWith('cls-'));
+    if (!clsMatch) return;
+    const charClass = clsMatch.replace('cls-', '');
+    const rawSpec = specEl.textContent.trim();
+    if (rawSpec && rawSpec !== '?') {
+      const normalized = normalizeSpec(charClass, rawSpec);
+      if (normalized) specEl.textContent = normalized;
+    }
   });
 </script>
 {% endblock %}
