@@ -11,9 +11,8 @@
         <th>Character</th>
         <th>Realm</th>
         <th>Class</th>
-        <th>Spec(s)</th>
+        <th>Spec</th>
         <th>GS</th>
-        <th>Last Updated</th>
         <th></th>
       </tr>
     </thead>
@@ -25,20 +24,19 @@
         <td class="text-muted">{{ c.realm }}</td>
         <td class="cls-{{ cls_key }}">{{ c.char_class or "—" }}</td>
         <td>{{ c.spec or "—" }}</td>
-        <td>{{ c.gearscore | int if c.gearscore else "—" }}</td>
-        <td>{{ c.last_updated | dateformat("%Y-%m-%d") if c.last_updated else "—" }}</td>
+        <td>
+          <form method="post" action="/characters/{{ c.id }}/update-gs" class="d-flex gap-1 align-items-center">
+            <input type="text" name="gearscore" value="{{ c.gearscore | int if c.gearscore else '' }}"
+                   class="form-control form-control-sm bg-dark text-light border-secondary"
+                   style="width:80px" placeholder="—" />
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
+          </form>
+        </td>
         <td class="text-end">
-          <div class="d-flex gap-2 justify-content-end">
-            <form method="post" action="/characters/register">
-              <input type="hidden" name="char_name" value="{{ c.char_name }}" />
-              <input type="hidden" name="realm" value="{{ c.realm }}" />
-              <button type="submit" class="btn btn-sm btn-outline-secondary" title="Refresh from armory">🔄</button>
-            </form>
-            <form method="post" action="/characters/{{ c.id }}/delete"
-                  onsubmit="return confirm('Hide {{ c.char_name }}? This removes it from your list but keeps old raid history.')">
-              <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
-            </form>
-          </div>
+          <form method="post" action="/characters/{{ c.id }}/delete"
+                onsubmit="return confirm('Hide {{ c.char_name }}? This removes it from your list but keeps old raid history.')">
+            <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
+          </form>
         </td>
       </tr>
       {% endfor %}
@@ -57,7 +55,7 @@
 
 <div class="collapse mt-3" id="addCharForm">
   <div class="card p-3">
-    <h6 class="mb-3">Register / Refresh Character</h6>
+    <h6 class="mb-3">Add Character</h6>
     <form method="post" action="/characters/register" class="row g-2 align-items-end">
       <div class="col-auto">
         <label class="form-label small">Character Name</label>
@@ -68,6 +66,32 @@
         <label class="form-label small">Realm</label>
         <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
                value="Icecrown" maxlength="50" />
+      </div>
+      <div class="col-auto">
+        <label class="form-label small">Class</label>
+        <select name="char_class" class="form-select bg-dark text-light border-secondary">
+          <option value="">— select —</option>
+          <option>Death Knight</option>
+          <option>Druid</option>
+          <option>Hunter</option>
+          <option>Mage</option>
+          <option>Paladin</option>
+          <option>Priest</option>
+          <option>Rogue</option>
+          <option>Shaman</option>
+          <option>Warlock</option>
+          <option>Warrior</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small">Spec</label>
+        <input type="text" name="spec" class="form-control bg-dark text-light border-secondary"
+               maxlength="50" placeholder="e.g. Holy" />
+      </div>
+      <div class="col-auto">
+        <label class="form-label small">GS</label>
+        <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
+               maxlength="10" placeholder="e.g. 6300" style="width:90px" />
       </div>
       <div class="col-auto">
         <button type="submit" class="btn btn-wow">Add</button>
