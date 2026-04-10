@@ -403,18 +403,16 @@
     {# ── Left column: Sign-ups pool ──────────────────────────────────── #}
     <div class="roster-col-side">
       <div class="card p-3">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">📝 Sign-ups
-            <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">
-              {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
-            </span>
-          </h5>
-          <div class="btn-group btn-group-sm" role="group" aria-label="Filter sign-ups by role">
-            <button type="button" class="btn btn-outline-secondary pool-filter-btn active" data-role="all" onclick="filterPool('all')">All</button>
-            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️ Tank</button>
-            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚 Heal</button>
-            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️ DPS</button>
-          </div>
+        <h5 class="mb-2">📝 Sign-ups
+          <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">
+            {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
+          </span>
+        </h5>
+        <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Filter sign-ups by role">
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn active" data-role="all" onclick="filterPool('all')">All</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️ Tank</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚 Heal</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️ DPS</button>
         </div>
 
         {% for userGroup in signupsByUser %}
