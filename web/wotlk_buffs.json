@@ -43,10 +43,9 @@
     "desc": "+AP (Battle Shout – Warrior / Blessing of Might – Paladin)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "warrior", "spec": null },
       { "cls": "paladin", "spec": null }
     ],
-    "can_bring": []
+    "can_bring": [{ "cls": "warrior", "spec": null },]
   },
   {
     "id": "ap_pct",
@@ -81,6 +80,7 @@
       { "cls": "shaman",       "spec": "Enhancement" },
       { "cls": "death knight", "spec": "Frost (Tank)" },
       { "cls": "death knight", "spec": "Frost (DPS)" }
+      { "cls": "death knight", "spec": "Blood (Tank)" }
     ],
     "can_bring": [
       { "cls": "shaman", "spec": "Elemental" },
@@ -123,7 +123,7 @@
     "name": "Intellect",
     "desc": "+Intellect (Arcane Brilliance – Mage)",
     "cat": "Raid Buffs",
-    "preferred": [{ "cls": "mage", "spec": null }],
+    "preferred": [{ "cls": "mage", "spec": null }, { "cls": "warlock", "spec": "Affliction" }],
     "can_bring": []
   },
   {
@@ -156,8 +156,8 @@
     "name": "5% Spell Haste",
     "desc": "+5% Spell Haste (Wrath of Air Totem – any Shaman)",
     "cat": "Raid Buffs",
-    "preferred": [{ "cls": "shaman", "spec": null }],
-    "can_bring": []
+    "preferred": [{ "cls": "shaman", "spec": "Restoration" }, { "cls": "shaman", "spec": "Elemental" }],
+    "can_bring": [{ "cls": "shaman", "spec": "Enhancement" }]
   },
   {
     "id": "spirit",
@@ -165,7 +165,7 @@
     "desc": "+Spirit (Divine Spirit – any Priest)",
     "cat": "Raid Buffs",
     "preferred": [{ "cls": "priest", "spec": null }],
-    "can_bring": []
+    "can_bring": [{ "cls": "warlock", "spec": "Affliction" }]
   },
   {
     "id": "stamina",
@@ -182,9 +182,9 @@
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "warrior", "spec": null },
-      { "cls": "warlock", "spec": "Demonology" }
     ],
     "can_bring": [
+      { "cls": "warlock", "spec": "Demonology"}
       { "cls": "warlock", "spec": "Affliction" },
       { "cls": "warlock", "spec": "Destruction" }
     ]
@@ -195,15 +195,15 @@
     "name": "Focus Magic",
     "desc": "+Spell Crit chance on one target (Arcane Mage)",
     "cat": "Single-Player Buffs",
-    "preferred": [{ "cls": "mage", "spec": "Arcane" }],
+    "preferred": [{ "cls": "mage", "spec": "Arcane" }, { "cls": "mage", "spec": "Fire" }, { "cls": "mage", "spec": "Frost" }],
     "can_bring": []
   },
   {
     "id": "unholy_frenzy",
-    "name": "Unholy Frenzy",
-    "desc": "+20% Attack Speed, +10% dmg taken (Unholy DK)",
+    "name": "Hysteria",
+    "desc": "20% Physical damage",
     "cat": "Single-Player Buffs",
-    "preferred": [{ "cls": "death knight", "spec": "Unholy" }],
+    "preferred": [{ "cls": "death knight", "spec": "Blood (DPS)" }, { "cls": "death knight", "spec": "Blood (Tank)" }],
     "can_bring": []
   },
   {
@@ -308,7 +308,7 @@
   {
     "id": "phys_vuln",
     "name": "4% Physical Damage",
-    "desc": "+4% Phys dmg taken (Blood Frenzy – Arms Warrior / Savage Combat – Combat Rogue)",
+    "desc": "+4% Phys dmg taken",
     "cat": "Offensive Debuffs",
     "preferred": [
       { "cls": "warrior", "spec": "Arms" },
@@ -319,18 +319,18 @@
   {
     "id": "crit_debuff",
     "name": "3% Crit",
-    "desc": "+3% Crit chance vs target (Heart of the Crusader – Ret Paladin)",
+    "desc": "+3% Crit chance vs target",
     "cat": "Offensive Debuffs",
-    "preferred": [{ "cls": "paladin", "spec": "Retribution" }],
+    "preferred": [{ "cls": "paladin", "spec": "Retribution" }, { "cls": "shaman", "spec": "Elemental" }],
     "can_bring": []
   },
   {
     "id": "spell_crit_debuff",
     "name": "5% Spell Crit Taken",
-    "desc": "+5% Spell Crit vs target (Improved Scorch – Fire Mage / Improved Shadow Bolt – Warlock)",
+    "desc": "+5% Spell Crit vs target",
     "cat": "Offensive Debuffs",
-    "preferred": [{ "cls": "mage", "spec": "Fire" }],
-    "can_bring": [{ "cls": "warlock", "spec": null }]
+    "preferred": [{ "cls": "mage", "spec": "Fire" }, { "cls": "warlock", "spec": null }, { "cls": "mage", "spec": "Frost" }, { "cls": "mage", "spec": "Frostfire" }],
+    "can_bring": []
   },
   {
     "id": "spell_hit_debuff",
@@ -365,7 +365,7 @@
       { "cls": "warrior", "spec": null },
       { "cls": "rogue",   "spec": null }
     ],
-    "can_bring": [{ "cls": "hunter", "spec": null }]
+    "can_bring": [{ "cls": "hunter", "spec": "Beast Mastery" }]
   },
   {
     "id": "armor_minor",
@@ -398,12 +398,14 @@
     "desc": "-AP on target (Demoralizing Shout – Warrior / Demoralizing Roar – Feral / Curse of Weakness – Warlock / Vindication – Paladin)",
     "cat": "Reduction Debuffs",
     "preferred": [
+      { "cls": "paladin", "spec": "Protection" },
       { "cls": "warrior", "spec": null },
       { "cls": "druid",   "spec": "Feral" }
     ],
     "can_bring": [
       { "cls": "warlock", "spec": null },
       { "cls": "paladin", "spec": null }
+      { "cls": "paladin", "spec": "Retribution" }
     ]
   },
   {
@@ -440,14 +442,12 @@
     "desc": "+Mana/sec (Shadow Priest / Survival Hunter / Ret Paladin / Frost Mage / Destro Warlock)",
     "cat": "Resource Return",
     "preferred": [
-      { "cls": "priest",   "spec": "Shadow" },
       { "cls": "hunter",   "spec": "Survival" },
       { "cls": "paladin",  "spec": "Retribution" },
       { "cls": "mage",     "spec": "Frost" },
-      { "cls": "mage",     "spec": "Frostfire" },
       { "cls": "warlock",  "spec": "Destruction" }
     ],
-    "can_bring": []
+    "can_bring": [{ "cls": "priest",   "spec": "Shadow" }]
   },
   {
     "id": "mana_restore",
@@ -455,10 +455,9 @@
     "desc": "+MP5 (Mana Spring Totem – Shaman / Blessing of Wisdom – Paladin)",
     "cat": "Resource Return",
     "preferred": [
-      { "cls": "shaman",  "spec": null },
       { "cls": "paladin", "spec": null }
     ],
-    "can_bring": []
+    "can_bring": [{ "cls": "shaman",  "spec": null }]
   },
   {
     "id": "mana_tide",
