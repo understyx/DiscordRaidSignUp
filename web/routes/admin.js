@@ -101,33 +101,45 @@ router.post('/seed-fake-players', async (req, res) => {
   const usedIds = new Set();
   let totalChars = 0;
 
-  for (let i = 0; i < NUM_USERS; i++) {
-    const fakeId = _randomFakeId(usedIds);
-    const username = `FakeUser${_randInt(1000, 9999)}`;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-    await pool.query(
-      `INSERT INTO discord_users (discord_user_id, username, display_name, updated_at)
-       VALUES (?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE username = VALUES(username), display_name = VALUES(display_name), updated_at = NOW()`,
-      [fakeId, username, username]
-    );
+    for (let i = 0; i < NUM_USERS; i++) {
+      const fakeId = _randomFakeId(usedIds);
+      const username = `FakeUser${_randInt(1000, 9999)}`;
 
-    const charCount = _randInt(2, 10);
-    for (let j = 0; j < charCount; j++) {
-      const { name: charClass, specs } = _WOW_CLASSES[_randInt(0, _WOW_CLASSES.length - 1)];
-      const spec = specs[_randInt(0, specs.length - 1)];
-      const role = _CLASS_SPEC_ROLES[`${charClass}.${spec}`] || 'dps';
-      const gearscore = (_randInt(4000, 6800) * 10) / 10;
-      const realm = _REALMS[_randInt(0, _REALMS.length - 1)];
-      const charName = _randomCharName(_randInt(5, 12));
-
-      await pool.query(
-        `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [fakeId, charName, realm, charClass, spec, role, gearscore]
+      await conn.query(
+        `INSERT INTO discord_users (discord_user_id, username, display_name, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE username = VALUES(username), display_name = VALUES(display_name), updated_at = NOW()`,
+        [fakeId, username, username]
       );
-      totalChars++;
+
+      const charCount = _randInt(2, 10);
+      for (let j = 0; j < charCount; j++) {
+        const { name: charClass, specs } = _WOW_CLASSES[_randInt(0, _WOW_CLASSES.length - 1)];
+        const spec = specs[_randInt(0, specs.length - 1)];
+        const role = _CLASS_SPEC_ROLES[`${charClass}.${spec}`] || 'dps';
+        const gearscore = _randInt(4000, 6800);
+        const realm = _REALMS[_randInt(0, _REALMS.length - 1)];
+        const charName = _randomCharName(_randInt(5, 12));
+
+        await conn.query(
+          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [fakeId, charName, realm, charClass, spec, role, gearscore]
+        );
+        totalChars++;
+      }
     }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
 
   req.session.flash = `✅ Seeded ${NUM_USERS} fake players with ${totalChars} characters total.`;
