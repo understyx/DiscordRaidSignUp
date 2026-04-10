@@ -101,3 +101,9 @@ class DiscordUser(Base):
     username = Column(String(100), nullable=False)
     display_name = Column(String(100), nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class GuildAdminRole(Base):
+    __tablename__ = "guild_admin_roles"
+    guild_id = Column(BigInteger, primary_key=True)
+    role_id = Column(BigInteger, primary_key=True)

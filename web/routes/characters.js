@@ -21,7 +21,11 @@ function popFlash(req) {
 }
 
 function currentUser(req) {
-  return { id: req.session.user_id, username: req.session.username };
+  return {
+    id: req.session.user_id,
+    username: req.session.username,
+    is_admin: req.session.is_admin !== false,
+  };
 }
 
 // GET /profile

@@ -40,7 +40,9 @@
         <td>
           <a href="/raids/{{ r.id }}" class="btn btn-sm btn-outline-light">View</a>
           <a href="/raids/{{ r.id }}/comp" class="btn btn-sm btn-outline-info">Comp</a>
+          {% if user.is_admin %}
           <a href="/raids/{{ r.id }}/manage" class="btn btn-sm btn-outline-warning">Manage</a>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
