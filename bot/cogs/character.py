@@ -66,6 +66,12 @@ class CharacterCog(commands.Cog):
         gs2="Gearscore for spec 2 (optional)",
         spec3="Third spec (optional)",
         gs3="Gearscore for spec 3 (optional)",
+        spec4="Fourth spec (optional)",
+        gs4="Gearscore for spec 4 (optional)",
+        spec5="Fifth spec (optional)",
+        gs5="Gearscore for spec 5 (optional)",
+        spec6="Sixth spec (optional)",
+        gs6="Gearscore for spec 6 (optional)",
         realm="Realm name (default: Icecrown)",
     )
     async def addcharacter(
@@ -79,6 +85,12 @@ class CharacterCog(commands.Cog):
         gs2: Optional[str] = None,
         spec3: Optional[str] = None,
         gs3: Optional[str] = None,
+        spec4: Optional[str] = None,
+        gs4: Optional[str] = None,
+        spec5: Optional[str] = None,
+        gs5: Optional[str] = None,
+        spec6: Optional[str] = None,
+        gs6: Optional[str] = None,
         realm: str = "Icecrown",
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -103,6 +115,24 @@ class CharacterCog(commands.Cog):
                 specs.append((spec3.strip(), parse_gs(gs3)))
             except ValueError:
                 await interaction.followup.send(f"❌ Invalid gearscore for spec 3: `{gs3}`.", ephemeral=True)
+                return
+        if spec4 and gs4 is not None:
+            try:
+                specs.append((spec4.strip(), parse_gs(gs4)))
+            except ValueError:
+                await interaction.followup.send(f"❌ Invalid gearscore for spec 4: `{gs4}`.", ephemeral=True)
+                return
+        if spec5 and gs5 is not None:
+            try:
+                specs.append((spec5.strip(), parse_gs(gs5)))
+            except ValueError:
+                await interaction.followup.send(f"❌ Invalid gearscore for spec 5: `{gs5}`.", ephemeral=True)
+                return
+        if spec6 and gs6 is not None:
+            try:
+                specs.append((spec6.strip(), parse_gs(gs6)))
+            except ValueError:
+                await interaction.followup.send(f"❌ Invalid gearscore for spec 6: `{gs6}`.", ephemeral=True)
                 return
 
         def _upsert_all():
