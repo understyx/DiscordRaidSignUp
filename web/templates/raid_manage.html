@@ -721,6 +721,8 @@
       draggedPlaceholderColor = null;
       draggedRole             = null;
       addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, placeholder_text: assignedDiv.dataset.placeholder });
+      clearTimeout(saveTimer);
+      autoSave();
       return;
     }
 
@@ -767,6 +769,8 @@
     draggedRole          = null;
     addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, character_id: finalCharId });
     updateCharInCompStatus();
+    clearTimeout(saveTimer);
+    autoSave();
   }
 
   /* ── Clear a single assigned-char div ─────────────────────────────── */
