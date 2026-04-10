@@ -214,13 +214,16 @@
   }
 
   // ── Role detection from spec name ──────────────────────────────────────
-  function specToRole(spec, charClass) {
+  function specToRole(spec) {
     if (!spec) return 'dps';
     const s = spec.toLowerCase();
-    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
-    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
+    // Check explicit role markers first so e.g. "Blood (DPS)" isn't treated as tank
     if (s.includes('(tank)')) return 'tank';
     if (s.includes('(heal') || s.includes('healer')) return 'healer';
+    if (s.includes('(dps)')) return 'dps';
+    // Fallback: keyword detection
+    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
+    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
     return 'dps';
   }
 
@@ -236,8 +239,7 @@
       if (!col.dataset.resolvedRole) {
         const dbRole = col.dataset.role || '';
         const spec   = col.dataset.spec || '';
-        const cls    = col.dataset.class || '';
-        col.dataset.resolvedRole = dbRole || specToRole(spec, cls);
+        col.dataset.resolvedRole = dbRole || specToRole(spec);
       }
     });
 
