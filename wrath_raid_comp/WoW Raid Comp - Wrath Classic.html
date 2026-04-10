@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Visualize the composition of a 10 or 25 person raid.">
+    <meta name="keywords"
+        content="Wrath of the Lich King, Lich King, WotLK, Warcraft, Wrath Raid Composition, Wrath Raid Comp">
+    <meta name="author" content="Dalya-Atiesh">
+    <meta property="og:title" content="Wow Raid Comp - Wrath Classic">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/wrath/imgfolder/WrathLogo.png">
+    <meta property="og:url" content="https://www.wowraidcomp.com/wrath">
+    <link rel="shortcut icon" type="image/gif" href="favicon.gif">
+    <link rel="stylesheet" href="/wrath/scripsfolder/style2025B.css">
+    <script src="/wrath/scripsfolder/html2canvas.min.js" defer></script>
+    <script src="/wrath/scripsfolder/spec_tooltip.js" defer></script>
+    <script src="/wrath/scripsfolder/main2025B.js" defer></script>
+    <title>WoW Raid Comp - Wrath Classic</title>
+</head>
+
+<body>
+    <script src="/wrath/scripsfolder/wz_tooltip.js" defer></script>
+    <div id="main-container">
+        <nav>
+            <div id="logo">
+                <p>WoW Raid Comp</p>
+                <p>Wrath Classic</p>
+            </div>
+            <ul>
+                <li id="btn_copy-link" class="button">Copy Link</li>
+                <li id="btn_save-image" class="button">Save Image</li>
+                <li id="btn_clear-all" class="button">Clear All</li>
+                <li id="btn_about" class="button">About</li>
+                <div class="dropdown-btn" id="dropdown-btn-tbc">TBC Anniversary</div>
+                <li id="dropdown-container">
+                    <div id="dropdown-btn-main">Expansions</div>
+                    <div id="dropdown-items" hidden>
+                        <!-- <div class="dropdown-btn" id="dropdown-btn-wrath">Wrath Classic</div> -->
+                        <div class="dropdown-btn" id="dropdown-btn-tbc2">TBC Anniversary</div>
+                        <div class="dropdown-btn" id="dropdown-btn-cata">Cataclysm Classic (Old)</div>
+                        <div class="dropdown-btn" id="dropdown-btn-mop">MoP Classic</div>
+                        <div class="dropdown-btn" id="dropdown-btn-pv">Profession Visualizer</div>
+                    </div>
+                </li>
+            </ul>
+        </nav>
+        <main>
+            <div id="panel1" class="panel">
+                <div id="table-container">
+                    <table class="selecting-table" draggable="false">
+                        <tbody id="table-event">
+                            <tr class="selecting-table-title">
+                                <td></td>
+                                <td>Tank</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td id="table_29" data-spec="29" class="selecting-td color-white select-dk"
+                                    draggable="true">Blood
+                                </td>
+                                <td id="table_02" data-spec="02" class="selecting-td color-white select-druid"
+                                    draggable="true">
+                                    Feral (Bear)</td>
+                                <td id="table_12" data-spec="12" class="selecting-td color-white select-paladin"
+                                    draggable="true">
+                                    Protection</td>
+                            </tr>
+                            <tr>
+                                <td id="table_28" data-spec="28" class="selecting-td color-white select-warrior"
+                                    draggable="true">
+                                    Protection</td>
+                                <td id="table_32" data-spec="32" class="selecting-td color-white select-tank"
+                                    draggable="true">Tank
+                                </td>
+                                <td></td>
+                            </tr>
+                            <tr class="selecting-table-title">
+                                <td></td>
+                                <td>Heal</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td id="table_04" data-spec="04" class="selecting-td color-white select-druid"
+                                    draggable="true">
+                                    Restoration</td>
+                                <td id="table_14" data-spec="14" class="selecting-td color-orange select-priest"
+                                    draggable="true">
+                                    Discipline</td>
+                                <td id="table_15" data-spec="15" class="selecting-td color-orange select-priest"
+                                    draggable="true">
+                                    Holy</td>
+                            </tr>
+                            <tr>
+                                <td id="table_11" data-spec="11" class="selecting-td color-white select-paladin"
+                                    draggable="true">
+                                    Holy
+                                </td>
+                                <td id="table_22" data-spec="22" class="selecting-td color-white select-shaman"
+                                    draggable="true">
+                                    Restoration</td>
+                                <td id="table_33" data-spec="33" class="selecting-td color-white select-heal"
+                                    draggable="true">
+                                    Heal</td>
+                            </tr>
+                            <tr class="selecting-table-title">
+                                <td></td>
+                                <td>Caster/Range</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td id="table_05" data-spec="05" class="selecting-td color-orange select-hunter"
+                                    draggable="true">Beast Mastery</td>
+                                <td id="table_06" data-spec="06" class="selecting-td color-orange select-hunter"
+                                    draggable="true">
+                                    Marksmanship</td>
+                                <td id="table_07" data-spec="07" class="selecting-td color-orange select-hunter"
+                                    draggable="true">
+                                    Survival
+                                </td>
+                            </tr>
+                            <tr>
+                                <td id="table_08" data-spec="08" class="selecting-td color-orange select-mage"
+                                    draggable="true">
+                                    Arcane</td>
+                                <td id="table_09" data-spec="09" class="selecting-td color-orange select-mage"
+                                    draggable="true">Fire
+                                </td>
+                                <td id="table_10" data-spec="10" class="selecting-td color-orange select-mage"
+                                    draggable="true">Frost
+                                </td>
+                            </tr>
+                            <tr>
+                                <td id="table_23" data-spec="23" class="selecting-td color-white select-warlock"
+                                    draggable="true">
+                                    Affliction</td>
+                                <td id="table_24" data-spec="24" class="selecting-td color-white select-warlock"
+                                    draggable="true">
+                                    Demonology</td>
+                                <td id="table_25" data-spec="25" class="selecting-td color-white select-warlock"
+                                    draggable="true">
+                                    Destruction</td>
+                            </tr>
+                            <tr>
+                                <td id="table_01" data-spec="01" class="selecting-td color-white select-druid"
+                                    draggable="true">
+                                    Balance
+                                </td>
+                                <td id="table_16" data-spec="16" class="selecting-td color-orange select-priest"
+                                    draggable="true">
+                                    Shadow
+                                </td>
+                                <td id="table_20" data-spec="20" class="selecting-td color-white select-shaman"
+                                    draggable="true">
+                                    Elemental
+                                </td>
+                            </tr>
+                            <tr>
+                                <td id="table_34" data-spec="34" class="selecting-td color-white select-dps"
+                                    draggable="true">Range
+                                </td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                            <tr class="selecting-table-title">
+                                <td></td>
+                                <td>Melee</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td id="table_17" data-spec="17" class="selecting-td color-orange select-rogue"
+                                    draggable="true">
+                                    Assassination</td>
+                                <td id="table_18" data-spec="18" class="selecting-td color-orange select-rogue"
+                                    draggable="true">
+                                    Combat
+                                </td>
+                                <td id="table_19" data-spec="19" class="selecting-td color-orange select-rogue"
+                                    draggable="true">
+                                    Subtlety
+                                </td>
+                            </tr>
+                            <tr>
+                                <td id="table_30" data-spec="30" class="selecting-td color-white select-dk"
+                                    draggable="true">Frost
+                                </td>
+                                <td id="table_31" data-spec="31" class="selecting-td color-white select-dk"
+                                    draggable="true">Unholy
+                                </td>
+                                <td id="table_03" data-spec="03" class="selecting-td color-white select-druid"
+                                    draggable="true">
+                                    Feral
+                                    (Cat)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td id="table_26" data-spec="26" class="selecting-td color-white select-warrior"
+                                    draggable="true">
+                                    Arms
+                                </td>
+                                <td id="table_27" data-spec="27" class="selecting-td color-white select-warrior"
+                                    draggable="true">
+                                    Fury
+                                </td>
+                                <td id="table_13" data-spec="13" class="selecting-td color-white select-paladin"
+                                    draggable="true">
+                                    Retribution</td>
+                            </tr>
+                            <tr>
+                                <td id="table_21" data-spec="21" class="selecting-td color-white select-shaman"
+                                    draggable="true">
+                                    Enhancement</td>
+                                <td id="table_35" data-spec="35" class="selecting-td color-white select-dps"
+                                    draggable="true">Melee
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="panel2" class="panel">
+                <div id="main-grid-area">
+                    <ul class="group-box group-box1">
+                        <li>Group 1</li>
+                        <li id="01" data-spec="" data-party class="party-default"></li>
+                        <li id="02" data-spec="" data-party class="party-default"></li>
+                        <li id="03" data-spec="" data-party class="party-default"></li>
+                        <li id="04" data-spec="" data-party class="party-default"></li>
+                        <li id="05" data-spec="" data-party class="party-default"></li>
+                    </ul>
+                    <ul class="group-box group-box2">
+                        <li>Group 2</li>
+                        <li id="06" data-spec="" data-party class="party-default"></li>
+                        <li id="07" data-spec="" data-party class="party-default"></li>
+                        <li id="08" data-spec="" data-party class="party-default"></li>
+                        <li id="09" data-spec="" data-party class="party-default"></li>
+                        <li id="10" data-spec="" data-party class="party-default"></li>
+                    </ul>
+                    <ul class="group-box group-box3">
+                        <li>Group 3</li>
+                        <li id="11" data-spec="" data-party class="party-default"></li>
+                        <li id="12" data-spec="" data-party class="party-default"></li>
+                        <li id="13" data-spec="" data-party class="party-default"></li>
+                        <li id="14" data-spec="" data-party class="party-default"></li>
+                        <li id="15" data-spec="" data-party class="party-default"></li>
+                    </ul>
+                    <ul class="group-box group-box4">
+                        <li>Group 4</li>
+                        <li id="16" data-spec="" data-party class="party-default"></li>
+                        <li id="17" data-spec="" data-party class="party-default"></li>
+                        <li id="18" data-spec="" data-party class="party-default"></li>
+                        <li id="19" data-spec="" data-party class="party-default"></li>
+                        <li id="20" data-spec="" data-party class="party-default"></li>
+                    </ul>
+                    <ul class="group-box group-box5">
+                        <li>Group 5</li>
+                        <li id="21" data-spec="" data-party class="party-default"></li>
+                        <li id="22" data-spec="" data-party class="party-default"></li>
+                        <li id="23" data-spec="" data-party class="party-default"></li>
+                        <li id="24" data-spec="" data-party class="party-default"></li>
+                        <li id="25" data-spec="" data-party class="party-default"></li>
+                    </ul>
+                    <div class="group-box group-box6">
+                        <table>
+                            <tr>
+                                <td id="tank">0</td>
+                                <td>Tank</td>
+                            </tr>
+                            <tr>
+                                <td id="heal">0</td>
+                                <td>Heal</td>
+                            </tr>
+                            <tr>
+                                <td id="melee">0</td>
+                                <td>Melee</td>
+                            </tr>
+                            <tr>
+                                <td id="range">0</td>
+                                <td>Range</td>
+                            </tr>
+                            <tr>
+                                <td id="players">0</td>
+                                <td>Players</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <!-- here -->
+                    <ul class="group-box7">
+                        <li><span id="plate">0</span>Plate</li>
+                        <li><span id="mail">0</span>Mail</li>
+                        <li><span id="leather">0</span>Leather</li>
+                        <li><span id="cloth">0</span>Cloth</li>
+                    </ul>
+                    <ul class="group-box8">
+                        <li><span id="conqueror">0</span>Conqueror</li>
+                        <li><span id="protector">0</span>Protector</li>
+                        <li><span id="vanquisher">0</span>Vanquisher</li>
+                    </ul>
+                </div>
+            </div>
+            <div id="panel3" class="panel">
+                <div id="buff-display">
+                    <table id="buff-table1" class="buff-table">
+                        <tr>
+                            <td class="buff-name" colspan="2">Raid Buffs</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/gotw.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Gift of the Wild</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Stats_Percentage.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Blessing of Kings</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/GBOS.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Blessing of Sanctuary</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Strength_and_Agility.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Strength and Agility</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_05">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Attack_Power_Static.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Attack Power: Static</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_06">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Attack_Power_Percentage.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">10% Attack Power</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_07">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Melee_Crit.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">5% Physical Crit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_08">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Melee_Haste.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">20% Melee Haste</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_09">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Damage_Percentage.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">3% Damage</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_10">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Haste_Percentage.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">3% Haste</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_11">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Heroism_BloodlustC.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Heroism / Bloodlust</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_12">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Intellect.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Intellect</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_13">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Power.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Spell Power</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_14">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Crit.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">5% Spell Crit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_15">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Haste.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">5% Spell Haste</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_16">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spirit.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Spirit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_17">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Stamina.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Stamina</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_buff_18">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Health.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Health</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Single-Player Buffs</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="single_player_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/FM.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Focus Magic</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="single_player_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Hysteria.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Unholy Frenzy</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="single_player_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/TotT.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Tricks of the Trade</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="single_player_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Pi.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Power Infusion</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Offensive Dispel</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_dispel_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/dispell_magic.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Magic</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_dispel_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/dispel_enrage.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Enrage</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Defensive Dispel</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="defensive_dispel_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Defensive_Magic.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Magic</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="defensive_dispel_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Defensive_Curse.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Curse</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="defensive_dispel_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Defensive_Disease.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Disease</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="defensive_dispel_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Defensive_Poison.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Poison</td>
+                        </tr>
+                    </table>
+                    <table id="buff-table2" class="buff-table">
+                        <tr>
+                            <td class="buff-name" colspan="2">Offensive Debuffs</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Bleed_Damage_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">30% Bleed Damage</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Physical_Damage_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">4% Physical Damage</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Crit_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">3% Crit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Crit_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">5% Spell Crit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_05">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Hit_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">3% Spell Hit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="offensive_debuff_06">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Spell_Damage_D.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">13% Spell Damage</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Reduction Debuffs</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Armor_Major.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">20% Armor (Major)</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Armor_Minor.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">5% Armor (Minor)</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Attack_Speed_R.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">20% Attack Speed</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Attack_Power_R.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Attack Power</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_05">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Physical_Hit_R.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Physical Hit</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="reduction_debuff_06">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Healing_R.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Healing</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Resource Return</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Jow.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Judgment of Wisdom</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Replenishment.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Mana Replenishment</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Restoration.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Mana Restoration</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_04">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/MTT.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Mana Tide Totem</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_05">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/HoH.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Hymn of Hope</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_06">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Rapture.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Rapture</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_07">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Revitalize.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Revitalize</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="resource_return_08">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/Innervate.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Innervate</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Health Return</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="health_return_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/ilotp.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Imp Leader of the Pack</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="health_return_02">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/jol.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Judgement of Light</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="health_return_03">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/vampemb.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">Vampiric Embrace</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-name" colspan="2">Raid Damage Reduction</td>
+                        </tr>
+                        <tr>
+                            <td class="buff-number" id="raid_damage_reduction_01">0</td>
+                            <td class="buff-text" data-buff
+                                onmouseover="Tip('<img src=\'/wrath/imgfolder/DG.png\'width=\'400\'>')"
+                                onmouseout="UnTip()">
+                                Divine Guardian</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+    <div id="footer-container">
+        <footer>Made by Dalya-Atiesh</footer>
+    </div>
+    <div id="spec-tooltip-container" hidden></div>
+    <div id="img-tooltip-container" hidden></div>
+    <div id="popout-about" hidden>
+        <div id="close_popout-about" class="button-small">close</div>
+        <div id="about-content">
+            <p class="big-text"> What is this site all about? </p>
+            <p class="small-text">The purpose of WoW Raid Comp is to help visualize the composition of a 10 or 25 person
+                raid.</p>
+            <p class="big-text">How do i use this?</p>
+            <p class="small-text">• <span class="color-orange2">Drag</span> a Specialization to a raid position.<br>
+                &emsp;&emsp; Alternatively <span class="color-pink">"Click"</span> on a specialization and the first
+                available empty spot will be
+                filled.</p>
+            <p class="small-text">• <span class="color-orange2">Drag</span> a Specialization outside of the raid grid to
+                remove it.<br>
+                &emsp;&emsp; Alternatively <span class="color-pink">"Double Click"</span> on a specialization in the
+                raid grid and it will be removed.
+            </p>
+            <p class="small-text">• <span class="color-orange2">"Right-Click"</span> on a Specialization to see a list
+                of Buffs/Debuffs that it provides.</p>
+            <p class="small-text">• Share a <span class="color-orange2">Link</span> or an <span
+                    class="color-orange2">Image</span> of the "Perfect" WoW Raid Comp.</p>
+            <p class="big-text">Missing Buffs/Debuffs??</p>
+            <p class="small-text">The scope of the site is primarily focused on Damage increasing Buffs and Debuffs with
+                some Utility. <br>(buffs such as auras / totems that increase "Resistances" and "Armor" for example are
+                not included.)</p>
+        </div>
+        <footer id="about-foot">© 2023 WoWRaidComp.com | Contact: dalya@wowraidcomp.com</footer>
+    </div>
+</body>
+
+</html>
