@@ -42,6 +42,26 @@ function compTabLabel(compNumber, compLabels) {
   return (compLabels && compLabels[compNumber]) || `Raid ${compNumber}`;
 }
 
+/**
+ * Collect unique Discord user IDs (in order of appearance) from all role groups.
+ */
+function collectUniqueUserIds(groups) {
+  const seen = new Set();
+  const ids = [];
+  for (const roleKey of ['tank', 'healer', 'dps']) {
+    for (const e of groups[roleKey] || []) {
+      if (!e.is_placeholder && e.character && e.character.discord_user_id) {
+        const id = e.character.discord_user_id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          ids.push(id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
 function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
   const label = compTabLabel(compNumber, compLabels);
   const compLabel = totalComps > 1 ? ` – ${label}` : '';
@@ -71,7 +91,12 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
     });
   }
 
+  // Collect unique user IDs so pings in the message content trigger real notifications.
+  const allIds = collectUniqueUserIds(groups);
+  const content = allIds.map(id => `<@${id}>`).join(' ');
+
   return {
+    content: content || undefined,
     embeds: [
       {
         title: `📋 ${raid.name}${compLabel}`,
