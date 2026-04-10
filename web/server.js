@@ -9,6 +9,7 @@ const { runMigrations } = require('./migrate');
 const authRouter = require('./routes/auth');
 const raidsRouter = require('./routes/raids');
 const charactersRouter = require('./routes/characters');
+const adminRouter = require('./routes/admin');
 
 const app = express();
 
@@ -86,6 +87,7 @@ njkEnv.addFilter('discordId', val => {
 app.use('/auth', authRouter);
 app.use('/raids', raidsRouter);
 app.use('/', charactersRouter);
+app.use('/admin', adminRouter);
 
 // Root redirect
 app.get('/', (req, res) => {
