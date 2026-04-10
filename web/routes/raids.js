@@ -228,8 +228,9 @@ router.get('/:raid_id', async (req, res) => {
     const mergeKey = `${s.discord_user_id}__${s.char_name}`;
     const existing = bucket.find(e => e._mergeKey === mergeKey);
     const is_prio = s.signup_type === 'prio_character' || s.signup_type === 'prio_role';
+    const is_saved = !!s.is_saved;
     if (existing) {
-      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio });
+      existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved });
     } else {
       bucket.push({
         ...s,
@@ -241,7 +242,7 @@ router.get('/:raid_id', async (req, res) => {
           realm: s.realm,
           char_class: s.char_class,
           role: s.role,
-          specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio }],
+          specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved }],
         },
       });
     }
@@ -392,6 +393,10 @@ router.get('/:raid_id/manage', async (req, res) => {
       userSignupMap[uid].is_tentative = true;
     }
 
+    // Skip specs/characters that are already saved this lockout — they are not
+    // available for the raid and would only add clutter to the pool.
+    if (s.is_saved) continue;
+
     // Find or create a character group by char_name
     let charGroup = userSignupMap[uid].characters.find(cg => cg.char_name === s.character.char_name);
     if (!charGroup) {
@@ -410,6 +415,11 @@ router.get('/:raid_id/manage', async (req, res) => {
       role: s.character.role,
       is_prio: s.signup_type === 'prio_character' || s.signup_type === 'prio_role',
     });
+  }
+
+  // Remove user groups that have no remaining (non-saved) characters.
+  for (const uid of Object.keys(userSignupMap)) {
+    if (userSignupMap[uid].characters.length === 0) delete userSignupMap[uid];
   }
   const signupsByUser = Object.values(userSignupMap);
 

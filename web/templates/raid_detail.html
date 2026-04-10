@@ -130,7 +130,7 @@
                   <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                 </div>
                 <small class="text-muted">
-                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
                 </small>
               </div>
             </div>
@@ -153,7 +153,7 @@
                 <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
               </div>
               <small class="text-muted">
-                {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
               </small>
             </div>
           </div>
