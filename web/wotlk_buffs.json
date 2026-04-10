@@ -231,53 +231,55 @@
     "preferred": [
       { "cls": "priest", "spec": null },
       { "cls": "shaman", "spec": null },
-      { "cls": "mage",   "spec": null }
+      { "cls": "mage",   "spec": null },
+      { "cls": "warlock",   "spec": "Affliction" }
     ],
     "can_bring": []
   },
   {
     "id": "disp_enrage",
     "name": "Enrage",
-    "desc": "Enrage Dispel (Tranquilizing Shot – Hunter / Anesthetic Poison – Rogue / Soothe – Druid)",
+    "desc": "Enrage Dispel",
     "cat": "Offensive Dispel",
     "preferred": [{ "cls": "hunter", "spec": null }],
     "can_bring": [
-      { "cls": "rogue", "spec": null },
-      { "cls": "druid", "spec": null }
+      { "cls": "rogue", "spec": null }
     ]
   },
 
   {
     "id": "disp_magic_def",
     "name": "Magic",
-    "desc": "Defensive Magic Dispel (Priest / Paladin – Cleanse / Shaman – Cleanse Spirit)",
+    "desc": "Defensive Magic Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
       { "cls": "priest",  "spec": null },
       { "cls": "paladin", "spec": null },
-      { "cls": "shaman",  "spec": null }
+      { "cls": "warlock", "spec": "Affliction" }
     ],
     "can_bring": []
   },
   {
     "id": "disp_curse",
     "name": "Curse",
-    "desc": "Curse Dispel (Remove Curse – Mage / Abolish Curse – Druid)",
+    "desc": "Curse Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
       { "cls": "mage",  "spec": null },
       { "cls": "druid", "spec": null }
+      { "cls": "shaman", "spec": "Restoration" }
     ],
     "can_bring": []
   },
   {
     "id": "disp_disease",
     "name": "Disease",
-    "desc": "Disease Dispel (Abolish Disease – Priest / Cleanse – Paladin)",
+    "desc": "Disease Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
       { "cls": "priest",  "spec": null },
       { "cls": "paladin", "spec": null }
+      { "cls": "shaman", "spec": null }
     ],
     "can_bring": []
   },
