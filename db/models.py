@@ -83,7 +83,8 @@ class Composition(Base):
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=True)  # NULL for placeholder slots
     placeholder_text = Column(String(100), nullable=True)  # e.g. "🛡️ Prot Paladin" when character_id is NULL
-    role_slot = Column(String(50), nullable=False)  # e.g. "tank_1", "healer_3", "dps_10"
+    role_slot = Column(String(50), nullable=False)  # e.g. "slot_1", "slot_3", "slot_10"
+    slot_role = Column(String(20), nullable=False, default="dps")  # "tank", "healer", or "dps"
     comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
     created_by = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
