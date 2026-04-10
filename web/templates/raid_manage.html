@@ -827,6 +827,11 @@
     /* Character drop */
     if (!draggedCharId) return;
 
+    /* Evict this exact spec from any slot it already occupies */
+    document.querySelectorAll(`.assigned-char[data-char-id="${draggedCharId}"]`).forEach(el => {
+      if (el !== assignedDiv) clearAssigned(el);
+    });
+
     /* Enforce one character per Discord user */
     if (draggedDiscordUserId) {
       document.querySelectorAll('.assigned-char[data-discord-user-id]').forEach(el => {
