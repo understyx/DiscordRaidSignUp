@@ -126,8 +126,8 @@ router.post('/seed-fake-players', async (req, res) => {
         const charName = _randomCharName(_randInt(5, 12));
 
         await conn.query(
-          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, last_updated)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
           [fakeId, charName, realm, charClass, spec, role, gearscore]
         );
         totalChars++;
