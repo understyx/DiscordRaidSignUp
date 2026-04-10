@@ -18,7 +18,7 @@
   {% for cn in comp_numbers %}
   <a href="/raids/{{ raid.id }}/comp?comp={{ cn }}"
      class="btn btn-sm {% if cn == current_comp %}btn-warning{% else %}btn-outline-secondary{% endif %}">
-    Raid {{ cn }}
+    {{ comp_labels[cn] if comp_labels[cn] else 'Raid ' ~ cn }}
   </a>
   {% endfor %}
 </div>

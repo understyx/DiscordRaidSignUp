@@ -172,6 +172,32 @@
   .comp-tab-add { color: #57a85b; border-color: #57a85b; }
   .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
 
+  /* ── Comp tab inline rename ──────────────────────────────────────────── */
+  .comp-tab-rename-btn {
+    background: none;
+    border: none;
+    padding: 0 0 0 4px;
+    font-size: 0.65rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.5;
+    color: #0e1117;
+    transition: opacity 0.1s;
+    vertical-align: middle;
+  }
+  .comp-tab-rename-btn:hover { opacity: 1; }
+  .comp-tab-rename-input {
+    font-size: 0.78rem;
+    padding: 0 6px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid var(--wow-gold);
+    background: #1a1f2e;
+    color: #d8dce8;
+    width: 120px;
+    outline: none;
+  }
+
   /* ── Slot drag-over highlight ───────────────────────────────────────── */
   .slot-drag-over {
     box-shadow: 0 0 0 2px var(--wow-gold) !important;
@@ -215,13 +241,22 @@
     {# ── Comp tabs ──────────────────────────────────────────────────── #}
     <div class="comp-tabs">
       {% for cn in comp_numbers %}
+      {% set tab_label = comp_labels[cn] if comp_labels[cn] else 'Raid ' ~ cn %}
+      {% if cn == current_comp %}
+      <span class="comp-tab active" id="activeCompTab">
+        <span id="activeTabLabel">{{ tab_label }}</span>
+        <button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>
+      </span>
+      {% else %}
       <a href="/raids/{{ raid.id }}/manage?comp={{ cn }}"
-         class="comp-tab{% if cn == current_comp %} active{% endif %}">
-        Raid {{ cn }}
-      </a>
+         class="comp-tab">{{ tab_label }}</a>
+      {% endif %}
       {% endfor %}
       {% if current_comp not in comp_numbers %}
-      <span class="comp-tab active">Raid {{ current_comp }}</span>
+      <span class="comp-tab active" id="activeCompTab">
+        <span id="activeTabLabel">Raid {{ current_comp }}</span>
+        <button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>
+      </span>
       {% endif %}
       <a href="/raids/{{ raid.id }}/manage?comp={{ next_comp }}" class="comp-tab comp-tab-add">+ Add Raid</a>
     </div>
@@ -897,6 +932,11 @@
   const COMP_NUMBERS_ALL = {{ comp_numbers | tojson | safe }};
   const CURRENT_COMP = {{ current_comp }};
   const COMP_SUMMARIES = {{ comp_summaries | tojson | safe }};
+  const COMP_LABELS = {{ comp_labels | tojson | safe }};
+
+  function compTabLabel(cn) {
+    return COMP_LABELS[cn] || ('Raid ' + cn);
+  }
 
   function showPostConfirmModal() {
     if (COMP_NUMBERS_ALL.length > 1) {
@@ -909,7 +949,7 @@
         const total = s.tank + s.healer + s.dps;
         const isCurrent = cn === CURRENT_COMP;
         html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
-        html += `<td>Raid ${cn}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
+        html += `<td>${compTabLabel(cn)}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
         html += `<td>${s.tank}</td><td>${s.healer}</td><td>${s.dps}</td><td><strong>${total}</strong></td>`;
         html += '</tr>';
       }
@@ -970,5 +1010,53 @@
     form.action = `/raids/{{ raid.id }}/post_comp`;
     form.submit();
   });
+
+  /* ── Comp tab inline rename ───────────────────────────────────────── */
+  function startTabRename() {
+    const tab = document.getElementById('activeCompTab');
+    const labelEl = document.getElementById('activeTabLabel');
+    const currentLabel = labelEl.textContent.trim();
+
+    // Swap label + button for an input
+    tab.innerHTML =
+      `<input id="tabRenameInput" class="comp-tab-rename-input" type="text"
+              maxlength="100" value="${currentLabel.replace(/"/g, '&quot;')}"
+              title="Enter a name and press Enter, or Escape to cancel">`;
+    const input = document.getElementById('tabRenameInput');
+    input.focus();
+    input.select();
+
+    async function commitRename() {
+      const newLabel = input.value.trim();
+      try {
+        const resp = await fetch('/raids/{{ raid.id }}/comp_label', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comp_number: CURRENT_COMP, label: newLabel }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          COMP_LABELS[CURRENT_COMP] = data.label || null;
+        }
+      } catch (_) {}
+      const finalLabel = (COMP_LABELS[CURRENT_COMP]) || ('Raid ' + CURRENT_COMP);
+      tab.innerHTML =
+        `<span id="activeTabLabel">${finalLabel}</span>` +
+        `<button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>`;
+    }
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+      if (e.key === 'Escape') {
+        tab.innerHTML =
+          `<span id="activeTabLabel">${currentLabel}</span>` +
+          `<button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>`;
+      }
+    });
+    input.addEventListener('blur', () => {
+      // Only commit if the input is still present (not already replaced by Escape)
+      if (document.getElementById('tabRenameInput')) commitRename();
+    });
+  }
 </script>
 {% endblock %}
