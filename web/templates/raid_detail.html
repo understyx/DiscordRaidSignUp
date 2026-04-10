@@ -110,23 +110,59 @@
   {# ── Current Sign-ups ─────────────────────────────────────────────── #}
   <div class="col-md-8">
     <div class="card p-3">
-      <h5>📋 Current Sign-ups</h5>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">📋 Current Sign-ups</h5>
+        <div class="btn-group btn-group-sm" id="roleFilters" role="group" aria-label="Filter by role">
+          <button type="button" class="btn btn-outline-secondary role-filter-btn active" data-role="all">All</button>
+          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="tank">🛡️ Tank</button>
+          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="healer">💚 Heal</button>
+          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="dps">⚔️ DPS</button>
+        </div>
+      </div>
       {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
       {% if all_sups | length > 0 %}
-        {# Tentative signups are handled separately below #}
-        {% set signupTypeLabels = [{"key": "prio_character", "label": "Preferred Character"}, {"key": "prio_role", "label": "Preferred Role"}, {"key": "fill", "label": "Fill"}] %}
+        {# Preferred and Fill signups #}
+        {% set signupTypeLabels = [{"key": "prio_character", "label": "⭐ Preferred Character"}, {"key": "prio_role", "label": "⭐ Preferred Role"}, {"key": "fill", "label": "Fill"}] %}
         {% for item in signupTypeLabels %}
           {% set sups = grouped_signups[item.key] or [] %}
           {% if sups | length > 0 %}
-          <h6 class="text-muted mt-2">{{ item.label }}</h6>
+          <div class="signup-section" data-section="{{ item.key }}">
+            <h6 class="text-muted mt-2">{{ item.label }}</h6>
+            <div class="row g-2 mb-3">
+              {% for s in sups %}
+              {% set c = s.character %}
+              {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
+              {% set first_spec = c.specs[0].spec if c.specs else "" %}
+              <div class="col-sm-6 signup-card-col" data-role="{{ c.role or '' }}" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
+                <div class="card p-2 h-100 border-secondary">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+                    <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
+                  </div>
+                  <small class="text-muted">
+                    {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                  </small>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+        {# ── Tentative ── #}
+        {% set tentative_sups = grouped_signups.tentative or [] %}
+        {% if tentative_sups | length > 0 %}
+        <div class="signup-section" data-section="tentative">
+          <h6 class="text-muted mt-2">❓ Tentative</h6>
           <div class="row g-2 mb-3">
-            {% for s in sups %}
+            {% for s in tentative_sups %}
             {% set c = s.character %}
             {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-            <div class="col-sm-6">
+            {% set first_spec = c.specs[0].spec if c.specs else "" %}
+            <div class="col-sm-6 signup-card-col" data-role="{{ c.role or '' }}" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
               <div class="card p-2 h-100 border-secondary">
                 <div class="d-flex justify-content-between align-items-center">
-                  <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+                  <span class="fw-bold cls-{{ cls_key }} tentative-name">{{ c.char_name }}</span>
                   <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                 </div>
                 <small class="text-muted">
@@ -136,28 +172,6 @@
             </div>
             {% endfor %}
           </div>
-          {% endif %}
-        {% endfor %}
-        {# ── Tentative ── #}
-        {% set tentative_sups = grouped_signups.tentative or [] %}
-        {% if tentative_sups | length > 0 %}
-        <h6 class="text-muted mt-2">❓ Tentative</h6>
-        <div class="row g-2 mb-3">
-          {% for s in tentative_sups %}
-          {% set c = s.character %}
-          {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-          <div class="col-sm-6">
-            <div class="card p-2 h-100 border-secondary">
-              <div class="d-flex justify-content-between align-items-center">
-                <span class="fw-bold cls-{{ cls_key }} tentative-name">{{ c.char_name }}</span>
-                <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
-              </div>
-              <small class="text-muted">
-                {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
-              </small>
-            </div>
-          </div>
-          {% endfor %}
         </div>
         {% endif %}
       {% else %}
@@ -199,8 +213,49 @@
     document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = checkbox.checked; });
   }
 
-  // Initialise group checkboxes to reflect per-spec state on page load
+  // ── Role detection from spec name ──────────────────────────────────────
+  function specToRole(spec, charClass) {
+    if (!spec) return 'dps';
+    const s = spec.toLowerCase();
+    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
+    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
+    if (s.includes('(tank)')) return 'tank';
+    if (s.includes('(heal') || s.includes('healer')) return 'healer';
+    return 'dps';
+  }
+
+  // ── Role filter ─────────────────────────────────────────────────────────
+  function filterSignups(role) {
+    // Update active button
+    document.querySelectorAll('.role-filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.role === role);
+    });
+
+    // Resolve role for cards that rely on spec detection
+    document.querySelectorAll('.signup-card-col').forEach(col => {
+      if (!col.dataset.resolvedRole) {
+        const dbRole = col.dataset.role || '';
+        const spec   = col.dataset.spec || '';
+        const cls    = col.dataset.class || '';
+        col.dataset.resolvedRole = dbRole || specToRole(spec, cls);
+      }
+    });
+
+    // Show / hide cards
+    document.querySelectorAll('.signup-card-col').forEach(col => {
+      col.style.display = (role === 'all' || col.dataset.resolvedRole === role) ? '' : 'none';
+    });
+
+    // Show / hide sections whose cards are all hidden
+    document.querySelectorAll('.signup-section').forEach(section => {
+      const hasVisible = Array.from(section.querySelectorAll('.signup-card-col'))
+        .some(col => col.style.display !== 'none');
+      section.style.display = hasVisible ? '' : 'none';
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    // Initialise group checkboxes to reflect per-spec state on page load
     const slugs = new Set();
     document.querySelectorAll('[class*="spec-cb-"]').forEach(el => {
       el.className.split(' ').forEach(cls => {
@@ -209,6 +264,11 @@
       });
     });
     slugs.forEach(slug => updateGroupCheckbox(slug));
+
+    // Attach filter button listeners
+    document.querySelectorAll('.role-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => filterSignups(btn.dataset.role));
+    });
   });
 </script>
 {% endblock %}
