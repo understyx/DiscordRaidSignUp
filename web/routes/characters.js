@@ -115,6 +115,7 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   );
 
   if (char) {
+    await pool.query('DELETE FROM signups WHERE character_id = ?', [char.id]);
     await pool.query('DELETE FROM characters WHERE id = ?', [char.id]);
     req.session.flash = `✅ Character '${char.char_name}' deleted.`;
   } else {
