@@ -439,7 +439,7 @@
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
-                   data-all-specs="{{ charGroup.specs | map(attribute='spec') | select | join(',') }}"
+                   data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">

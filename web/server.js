@@ -73,6 +73,13 @@ njkEnv.addFilter('dateformat', (value, fmt) => {
 // int filter
 njkEnv.addFilter('int', val => Math.floor(Number(val)) || 0);
 
+// map filter: extracts a named attribute from each item in an array
+// Usage: array | map('attrName')
+njkEnv.addFilter('map', (arr, attr) => {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(item => (item != null && typeof item === 'object') ? item[attr] : undefined);
+});
+
 // tojson filter: serialize a value to a JSON string safe for inline <script> use
 njkEnv.addFilter('tojson', val => JSON.stringify(val));
 
