@@ -35,8 +35,8 @@
               <button type="submit" class="btn btn-sm btn-outline-secondary" title="Refresh from armory">🔄</button>
             </form>
             <form method="post" action="/characters/{{ c.id }}/delete"
-                  onsubmit="return confirm('Delete {{ c.char_name }}?')">
-              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">✕</button>
+                  onsubmit="return confirm('Hide {{ c.char_name }}? This removes it from your list but keeps old raid history.')">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
             </form>
           </div>
         </td>
