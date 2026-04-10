@@ -4,8 +4,6 @@ const { fetchArmory } = require('../warmane');
 
 const router = express.Router();
 
-const VALID_ROLES = ['tank', 'healer', 'dps'];
-
 function requireLogin(req, res) {
   if (!req.session.user_id) {
     res.redirect('/auth/login');
@@ -28,8 +26,8 @@ function currentUser(req) {
   };
 }
 
-// GET /profile
-router.get('/profile', async (req, res) => {
+// GET /characters
+router.get('/characters', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
@@ -38,17 +36,16 @@ router.get('/profile', async (req, res) => {
     [userId]
   );
 
-  res.render('profile.html', {
+  res.render('characters.html', {
     chars,
-    roles: VALID_ROLES,
     flash: popFlash(req),
     user: currentUser(req),
   });
 });
 
-// GET /characters -> redirect
-router.get('/characters', (req, res) => {
-  res.redirect('/profile');
+// GET /profile -> redirect for backwards-compat
+router.get('/profile', (req, res) => {
+  res.redirect('/characters');
 });
 
 // POST /characters/register
@@ -61,7 +58,7 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
 
   if (!charName) {
     req.session.flash = '❌ Character name is required.';
-    return res.redirect('/profile');
+    return res.redirect('/characters');
   }
 
   const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
@@ -102,7 +99,7 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   }
 
   req.session.flash = `✅ Character ${charNameCap} registered!`;
-  res.redirect('/profile');
+  res.redirect('/characters');
 });
 
 // POST /characters/:char_id/delete
@@ -124,35 +121,7 @@ router.post('/characters/:char_id/delete', async (req, res) => {
     req.session.flash = '❌ Character not found.';
   }
 
-  res.redirect('/profile');
-});
-
-// POST /characters/:char_id/role
-router.post('/characters/:char_id/role', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
-
-  const userId = req.session.user_id;
-  const charId = parseInt(req.params.char_id);
-  const role = (req.body.role || '').trim();
-
-  const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ?',
-    [charId, userId]
-  );
-
-  if (!char) {
-    req.session.flash = '❌ Character not found.';
-    return res.redirect('/profile');
-  }
-
-  if (role && !VALID_ROLES.includes(role)) {
-    req.session.flash = '❌ Invalid role.';
-    return res.redirect('/profile');
-  }
-
-  await pool.query('UPDATE characters SET role = ? WHERE id = ?', [role || null, char.id]);
-  req.session.flash = `✅ Role updated for ${char.char_name}.`;
-  res.redirect('/profile');
+  res.redirect('/characters');
 });
 
 module.exports = router;
