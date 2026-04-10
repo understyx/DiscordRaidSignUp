@@ -1336,12 +1336,9 @@
     const cls = (charClassCss || '').replace(/-/g, ' ').toLowerCase();
     const provCls = (provider.cls || '').toLowerCase().replace(/-/g, ' ');
     if (cls !== provCls) return false;
-    if (provider.spec === null) return true; // any spec
-    const provSpec = (provider.spec || '').toLowerCase();
-    const entrySpec = (spec || '').toLowerCase();
-    return entrySpec === provSpec ||
-           entrySpec.includes(provSpec) ||
-           provSpec.includes(entrySpec);
+    if (provider.spec === null) return true; // any spec of this class
+    // Both sides should be canonical spec names from normalizeSpec() — compare exactly.
+    return (spec || '').toLowerCase() === (provider.spec || '').toLowerCase();
   }
 
   // Returns Set of buff IDs provided by a given charClass (CSS key) + spec text.

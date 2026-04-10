@@ -182,7 +182,6 @@
       'druid': {
         'balance': 'Balance', 'boomkin': 'Balance', 'moonkin': 'Balance', 'owl': 'Balance',
         'boomy': 'Balance', 'boom': 'Balance', 'laser chicken': 'Balance', 'lazer chicken': 'Balance',
-        'balam': 'Balance',
         'feral': 'Feral', 'cat': 'Feral', 'kitty': 'Feral', 'feral cat': 'Feral',
         'bear': 'Feral', 'feral bear': 'Feral', 'beardin': 'Feral', 'guardian': 'Feral',
         'restoration': 'Restoration', 'resto': 'Restoration', 'restro': 'Restoration',
@@ -266,10 +265,6 @@
         // Spec text contains a known alias (e.g. "Balance Druid" contains "balance")
         for (const [alias, canonical] of Object.entries(clsMap)) {
           if (s.includes(alias)) return canonical;
-        }
-        // Known alias is contained in spec text (e.g. alias "feral" within "feral druid")
-        for (const [alias, canonical] of Object.entries(clsMap)) {
-          if (alias.length >= 3 && alias.includes(s)) return canonical;
         }
       }
       // Fallback: capitalise the first word of the first spec
