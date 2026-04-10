@@ -172,6 +172,12 @@
   .comp-tab-add { color: #57a85b; border-color: #57a85b; }
   .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
 
+  /* ── Slot drag-over highlight ───────────────────────────────────────── */
+  .slot-drag-over {
+    box-shadow: 0 0 0 2px var(--wow-gold) !important;
+    outline: none;
+  }
+
   /* ── Signup status badges ────────────────────────────────────────────── */
   .badge-tentative {
     font-size: 0.62rem;
@@ -294,6 +300,8 @@
                    data-slot="{{ slot }}"
                    data-slot-role="{{ slot_prefix }}"
                    ondragover="event.preventDefault()"
+                   ondragenter="this.classList.add('slot-drag-over')"
+                   ondragleave="if (!this.contains(event.relatedTarget)) this.classList.remove('slot-drag-over')"
                    ondrop="onDrop(event)">
                 <div class="slot-actions">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
@@ -567,6 +575,7 @@
   /* ── Drop onto a roster slot ───────────────────────────────────────── */
   function onDrop(event) {
     event.preventDefault();
+    event.currentTarget.classList.remove('slot-drag-over');
     const slotCard    = event.currentTarget;
     const assignedDiv = slotCard.querySelector('.assigned-char');
 
