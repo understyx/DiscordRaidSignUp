@@ -204,6 +204,23 @@
     transition: opacity 0.2s;
   }
   .buff-item.buff-missing { opacity: 0.4; }
+  .buff-item.buff-can-bring .buff-dot { background: #e8d850; }
+  .buff-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 4px 0 8px;
+    border-bottom: 1px solid var(--border-dim);
+    margin-bottom: 4px;
+  }
+  .buff-legend-item {
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+  .buff-legend-active   { color: #57a85b; }
+  .buff-legend-canbring { color: #e8d850; }
+  .buff-legend-ph       { color: #e8a030; }
+  .buff-legend-missing  { color: #556677; opacity: 0.7; }
   .buff-dot {
     width: 8px;
     height: 8px;
@@ -220,7 +237,8 @@
     text-overflow: ellipsis;
     color: #556677;
   }
-  .buff-item.buff-active   .buff-name { color: #d8dce8; }
+  .buff-item.buff-active      .buff-name { color: #d8dce8; }
+  .buff-item.buff-can-bring   .buff-name { color: #e8d850; }
   .buff-item.buff-placeholder .buff-name { color: #e8a030; }
   .buff-desc {
     font-size: 0.62rem;
@@ -230,7 +248,8 @@
     text-overflow: ellipsis;
     max-width: 90px;
   }
-  .buff-item.buff-active   .buff-desc { color: #6a7a90; }
+  .buff-item.buff-active      .buff-desc { color: #6a7a90; }
+  .buff-item.buff-can-bring   .buff-desc { color: #b8a830; }
   .buff-item.buff-placeholder .buff-desc { color: #b07820; }
 
   /* ── Comp tab inline rename ──────────────────────────────────────────── */
@@ -1193,165 +1212,10 @@
   }
 
   /* ── WotLK Raid Buff Definitions ─────────────────────────────────── */
-  // provider: { cls: 'death knight', spec: 'Frost' | null }
-  // spec: null = any spec of that class; otherwise must match normalizeSpec output
-  const WOTLK_RAID_BUFFS = [
-    // ── Raid Buffs ──────────────────────────────────────────────────────
-    { id: 'gift_wild',          name: 'Gift of the Wild',        desc: '+Stats, Armor & Resistances (Druid)',                  cat: 'Raid Buffs',
-      providers: [{ cls: 'druid', spec: null }] },
-    { id: 'kings',              name: 'Blessing of Kings',       desc: '+10% All Stats (Paladin)',                             cat: 'Raid Buffs',
-      providers: [{ cls: 'paladin', spec: null }] },
-    { id: 'sanctuary',          name: 'Blessing of Sanctuary',   desc: '+Damage Reduction & Block Value (Prot Paladin)',       cat: 'Raid Buffs',
-      providers: [{ cls: 'paladin', spec: 'Protection' }] },
-    { id: 'str_agi',            name: 'Strength and Agility',    desc: '+Str & Agi (Horn of Winter – DK / Strength of Earth – Enh Shaman)', cat: 'Raid Buffs',
-      providers: [{ cls: 'death knight', spec: null }, { cls: 'shaman', spec: 'Enhancement' }] },
-    { id: 'ap_flat',            name: 'Attack Power: Static',    desc: '+AP (Battle Shout / Blessing of Might)',               cat: 'Raid Buffs',
-      providers: [{ cls: 'warrior', spec: null }, { cls: 'paladin', spec: null }] },
-    { id: 'ap_pct',             name: '10% Attack Power',        desc: '+10% AP (Trueshot Aura / Unleashed Rage / Abom\'s Might)', cat: 'Raid Buffs',
-      providers: [
-        { cls: 'hunter',       spec: 'Marksmanship' },
-        { cls: 'shaman',       spec: 'Enhancement' },
-        { cls: 'death knight', spec: 'Blood' },
-      ] },
-    { id: 'phys_crit',          name: '5% Physical Crit',        desc: '+5% Melee/Ranged Crit (Leader of the Pack / Rampage)', cat: 'Raid Buffs',
-      providers: [{ cls: 'druid', spec: 'Feral' }, { cls: 'warrior', spec: 'Fury' }] },
-    { id: 'melee_haste',        name: '20% Melee Haste',         desc: '+Melee Haste (Windfury Totem – Enh Shaman / Improved Icy Talons – Frost DK)', cat: 'Raid Buffs',
-      providers: [
-        { cls: 'shaman',       spec: 'Enhancement' },
-        { cls: 'death knight', spec: 'Frost' },
-      ] },
-    { id: 'dmg_pct',            name: '3% Damage',               desc: '+3% Damage (Ferocious Insp / Sanctified Ret / Arcane Emp)', cat: 'Raid Buffs',
-      providers: [
-        { cls: 'hunter',  spec: 'Beast Mastery' },
-        { cls: 'paladin', spec: 'Retribution' },
-        { cls: 'mage',    spec: 'Arcane' },
-      ] },
-    { id: 'all_haste',          name: '3% Haste',                desc: '+3% Haste (Swift Retribution – Ret Paladin / Improved Moonkin Aura – Balance)', cat: 'Raid Buffs',
-      providers: [
-        { cls: 'paladin', spec: 'Retribution' },
-        { cls: 'druid',   spec: 'Balance' },
-      ] },
-    { id: 'bloodlust',          name: 'Heroism / Bloodlust',     desc: '+30% Haste for 40s (Shaman)',                          cat: 'Raid Buffs',
-      providers: [{ cls: 'shaman', spec: null }] },
-    { id: 'intellect',          name: 'Intellect',               desc: '+Intellect (Arcane Brilliance – Mage)',                cat: 'Raid Buffs',
-      providers: [{ cls: 'mage', spec: null }] },
-    { id: 'spell_power',        name: 'Spell Power',             desc: '+SP (Totem of Wrath / Flametongue – Elem Shaman / Demonic Pact – Demo Lock)', cat: 'Raid Buffs',
-      providers: [{ cls: 'shaman', spec: 'Elemental' }, { cls: 'warlock', spec: 'Demonology' }] },
-    { id: 'spell_crit_aura',    name: '5% Spell Crit',           desc: '+5% Spell Crit (Moonkin Aura – Balance / Elemental Oath – Elem Shaman)', cat: 'Raid Buffs',
-      providers: [
-        { cls: 'druid',   spec: 'Balance' },
-        { cls: 'shaman',  spec: 'Elemental' },
-      ] },
-    { id: 'spell_haste',        name: '5% Spell Haste',          desc: '+5% Spell Haste (Wrath of Air Totem – Shaman)',        cat: 'Raid Buffs',
-      providers: [{ cls: 'shaman', spec: null }] },
-    { id: 'spirit',             name: 'Spirit',                  desc: '+Spirit (Divine Spirit – Priest)',                     cat: 'Raid Buffs',
-      providers: [{ cls: 'priest', spec: null }] },
-    { id: 'stamina',            name: 'Stamina',                 desc: '+Stamina (Power Word: Fortitude – Priest)',            cat: 'Raid Buffs',
-      providers: [{ cls: 'priest', spec: null }] },
-    { id: 'health',             name: 'Health',                  desc: '+Max Health (Commanding Shout – Warrior / Blood Pact – Demo Warlock)', cat: 'Raid Buffs',
-      providers: [{ cls: 'warrior', spec: null }, { cls: 'warlock', spec: null }] },
-
-    // ── Single-Player Buffs ─────────────────────────────────────────────
-    { id: 'focus_magic',        name: 'Focus Magic',             desc: '+Spell Crit chance on one target (Arcane Mage)',       cat: 'Single-Player Buffs',
-      providers: [{ cls: 'mage', spec: 'Arcane' }] },
-    { id: 'unholy_frenzy',      name: 'Unholy Frenzy',           desc: '+20% Attack Speed, +10% dmg taken (Unholy DK)',        cat: 'Single-Player Buffs',
-      providers: [{ cls: 'death knight', spec: 'Unholy' }] },
-    { id: 'tricks',             name: 'Tricks of the Trade',     desc: '+15% Damage for 6s, redirects threat (Rogue)',         cat: 'Single-Player Buffs',
-      providers: [{ cls: 'rogue', spec: null }] },
-    { id: 'power_infusion',     name: 'Power Infusion',          desc: '+20% Haste, -20% Mana Cost (Disc Priest)',             cat: 'Single-Player Buffs',
-      providers: [{ cls: 'priest', spec: 'Discipline' }] },
-
-    // ── Offensive Dispel ────────────────────────────────────────────────
-    { id: 'disp_magic_off',     name: 'Magic',                   desc: 'Offensive Magic Dispel (Dispel Magic / Purge / Spellsteal)', cat: 'Offensive Dispel',
-      providers: [
-        { cls: 'priest',  spec: null },
-        { cls: 'shaman',  spec: null },
-        { cls: 'mage',    spec: null },
-      ] },
-    { id: 'disp_enrage',        name: 'Enrage',                  desc: 'Enrage Dispel (Tranquilizing Shot – Hunter / Anesthetic Poison – Rogue / Soothe – Druid)', cat: 'Offensive Dispel',
-      providers: [{ cls: 'hunter', spec: null }, { cls: 'rogue', spec: null }, { cls: 'druid', spec: null }] },
-
-    // ── Defensive Dispel ────────────────────────────────────────────────
-    { id: 'disp_magic_def',     name: 'Magic',                   desc: 'Defensive Magic Dispel (Priest / Paladin – Cleanse / Shaman – Cleanse Spirit)', cat: 'Defensive Dispel',
-      providers: [{ cls: 'priest', spec: null }, { cls: 'paladin', spec: null }, { cls: 'shaman', spec: null }] },
-    { id: 'disp_curse',         name: 'Curse',                   desc: 'Curse Dispel (Remove Curse – Mage / Druid)',          cat: 'Defensive Dispel',
-      providers: [{ cls: 'mage', spec: null }, { cls: 'druid', spec: null }] },
-    { id: 'disp_disease',       name: 'Disease',                 desc: 'Disease Dispel (Abolish Disease – Priest / Paladin)', cat: 'Defensive Dispel',
-      providers: [{ cls: 'priest', spec: null }, { cls: 'paladin', spec: null }] },
-    { id: 'disp_poison',        name: 'Poison',                  desc: 'Poison Dispel (Abolish Poison – Druid / Paladin / Shaman)', cat: 'Defensive Dispel',
-      providers: [{ cls: 'druid', spec: null }, { cls: 'paladin', spec: null }, { cls: 'shaman', spec: null }] },
-
-    // ── Offensive Debuffs ───────────────────────────────────────────────
-    { id: 'bleed_dmg',          name: '30% Bleed Damage',        desc: '+30% Bleed dmg taken (Mangle – Feral / Trauma – Arms)', cat: 'Offensive Debuffs',
-      providers: [{ cls: 'druid', spec: 'Feral' }, { cls: 'warrior', spec: 'Arms' }] },
-    { id: 'phys_vuln',          name: '4% Physical Damage',      desc: '+4% Phys dmg taken (Blood Frenzy / Savage Combat)',   cat: 'Offensive Debuffs',
-      providers: [{ cls: 'warrior', spec: 'Arms' }, { cls: 'rogue', spec: 'Combat' }] },
-    { id: 'crit_debuff',        name: '3% Crit',                 desc: '+3% Crit chance vs target (Heart of the Crusader – Ret Pala)', cat: 'Offensive Debuffs',
-      providers: [{ cls: 'paladin', spec: 'Retribution' }] },
-    { id: 'spell_crit_debuff',  name: '5% Spell Crit',           desc: '+5% Spell Crit vs target (Improved Scorch – Fire Mage / Improved Shadow Bolt – Warlock)', cat: 'Offensive Debuffs',
-      providers: [{ cls: 'mage', spec: 'Fire' }, { cls: 'warlock', spec: null }] },
-    { id: 'spell_hit_debuff',   name: '3% Spell Hit',            desc: '+3% Spell Hit vs target (Misery – Shadow Priest / Improved Faerie Fire – Balance)', cat: 'Offensive Debuffs',
-      providers: [
-        { cls: 'priest',  spec: 'Shadow' },
-        { cls: 'druid',   spec: 'Balance' },
-      ] },
-    { id: 'magic_vuln',         name: '13% Spell Damage',        desc: '+13% Magic dmg taken (Curse of Elements / Earth & Moon / Ebon Plague)', cat: 'Offensive Debuffs',
-      providers: [
-        { cls: 'warlock',      spec: null },
-        { cls: 'druid',        spec: 'Balance' },
-        { cls: 'death knight', spec: 'Unholy' },
-      ] },
-
-    // ── Reduction Debuffs ───────────────────────────────────────────────
-    { id: 'armor_major',        name: '20% Armor (Major)',        desc: '-20% Armor (Sunder Armor – Warrior / Expose Armor – Rogue / Acid Spit – Hunter pet)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'warrior', spec: null }, { cls: 'rogue', spec: null }, { cls: 'hunter', spec: null }] },
-    { id: 'armor_minor',        name: '5% Armor (Minor)',         desc: '-5% Armor (Faerie Fire – Druid / Curse of Recklessness – Warlock / Hunter pet)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'druid', spec: null }, { cls: 'warlock', spec: null }, { cls: 'hunter', spec: null }] },
-    { id: 'atk_speed_debuff',   name: '20% Attack Speed',         desc: '-20% Melee Attack Speed (Thunderclap / Frost Fever)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'warrior', spec: null }, { cls: 'death knight', spec: null }] },
-    { id: 'ap_debuff',          name: 'Attack Power',             desc: '-AP on target (Demoralizing Shout – Warrior / Demoralizing Roar – Feral / Curse of Weakness – Warlock / Vindication – Paladin)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'warrior', spec: null }, { cls: 'druid', spec: 'Feral' }, { cls: 'warlock', spec: null }, { cls: 'paladin', spec: null }] },
-    { id: 'phys_hit_debuff',    name: 'Physical Hit',             desc: '-3% Melee Hit (Insect Swarm – Balance Druid / Scorpid Sting – Hunter)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'druid', spec: 'Balance' }, { cls: 'hunter', spec: null }] },
-    { id: 'healing_debuff',     name: 'Healing',                  desc: '-Healing Received on target (Mortal Strike – Arms / Aimed Shot – MM Hunter / Wound Poison – Rogue)', cat: 'Reduction Debuffs',
-      providers: [{ cls: 'warrior', spec: 'Arms' }, { cls: 'hunter', spec: 'Marksmanship' }, { cls: 'rogue', spec: null }] },
-
-    // ── Resource Return ─────────────────────────────────────────────────
-    { id: 'jow',                name: 'Judgment of Wisdom',       desc: '+Mana on melee attacks against target (Paladin)',     cat: 'Resource Return',
-      providers: [{ cls: 'paladin', spec: null }] },
-    { id: 'replenishment',      name: 'Mana Replenishment',       desc: '+Mana/sec (Spriest / SV Hunter / Ret / Frost Mage / Destro Lock)', cat: 'Resource Return',
-      providers: [
-        { cls: 'priest',   spec: 'Shadow' },
-        { cls: 'hunter',   spec: 'Survival' },
-        { cls: 'paladin',  spec: 'Retribution' },
-        { cls: 'mage',     spec: 'Frost' },
-        { cls: 'warlock',  spec: 'Destruction' },
-      ] },
-    { id: 'mana_restore',       name: 'Mana Restoration',         desc: '+MP5 (Mana Spring Totem / Blessing of Wisdom)',       cat: 'Resource Return',
-      providers: [{ cls: 'shaman', spec: null }, { cls: 'paladin', spec: null }] },
-    { id: 'mana_tide',          name: 'Mana Tide Totem',          desc: 'Mana Tide Totem CD (Resto Shaman)',                   cat: 'Resource Return',
-      providers: [{ cls: 'shaman', spec: 'Restoration' }] },
-    { id: 'hymn_of_hope',       name: 'Hymn of Hope',             desc: 'AoE Mana Regeneration CD (Priest)',                  cat: 'Resource Return',
-      providers: [{ cls: 'priest', spec: null }] },
-    { id: 'rapture',            name: 'Rapture',                  desc: 'Mana return when Power Word: Shield is consumed (Disc Priest)', cat: 'Resource Return',
-      providers: [{ cls: 'priest', spec: 'Discipline' }] },
-    { id: 'revitalize',         name: 'Revitalize',               desc: 'Mana/Energy return on HoT ticks (Resto Druid)',       cat: 'Resource Return',
-      providers: [{ cls: 'druid', spec: 'Restoration' }] },
-    { id: 'innervate',          name: 'Innervate',                desc: 'Mana Regeneration CD (Druid)',                        cat: 'Resource Return',
-      providers: [{ cls: 'druid', spec: null }] },
-
-    // ── Health Return ───────────────────────────────────────────────────
-    { id: 'imp_lotp',           name: 'Imp Leader of the Pack',   desc: 'Heals raid on crit (Improved LotP – Feral Druid)',    cat: 'Health Return',
-      providers: [{ cls: 'druid', spec: 'Feral' }] },
-    { id: 'jol',                name: 'Judgment of Light',         desc: '+Heals on melee attacks against target (Paladin)',   cat: 'Health Return',
-      providers: [{ cls: 'paladin', spec: null }] },
-    { id: 'vamp_embrace',       name: 'Vampiric Embrace',          desc: 'Heals raid based on Shadow damage dealt (Shadow Priest)', cat: 'Health Return',
-      providers: [{ cls: 'priest', spec: 'Shadow' }] },
-
-    // ── Raid Damage Reduction ───────────────────────────────────────────
-    { id: 'divine_guardian',    name: 'Divine Guardian',           desc: '20% Raid Damage Reduction CD (Prot Paladin)',        cat: 'Raid Damage Reduction',
-      providers: [{ cls: 'paladin', spec: 'Protection' }] },
-  ];
+  // Loaded from web/wotlk_buffs.json via server; each entry has:
+  //   preferred: [{ cls, spec }]  – primary providers for this buff
+  //   can_bring: [{ cls, spec }]  – secondary / off-spec providers
+  const WOTLK_RAID_BUFFS = {{ wotlk_buffs | tojson | safe }};
 
   // Map from predefined placeholder text → { cls: CSS-key, spec: Canonical Spec }
   const PLACEHOLDER_CLASS_SPEC = {
@@ -1402,23 +1266,32 @@
     return (spec || '').toLowerCase() === (provider.spec || '').toLowerCase();
   }
 
-  // Returns Set of buff IDs provided by a given charClass (CSS key) + spec text.
-  function getBuffIdsFromEntry(charClassCss, specText) {
-    const spec = normalizeSpec(charClassCss, specText);
-    const ids = new Set();
+  // Returns { preferred: Set<id>, canBring: Set<id> } for a given charClass (CSS key) + spec text.
+  function getBuffTiersFromEntry(charClassCss, specText) {
+    const spec     = normalizeSpec(charClassCss, specText);
+    const preferred = new Set();
+    const canBring  = new Set();
     for (const buff of WOTLK_RAID_BUFFS) {
-      for (const p of buff.providers) {
-        if (specMatchesProvider(charClassCss, spec, p)) { ids.add(buff.id); break; }
+      let matchedPref = false;
+      for (const p of (buff.preferred || [])) {
+        if (specMatchesProvider(charClassCss, spec, p)) { matchedPref = true; break; }
+      }
+      if (matchedPref) { preferred.add(buff.id); continue; }
+      for (const p of (buff.can_bring || [])) {
+        if (specMatchesProvider(charClassCss, spec, p)) { canBring.add(buff.id); break; }
       }
     }
-    return ids;
+    return { preferred, canBring };
   }
 
-  // Collect buff IDs from all filled roster slots.
-  // Returns { char: Set, placeholder: Set }
+  // Collect buff tiers from all filled roster slots.
+  // Returns { preferred: Set, canBring: Set, placeholder: Set }
+  // preferred/canBring  = covered by a real assigned character
+  // placeholder         = covered only by a placeholder slot
   function collectRosterBuffs() {
-    const charBuffIds = new Set();
-    const phBuffIds   = new Set();
+    const charPref = new Set();
+    const charCb   = new Set();
+    const phSet    = new Set();
 
     document.querySelectorAll('.slot-card').forEach(slotCard => {
       const assignedDiv = slotCard.querySelector('.assigned-char');
@@ -1431,21 +1304,25 @@
       if (charId && charClass) {
         const specEl  = assignedDiv.querySelector('small');
         const rawSpec = specEl ? specEl.textContent.trim() : '';
-        getBuffIdsFromEntry(charClass, rawSpec).forEach(id => charBuffIds.add(id));
+        const { preferred, canBring } = getBuffTiersFromEntry(charClass, rawSpec);
+        preferred.forEach(id => charPref.add(id));
+        canBring.forEach(id => charCb.add(id));
       } else if (placeholder) {
         const info = PLACEHOLDER_CLASS_SPEC[placeholder];
         if (info && info.cls) {
-          getBuffIdsFromEntry(info.cls, info.spec || '').forEach(id => phBuffIds.add(id));
+          const { preferred, canBring } = getBuffTiersFromEntry(info.cls, info.spec || '');
+          preferred.forEach(id => phSet.add(id));
+          canBring.forEach(id => phSet.add(id));
         }
       }
     });
 
-    return { char: charBuffIds, placeholder: phBuffIds };
+    return { preferred: charPref, canBring: charCb, placeholder: phSet };
   }
 
   // Render (or re-render) the buff panel HTML from scratch.
   function renderBuffPanel() {
-    const { char: charIds, placeholder: phIds } = collectRosterBuffs();
+    const { preferred: prefIds, canBring: cbIds, placeholder: phIds } = collectRosterBuffs();
     const categories = [];
     const catMap = {};
     for (const buff of WOTLK_RAID_BUFFS) {
@@ -1453,13 +1330,21 @@
       catMap[buff.cat].push(buff);
     }
 
-    let html = '';
+    // Legend
+    let html = '<div class="buff-legend">' +
+      '<span class="buff-legend-item buff-legend-active">● Covered</span>' +
+      '<span class="buff-legend-item buff-legend-canbring">● Can bring</span>' +
+      '<span class="buff-legend-item buff-legend-ph">◌ Placeholder</span>' +
+      '<span class="buff-legend-item buff-legend-missing">● Missing</span>' +
+      '</div>';
+
     for (const cat of categories) {
       html += `<div class="buff-category-label">${escapeHtml(cat)}</div>`;
       for (const buff of catMap[cat]) {
-        const fromChar = charIds.has(buff.id);
-        const fromPh   = phIds.has(buff.id);
-        const cls = fromChar ? 'buff-active' : (fromPh ? 'buff-placeholder' : 'buff-missing');
+        const hasPref = prefIds.has(buff.id);
+        const hasCb   = cbIds.has(buff.id);
+        const hasPh   = phIds.has(buff.id);
+        const cls = hasPref ? 'buff-active' : hasCb ? 'buff-can-bring' : hasPh ? 'buff-placeholder' : 'buff-missing';
         html += `<div class="buff-item ${cls}" data-buff-id="${escapeHtml(buff.id)}" title="${escapeHtml(buff.desc)}">` +
                 `<span class="buff-dot"></span>` +
                 `<span class="buff-name">${escapeHtml(buff.name)}</span>` +
