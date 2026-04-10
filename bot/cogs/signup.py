@@ -251,27 +251,27 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
 
 
 async def _post_to_raid_log(bot: discord.Client, raid_id: int, log_message: str):
-    """Post a message to the raid's sign-up log thread, if one exists."""
+    """Post a message to the channel where the raid embed was posted."""
     loop = asyncio.get_event_loop()
 
-    def _get_thread_id():
+    def _get_channel_id():
         session = get_session()
         try:
             raid = session.get(Raid, raid_id)
-            return raid.discord_log_thread_id if raid else None
+            return raid.discord_channel_id if raid else None
         finally:
             session.close()
 
-    thread_id = await loop.run_in_executor(None, _get_thread_id)
-    if not thread_id:
+    channel_id = await loop.run_in_executor(None, _get_channel_id)
+    if not channel_id:
         return
     try:
-        thread = bot.get_channel(thread_id)
-        if thread is None:
-            thread = await bot.fetch_channel(thread_id)
-        await thread.send(log_message)
+        channel = bot.get_channel(channel_id)
+        if channel is None:
+            channel = await bot.fetch_channel(channel_id)
+        await channel.send(log_message)
     except Exception as e:
-        logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
+        logger.warning(f"Failed to post to raid channel {channel_id}: {e}")
 
 
 def _chars_to_dicts(characters) -> list[dict]:
@@ -780,7 +780,6 @@ class SignupCog(commands.Cog):
                     return {
                         "id": raid.id,
                         "name": raid.name,
-                        "discord_log_thread_id": raid.discord_log_thread_id,
                     }
                 return None
             finally:
@@ -934,25 +933,11 @@ class SignupCog(commands.Cog):
         except Exception:
             pass
 
-        # Post sign-up summary to the log thread; fall back to channel if no thread exists
-        log_thread_id = raid_info.get("discord_log_thread_id")
-        if log_thread_id:
-            try:
-                thread = self.bot.get_channel(log_thread_id)
-                if thread is None:
-                    thread = await self.bot.fetch_channel(log_thread_id)
-                await thread.send(log_message)
-            except Exception:
-                logger.warning("Failed to post to log thread, falling back to channel")
-                try:
-                    await message.channel.send(log_message)
-                except Exception:
-                    pass
-        else:
-            try:
-                await message.channel.send(log_message)
-            except Exception:
-                pass
+        # Post sign-up summary to the same channel as the raid embed
+        try:
+            await message.channel.send(log_message)
+        except Exception:
+            pass
 
         # Refresh the raid embed
         await update_raid_embed(self.bot, raid_id)
