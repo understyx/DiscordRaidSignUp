@@ -742,9 +742,11 @@
           badgesContainer.appendChild(badge);
         }
 
-        // Mark the containing user-group as having an assigned character.
-        const ugDiv = card.closest('.user-group-container');
-        if (ugDiv) assignedGroupIds.add(ugDiv.id);
+        // Mark the containing user-group as having an assigned character in the current comp.
+        if (assignedComps.includes(CURRENT_COMP)) {
+          const ugDiv = card.closest('.user-group-container');
+          if (ugDiv) assignedGroupIds.add(ugDiv.id);
+        }
       } else {
         card.classList.remove('in-comp');
         if (badgesContainer) badgesContainer.remove();
@@ -761,7 +763,7 @@
         if (!playerBadge) {
           playerBadge = document.createElement('span');
           playerBadge.className = 'user-group-assigned-badge';
-          playerBadge.title = 'Player has character(s) assigned to a raid';
+          playerBadge.title = 'Player has character(s) assigned to this comp';
           // Insert before the chevron (last child).
           const chevron = header.querySelector('.ug-chevron');
           if (chevron) header.insertBefore(playerBadge, chevron);
