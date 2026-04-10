@@ -1,6 +1,5 @@
 const express = require('express');
 const pool = require('../db');
-const { fetchArmory } = require('../warmane');
 
 const router = express.Router();
 
@@ -32,7 +31,7 @@ router.get('/characters', async (req, res) => {
 
   const userId = req.session.user_id;
   const [chars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0',
+    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
     [userId]
   );
 
@@ -55,6 +54,10 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const userId = req.session.user_id;
   const charName = (req.body.char_name || '').trim();
   const realm = (req.body.realm || 'Icecrown').trim();
+  const charClass = (req.body.char_class || '').trim() || null;
+  const spec = (req.body.spec || '').trim() || null;
+  const gsRaw = (req.body.gearscore || '').trim();
+  const gearscore = gsRaw !== '' && !isNaN(parseFloat(gsRaw)) ? parseFloat(gsRaw) : null;
 
   if (!charName) {
     req.session.flash = '❌ Character name is required.';
@@ -64,41 +67,49 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
   const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
 
-  const armory = await fetchArmory(charNameCap, realmCap);
-
   const [[existing]] = await pool.query(
     'SELECT id FROM characters WHERE discord_user_id = ? AND char_name = ? AND realm = ?',
     [userId, charNameCap, realmCap]
   );
 
   if (existing) {
-    if (armory && armory.char_class) {
-      await pool.query(
-        'UPDATE characters SET char_class = ?, spec = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-        [armory.char_class, armory.spec, armory.gearscore || 0.0, existing.id]
-      );
-    } else {
-      await pool.query(
-        'UPDATE characters SET is_deleted = 0, last_updated = NOW() WHERE id = ?',
-        [existing.id]
-      );
-    }
+    await pool.query(
+      'UPDATE characters SET char_class = ?, spec = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+      [charClass, spec, gearscore, existing.id]
+    );
   } else {
     await pool.query(
       `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, last_updated)
        VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        userId,
-        charNameCap,
-        realmCap,
-        armory.char_class || null,
-        armory.spec || null,
-        armory.gearscore || 0.0,
-      ]
+      [userId, charNameCap, realmCap, charClass, spec, gearscore]
     );
   }
 
   req.session.flash = `✅ Character ${charNameCap} registered!`;
+  res.redirect('/characters');
+});
+
+// POST /characters/:char_id/update-gs
+router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const userId = req.session.user_id;
+  const charId = parseInt(req.params.char_id);
+  const gsRaw = (req.body.gearscore || '').trim();
+  const gearscore = gsRaw !== '' && !isNaN(parseFloat(gsRaw)) ? parseFloat(gsRaw) : null;
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (char) {
+    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, char.id]);
+    req.session.flash = `✅ GS updated for ${char.char_name}.`;
+  } else {
+    req.session.flash = '❌ Character not found.';
+  }
+
   res.redirect('/characters');
 });
 
