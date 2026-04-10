@@ -59,6 +59,7 @@ class Character(Base):
     spec = Column(String(100), nullable=True)
     gearscore = Column(Float, default=0.0)
     last_updated = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    is_deleted = Column(Boolean, default=False, nullable=False)
     signups = relationship("Signup", back_populates="character")
 
 

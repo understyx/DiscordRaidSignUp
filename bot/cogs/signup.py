@@ -581,7 +581,7 @@ class SignupView(discord.ui.View):
                     return None, []
                 chars = (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id)
+                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
                 return raid.status, _chars_to_dicts(chars)
@@ -655,7 +655,7 @@ class SignupView(discord.ui.View):
             try:
                 chars = (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id)
+                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .order_by(Character.char_name, Character.gearscore.desc())
                     .all()
                 )
@@ -813,6 +813,7 @@ class SignupCog(commands.Cog):
                         .filter(
                             Character.discord_user_id == discord_user_id,
                             Character.char_name.ilike(char_name_lower),
+                            Character.is_deleted == False,  # noqa: E712
                         )
                         .all()
                     )

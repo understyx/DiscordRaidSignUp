@@ -32,7 +32,7 @@ router.get('/characters', async (req, res) => {
 
   const userId = req.session.user_id;
   const [chars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ?',
+    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0',
     [userId]
   );
 
@@ -74,12 +74,12 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   if (existing) {
     if (armory && armory.char_class) {
       await pool.query(
-        'UPDATE characters SET char_class = ?, spec = ?, gearscore = ?, last_updated = NOW() WHERE id = ?',
+        'UPDATE characters SET char_class = ?, spec = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
         [armory.char_class, armory.spec, armory.gearscore || 0.0, existing.id]
       );
     } else {
       await pool.query(
-        'UPDATE characters SET last_updated = NOW() WHERE id = ?',
+        'UPDATE characters SET is_deleted = 0, last_updated = NOW() WHERE id = ?',
         [existing.id]
       );
     }
@@ -110,14 +110,13 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   const charId = parseInt(req.params.char_id);
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ?',
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
     [charId, userId]
   );
 
   if (char) {
-    await pool.query('DELETE FROM signups WHERE character_id = ?', [char.id]);
-    await pool.query('DELETE FROM characters WHERE id = ?', [char.id]);
-    req.session.flash = `✅ Character '${char.char_name}' deleted.`;
+    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ?', [char.id]);
+    req.session.flash = `✅ Character '${char.char_name}' hidden.`;
   } else {
     req.session.flash = '❌ Character not found.';
   }
