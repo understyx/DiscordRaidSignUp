@@ -5,6 +5,7 @@ const session = require('express-session');
 const nunjucks = require('nunjucks');
 const path = require('path');
 
+const { runMigrations } = require('./migrate');
 const authRouter = require('./routes/auth');
 const raidsRouter = require('./routes/raids');
 const charactersRouter = require('./routes/characters');
@@ -96,6 +97,14 @@ app.get('/', (req, res) => {
 });
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
-app.listen(PORT, () => {
-  console.log(`Web server listening on port ${PORT}`);
-});
+
+runMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Web server listening on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('[migrate] Fatal error during migrations:', err);
+    process.exit(1);
+  });
