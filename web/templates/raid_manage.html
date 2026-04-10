@@ -202,6 +202,9 @@
         <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
           <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
         </form>
+        <form method="post" action="/raids/{{ raid.id }}/unlock" class="d-inline">
+          <button class="btn btn-outline-success btn-sm me-2">🟢 Unlock Raid</button>
+        </form>
         <span id="saveStatus" class="text-muted me-2" style="font-size:0.78rem;"></span>
         <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save &amp; Reload</button>
         <form method="post" action="/raids/{{ raid.id }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">

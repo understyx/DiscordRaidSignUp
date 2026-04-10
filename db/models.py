@@ -11,7 +11,6 @@ class Base(DeclarativeBase):
 class RaidStatus(str, enum.Enum):
     open = "open"
     locked = "locked"
-    posted = "posted"
 
 
 class SignupType(str, enum.Enum):

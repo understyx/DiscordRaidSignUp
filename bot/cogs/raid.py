@@ -43,7 +43,7 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
         s.discord_user_id for s in signups if s.discord_user_id
     ))
 
-    status_emoji = {"open": "🟢", "locked": "🔒", "posted": "📋"}.get(
+    status_emoji = {"open": "🟢", "locked": "🔒"}.get(
         raid.status.value if raid.status else "open", "🟢"
     )
 
