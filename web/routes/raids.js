@@ -432,11 +432,11 @@ router.get('/:raid_id/manage', async (req, res) => {
     compSummaries[cn] = { tank: 0, healer: 0, dps: 0 };
   }
   if (compNumbers.length > 1) {
-    const placeholders = compNumbers.map(() => '?').join(', ');
+    const sqlPlaceholders = compNumbers.map(() => '?').join(', ');
     const [summaryRows] = await pool.query(
       `SELECT comp_number, slot_role, COUNT(*) AS cnt
        FROM compositions
-       WHERE raid_id = ? AND comp_number IN (${placeholders})
+       WHERE raid_id = ? AND comp_number IN (${sqlPlaceholders})
        GROUP BY comp_number, slot_role`,
       [raidId, ...compNumbers]
     );
