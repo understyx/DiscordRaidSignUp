@@ -59,6 +59,7 @@ class CharacterCog(commands.Cog):
     )
     @app_commands.describe(
         name="Character name",
+        char_class="WoW class (e.g. Death Knight, Druid, Paladin…)",
         spec1="First (or only) spec",
         gs1="Gearscore for spec 1",
         spec2="Second spec (optional)",
@@ -71,6 +72,7 @@ class CharacterCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         name: str,
+        char_class: str,
         spec1: str,
         gs1: str,
         spec2: Optional[str] = None,
@@ -128,6 +130,7 @@ class CharacterCog(commands.Cog):
                         session.add(char)
 
                     char.gearscore = gs
+                    char.char_class = char_class.title()
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
                     saved_ids.append(char.id)
@@ -145,7 +148,7 @@ class CharacterCog(commands.Cog):
         ]
         embed = discord.Embed(
             title=f"✅ {name.capitalize()}-{realm.capitalize()} added!",
-            description="\n".join(lines),
+            description=f"**Class:** {char_class.title()}\n" + "\n".join(lines),
             color=discord.Color.green(),
         )
         embed.set_footer(text="Use /my_characters to see all your characters.")
