@@ -79,7 +79,7 @@
     "preferred": [
       { "cls": "shaman",       "spec": "Enhancement" },
       { "cls": "death knight", "spec": "Frost (Tank)" },
-      { "cls": "death knight", "spec": "Frost (DPS)" }
+      { "cls": "death knight", "spec": "Frost (DPS)" },
       { "cls": "death knight", "spec": "Blood (Tank)" }
     ],
     "can_bring": [
@@ -181,10 +181,10 @@
     "desc": "+Max Health (Commanding Shout – Warrior / Blood Pact – Warlock Imp)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "warrior", "spec": null },
+      { "cls": "warrior", "spec": null }
     ],
     "can_bring": [
-      { "cls": "warlock", "spec": "Demonology"}
+      { "cls": "warlock", "spec": "Demonology"},
       { "cls": "warlock", "spec": "Affliction" },
       { "cls": "warlock", "spec": "Destruction" }
     ]
@@ -404,7 +404,7 @@
     ],
     "can_bring": [
       { "cls": "warlock", "spec": null },
-      { "cls": "paladin", "spec": null }
+      { "cls": "paladin", "spec": null },
       { "cls": "paladin", "spec": "Retribution" }
     ]
   },
