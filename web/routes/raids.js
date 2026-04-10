@@ -393,6 +393,10 @@ router.get('/:raid_id/manage', async (req, res) => {
       userSignupMap[uid].is_tentative = true;
     }
 
+    // Skip specs/characters that are already saved this lockout — they are not
+    // available for the raid and would only add clutter to the pool.
+    if (s.is_saved) continue;
+
     // Find or create a character group by char_name
     let charGroup = userSignupMap[uid].characters.find(cg => cg.char_name === s.character.char_name);
     if (!charGroup) {
@@ -410,9 +414,12 @@ router.get('/:raid_id/manage', async (req, res) => {
       gearscore: s.character.gearscore,
       role: s.character.role,
       is_prio: s.signup_type === 'prio_character' || s.signup_type === 'prio_role',
-      is_saved: !!s.is_saved,
     });
-    if (s.is_saved) charGroup.is_saved = true;
+  }
+
+  // Remove user groups that have no remaining (non-saved) characters.
+  for (const uid of Object.keys(userSignupMap)) {
+    if (userSignupMap[uid].characters.length === 0) delete userSignupMap[uid];
   }
   const signupsByUser = Object.values(userSignupMap);
 
