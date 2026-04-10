@@ -403,11 +403,19 @@
     {# ── Left column: Sign-ups pool ──────────────────────────────────── #}
     <div class="roster-col-side">
       <div class="card p-3">
-        <h5 class="mb-3">📝 Sign-ups
-          <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">
-            {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
-          </span>
-        </h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">📝 Sign-ups
+            <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">
+              {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
+            </span>
+          </h5>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Filter sign-ups by role">
+            <button type="button" class="btn btn-outline-secondary pool-filter-btn active" data-role="all" onclick="filterPool('all')">All</button>
+            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️ Tank</button>
+            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚 Heal</button>
+            <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️ DPS</button>
+          </div>
+        </div>
 
         {% for userGroup in signupsByUser %}
         {% set grp_id = "ug-" ~ loop.index %}
@@ -433,7 +441,6 @@
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
-                   data-role="{{ firstSpec.role or '' }}"
                    ondragstart="onDragStart(event)">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
@@ -826,13 +833,36 @@
     chevron.textContent = collapsed ? '▾' : '▸';
   }
 
-  // ── Detect role from spec name (fallback when DB role field is empty) ──
+  // ── Detect role from spec name ──────────────────────────────────────────
   function specToRole(spec) {
-    if (!spec) return null;
+    if (!spec) return 'dps';
     const s = spec.toLowerCase();
+    // Check explicit role markers first so e.g. "Blood (DPS)" isn't misclassified
+    if (s.includes('(tank)')) return 'tank';
+    if (s.includes('(heal') || s.includes('healer')) return 'healer';
+    if (s.includes('(dps)')) return 'dps';
+    // Fallback: keyword detection
     if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
     if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
     return 'dps';
+  }
+
+  // ── Sign-ups pool role filter ────────────────────────────────────────────
+  function filterPool(role) {
+    document.querySelectorAll('.pool-filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.role === role);
+    });
+
+    document.querySelectorAll('.user-group').forEach(group => {
+      let anyVisible = false;
+      group.querySelectorAll('.char-card').forEach(card => {
+        const cardRole = specToRole(card.dataset.spec || '');
+        const show = role === 'all' || cardRole === role;
+        card.style.display = show ? '' : 'none';
+        if (show) anyVisible = true;
+      });
+      group.style.display = anyVisible ? '' : 'none';
+    });
   }
 
   /* ── Drag start: character card ────────────────────────────────────── */
@@ -844,7 +874,7 @@
     draggedCharClass        = event.currentTarget.dataset.charClass || null;
     draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
     draggedSpec             = event.currentTarget.dataset.spec || null;
-    draggedRole             = event.currentTarget.dataset.role || specToRole(draggedSpec);
+    draggedRole             = specToRole(draggedSpec);
     event.dataTransfer.effectAllowed = 'move';
   }
 

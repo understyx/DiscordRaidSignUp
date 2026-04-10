@@ -110,15 +110,7 @@
   {# ── Current Sign-ups ─────────────────────────────────────────────── #}
   <div class="col-md-8">
     <div class="card p-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">📋 Current Sign-ups</h5>
-        <div class="btn-group btn-group-sm" id="roleFilters" role="group" aria-label="Filter by role">
-          <button type="button" class="btn btn-outline-secondary role-filter-btn active" data-role="all">All</button>
-          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="tank">🛡️ Tank</button>
-          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="healer">💚 Heal</button>
-          <button type="button" class="btn btn-outline-secondary role-filter-btn" data-role="dps">⚔️ DPS</button>
-        </div>
-      </div>
+      <h5 class="mb-2">📋 Current Sign-ups</h5>
       {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
       {% if all_sups | length > 0 %}
         {# Preferred and Fill signups #}
@@ -133,7 +125,7 @@
               {% set c = s.character %}
               {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
               {% set first_spec = c.specs[0].spec if c.specs else "" %}
-              <div class="col-sm-6 signup-card-col" data-role="{{ c.role or '' }}" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
+              <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
                 <div class="card p-2 h-100 border-secondary">
                   <div class="d-flex justify-content-between align-items-center">
                     <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
@@ -159,7 +151,7 @@
             {% set c = s.character %}
             {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
             {% set first_spec = c.specs[0].spec if c.specs else "" %}
-            <div class="col-sm-6 signup-card-col" data-role="{{ c.role or '' }}" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
+            <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
               <div class="card p-2 h-100 border-secondary">
                 <div class="d-flex justify-content-between align-items-center">
                   <span class="fw-bold cls-{{ cls_key }} tentative-name">{{ c.char_name }}</span>
@@ -213,49 +205,6 @@
     document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = checkbox.checked; });
   }
 
-  // ── Role detection from spec name ──────────────────────────────────────
-  function specToRole(spec) {
-    if (!spec) return 'dps';
-    const s = spec.toLowerCase();
-    // Check explicit role markers first so e.g. "Blood (DPS)" isn't treated as tank
-    if (s.includes('(tank)')) return 'tank';
-    if (s.includes('(heal') || s.includes('healer')) return 'healer';
-    if (s.includes('(dps)')) return 'dps';
-    // Fallback: keyword detection
-    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
-    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
-    return 'dps';
-  }
-
-  // ── Role filter ─────────────────────────────────────────────────────────
-  function filterSignups(role) {
-    // Update active button
-    document.querySelectorAll('.role-filter-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.role === role);
-    });
-
-    // Resolve role for cards that rely on spec detection
-    document.querySelectorAll('.signup-card-col').forEach(col => {
-      if (!col.dataset.resolvedRole) {
-        const dbRole = col.dataset.role || '';
-        const spec   = col.dataset.spec || '';
-        col.dataset.resolvedRole = dbRole || specToRole(spec);
-      }
-    });
-
-    // Show / hide cards
-    document.querySelectorAll('.signup-card-col').forEach(col => {
-      col.style.display = (role === 'all' || col.dataset.resolvedRole === role) ? '' : 'none';
-    });
-
-    // Show / hide sections whose cards are all hidden
-    document.querySelectorAll('.signup-section').forEach(section => {
-      const hasVisible = Array.from(section.querySelectorAll('.signup-card-col'))
-        .some(col => col.style.display !== 'none');
-      section.style.display = hasVisible ? '' : 'none';
-    });
-  }
-
   document.addEventListener('DOMContentLoaded', function () {
     // Initialise group checkboxes to reflect per-spec state on page load
     const slugs = new Set();
@@ -266,11 +215,6 @@
       });
     });
     slugs.forEach(slug => updateGroupCheckbox(slug));
-
-    // Attach filter button listeners
-    document.querySelectorAll('.role-filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => filterSignups(btn.dataset.role));
-    });
   });
 </script>
 {% endblock %}
