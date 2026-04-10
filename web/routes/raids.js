@@ -28,8 +28,23 @@ async function postToDiscordChannel(channelId, payload) {
   }
 }
 
-function buildCompEmbed(raid, groups, compNumber, totalComps) {
-  const compLabel = totalComps > 1 ? ` – Raid ${compNumber}` : '';
+async function fetchCompLabels(raidId) {
+  const [rows] = await pool.query(
+    'SELECT comp_number, label FROM comp_labels WHERE raid_id = ?',
+    [raidId]
+  );
+  const map = {};
+  for (const r of rows) map[r.comp_number] = r.label;
+  return map;
+}
+
+function compTabLabel(compNumber, compLabels) {
+  return (compLabels && compLabels[compNumber]) || `Raid ${compNumber}`;
+}
+
+function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
+  const label = compTabLabel(compNumber, compLabels);
+  const compLabel = totalComps > 1 ? ` – ${label}` : '';
   const dateStr = raid.date instanceof Date
     ? raid.date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
     : String(raid.date).slice(0, 16) + ' UTC';
@@ -451,6 +466,9 @@ router.get('/:raid_id/manage', async (req, res) => {
   // Next comp number for "Add Comp" button
   const nextComp = Math.max(...compNumbers, currentComp) + 1;
 
+  // Fetch custom comp labels
+  const compLabels = await fetchCompLabels(raidId);
+
   // Build per-comp role-count summaries for the post confirmation modal
   const compSummaries = {};
   for (const cn of compNumbers) {
@@ -483,6 +501,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     slot_role_map: slotRoleMap,
     max_size: maxSize,
     comp_numbers: compNumbers,
+    comp_labels: compLabels,
     current_comp: currentComp,
     next_comp: nextComp,
     comp_summaries: compSummaries,
@@ -723,6 +742,31 @@ router.get('/:raid_id/manage/json', async (req, res) => {
   res.json({ ok: true, version: version || '', entries });
 });
 
+// PUT /raids/:raid_id/comp_label — set or clear a custom label for a comp tab
+router.put('/:raid_id/comp_label', express.json(), async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
+
+  const raidId = parseInt(req.params.raid_id);
+  const { comp_number, label } = req.body || {};
+
+  if (comp_number == null || typeof label !== 'string') {
+    return res.status(400).json({ ok: false, error: 'comp_number and label are required' });
+  }
+
+  const trimmed = label.trim().slice(0, 100);
+  if (trimmed) {
+    await pool.query(
+      'INSERT INTO comp_labels (raid_id, comp_number, label) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE label = ?',
+      [raidId, comp_number, trimmed, trimmed]
+    );
+  } else {
+    await pool.query('DELETE FROM comp_labels WHERE raid_id = ? AND comp_number = ?', [raidId, comp_number]);
+  }
+
+  res.json({ ok: true, label: trimmed || null });
+});
+
 // GET /raids/:raid_id/comp
 router.get('/:raid_id/comp', async (req, res) => {
   if (!requireLogin(req, res)) return;
@@ -776,10 +820,13 @@ router.get('/:raid_id/comp', async (req, res) => {
     }
   }
 
+  const compLabels = await fetchCompLabels(raidId);
+
   res.render('raid_comp.html', {
     raid,
     groups,
     comp_numbers: compNumbers,
+    comp_labels: compLabels,
     current_comp: currentComp,
     flash: popFlash(req),
     user: currentUser(req),
@@ -822,6 +869,9 @@ router.post('/:raid_id/post_comp', async (req, res) => {
     // Post the selected comp (or all comps if no specific one was selected) to Discord
     const compsToPost = compNumber !== null ? [compNumber] : allCompNumbers;
 
+    // Fetch custom comp labels for embed titles
+    const compLabels = await fetchCompLabels(raidId);
+
     // Post the final composition to the main raid channel (not the log thread)
     const discordTargetId = raid.discord_channel_id;
 
@@ -855,7 +905,7 @@ router.post('/:raid_id/post_comp', async (req, res) => {
           if (groups[roleKey]) groups[roleKey].push(entry);
         }
 
-        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length);
+        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length, compLabels);
         const result = await postToDiscordChannel(String(discordTargetId), payload);
         if (!result.ok) {
           allPosted = false;
