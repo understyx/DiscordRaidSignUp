@@ -229,9 +229,11 @@ router.get('/admin-roles', async (req, res) => {
             name: r.name,
             color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
           }));
+      } else {
+        console.warn(`[admin-roles] Discord API returned ${resp.status} when fetching guild roles for guild ${guildId}`);
       }
     } catch (_err) {
-      // Non-fatal: page still works without guild role list
+      console.warn('[admin-roles] Failed to fetch guild roles from Discord:', _err.message || _err);
     }
   }
 
