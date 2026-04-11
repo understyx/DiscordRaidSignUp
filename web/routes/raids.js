@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
 const pool = require('../db');
+const { resolveIsAdmin } = require('./adminCheck');
 
 // Load WotLK buff definitions once at startup
 const WOTLK_BUFFS = JSON.parse(
@@ -117,6 +118,19 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
 }
 
 const router = express.Router();
+
+// Re-evaluate admin status on every request so that role changes take effect
+// immediately without requiring users to log out and back in.
+router.use(async (req, res, next) => {
+  if (req.session.user_id) {
+    try {
+      req.session.is_admin = await resolveIsAdmin(req.session.user_id);
+    } catch (_) {
+      // Keep the existing cached value on transient errors.
+    }
+  }
+  next();
+});
 
 function requireLogin(req, res) {
   if (!req.session.user_id) {
