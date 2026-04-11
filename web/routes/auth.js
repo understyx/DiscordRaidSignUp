@@ -89,8 +89,20 @@ router.get('/callback', async (req, res) => {
 
     const nextUrl = req.session.next_url;
     delete req.session.next_url;
-    // Only redirect to a relative path to prevent open-redirect attacks.
-    const redirectTo = (nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')) ? nextUrl : '/raids';
+    // Only redirect to a safe relative path to prevent open-redirect attacks.
+    // Decode the URL first to catch encoded variants (e.g. %2F%2F), then verify
+    // it is a relative path with no newline characters.
+    let redirectTo = '/raids';
+    if (nextUrl) {
+      try {
+        const decoded = decodeURIComponent(nextUrl);
+        if (decoded.startsWith('/') && !decoded.startsWith('//') && !/[\r\n]/.test(decoded)) {
+          redirectTo = decoded;
+        }
+      } catch (_) {
+        // decodeURIComponent failed — fall back to /raids
+      }
+    }
     res.redirect(redirectTo);
   } catch (_err) {
     res.redirect('/auth/login');
