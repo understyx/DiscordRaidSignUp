@@ -97,10 +97,8 @@ function requireAdmin(req, res) {
 // lowercase class names used for spec aliases management
 const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
 
-// GET /admin/spec-aliases
+// GET /admin/spec-aliases — viewable by anyone; modifications require admin
 router.get('/spec-aliases', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
   const [rows] = await pool.query(
     'SELECT id, char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
   );
@@ -116,10 +114,13 @@ router.get('/spec-aliases', async (req, res) => {
   const flash = req.session.flash;
   delete req.session.flash;
 
+  const isAdmin = req.session.user_id ? req.session.is_admin === true : false;
+
   res.render('admin_spec_aliases.html', {
     by_class: byClass,
     wow_classes: WOW_CLASS_NAMES,
     flash,
+    is_admin: isAdmin,
     user: req.session.user_id
       ? { id: req.session.user_id, username: req.session.username, is_admin: req.session.is_admin }
       : null,
