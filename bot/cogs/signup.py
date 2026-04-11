@@ -9,6 +9,7 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from bot.config import WEB_BASE_URL
 from bot.db import get_session
 from bot.class_utils import normalize_class
 from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
@@ -672,6 +673,26 @@ class SignupView(discord.ui.View):
     )
     async def btn_tentative(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_signup_flow(interaction, SignupStatus.tentative)
+
+    @discord.ui.button(
+        label="Sign Up on Website",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:website",
+        emoji="🌐",
+        row=1,
+    )
+    async def btn_website(self, interaction: discord.Interaction, button: discord.ui.Button):
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+        url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"
+        await interaction.response.send_message(
+            f"🌐 Sign up for this raid on the website: {url}",
+            ephemeral=True,
+        )
 
     @discord.ui.button(
         label="Show Characters",
