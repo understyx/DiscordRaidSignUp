@@ -27,6 +27,9 @@ app.use(
   })
 );
 
+// Static files
+app.use(express.static(path.join(__dirname, 'static')));
+
 // Nunjucks
 const templateDir = path.join(__dirname, 'templates');
 const njkEnv = nunjucks.configure(templateDir, {
