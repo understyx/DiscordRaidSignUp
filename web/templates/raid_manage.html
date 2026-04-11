@@ -440,12 +440,13 @@
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
                    data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
-                 ondragstart="onDragStart(event)">
-                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if charGroup.note %}<span class="note-icon ms-1"
+                 ondragstart="onDragStart(event)"
+                 style="position:relative;">
+                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if charGroup.note %}<span class="note-icon"
                       data-bs-toggle="tooltip"
                       data-bs-placement="top"
                       data-bs-title="{{ charGroup.note }}"
-                      style="cursor:default; font-size:0.85rem;">📝</span>{% endif %}
+                      style="position:absolute; bottom:4px; right:6px; cursor:default; font-size:0.85rem; line-height:1;">📝</span>{% endif %}
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
                   {% for s in charGroup.specs %}
                   <button type="button" draggable="false"
