@@ -83,6 +83,7 @@ function _randomFakeId(usedIds) {
 
 function requireAdmin(req, res) {
   if (!req.session.user_id) {
+    req.session.next_url = req.originalUrl;
     res.redirect('/auth/login');
     return false;
   }

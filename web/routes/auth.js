@@ -87,7 +87,11 @@ router.get('/callback', async (req, res) => {
       // Non-fatal: table may not exist yet or another transient error
     }
 
-    res.redirect('/raids');
+    const nextUrl = req.session.next_url;
+    delete req.session.next_url;
+    // Only redirect to a relative path to prevent open-redirect attacks.
+    const redirectTo = (nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')) ? nextUrl : '/raids';
+    res.redirect(redirectTo);
   } catch (_err) {
     res.redirect('/auth/login');
   }
