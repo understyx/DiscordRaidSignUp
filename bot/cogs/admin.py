@@ -30,6 +30,16 @@ class RaidAdminGroup(app_commands.Group):
     def __init__(self):
         super().__init__(name="raidadmin", description="Manage raid admin roles (server managers only).")
 
+    async def on_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.CheckFailure):
+            await interaction.response.send_message(
+                "❌ You do not have permission to use this command. "
+                "Only the server owner or members with **Manage Server** permission can manage raid admin roles.",
+                ephemeral=True,
+            )
+        else:
+            raise error
+
     @app_commands.command(name="add", description="Grant a role raid-admin access.")
     @_can_manage_admin()
     async def add(self, interaction: discord.Interaction, role: discord.Role):
