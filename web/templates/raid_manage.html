@@ -861,8 +861,9 @@
     document.querySelectorAll('.user-group').forEach(group => {
       let anyVisible = false;
       group.querySelectorAll('.char-card').forEach(card => {
+        const charClass = card.dataset.charClass || '';
         const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
-        const show = role === 'all' || allSpecs.some(s => specToRole(s) === role);
+        const show = role === 'all' || allSpecs.some(s => specToRole(normalizeSpec(charClass, s)) === role);
         card.style.display = show ? '' : 'none';
         if (show) anyVisible = true;
       });
@@ -879,7 +880,7 @@
     draggedCharClass        = event.currentTarget.dataset.charClass || null;
     draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
     draggedSpec             = event.currentTarget.dataset.spec || null;
-    draggedRole             = specToRole(draggedSpec);
+    draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec));
     event.dataTransfer.effectAllowed = 'move';
   }
 
