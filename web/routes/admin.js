@@ -93,6 +93,89 @@ function requireAdmin(req, res) {
   return true;
 }
 
+// lowercase class names used for spec aliases management
+const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
+
+// GET /admin/spec-aliases
+router.get('/spec-aliases', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const [rows] = await pool.query(
+    'SELECT id, char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
+  );
+
+  // Group by class
+  const byClass = {};
+  for (const cls of WOW_CLASS_NAMES) byClass[cls] = [];
+  for (const row of rows) {
+    if (!byClass[row.char_class]) byClass[row.char_class] = [];
+    byClass[row.char_class].push(row);
+  }
+
+  const flash = req.session.flash;
+  delete req.session.flash;
+
+  res.render('admin_spec_aliases.html', {
+    by_class: byClass,
+    wow_classes: WOW_CLASS_NAMES,
+    flash,
+    user: req.session.user_id
+      ? { id: req.session.user_id, username: req.session.username, is_admin: req.session.is_admin }
+      : null,
+  });
+});
+
+// POST /admin/spec-aliases/add
+router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const { char_class, alias, canonical } = req.body;
+  if (!char_class || !alias || !canonical) {
+    req.session.flash = '❌ All fields are required.';
+    return res.redirect('/admin/spec-aliases');
+  }
+
+  const cls = char_class.trim().toLowerCase();
+  const al = alias.trim().toLowerCase();
+  const can = canonical.trim();
+
+  if (!WOW_CLASS_NAMES.includes(cls)) {
+    req.session.flash = '❌ Invalid class.';
+    return res.redirect('/admin/spec-aliases');
+  }
+
+  try {
+    await pool.query(
+      'INSERT INTO spec_aliases (char_class, alias, canonical) VALUES (?, ?, ?)',
+      [cls, al, can]
+    );
+    req.session.flash = `✅ Alias "${al}" → "${can}" added for ${cls}.`;
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      req.session.flash = `❌ Alias "${al}" already exists for ${cls}.`;
+    } else {
+      throw err;
+    }
+  }
+
+  res.redirect('/admin/spec-aliases');
+});
+
+// POST /admin/spec-aliases/delete
+router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const id = parseInt(req.body.id, 10);
+  if (isNaN(id)) {
+    req.session.flash = '❌ Invalid alias ID.';
+    return res.redirect('/admin/spec-aliases');
+  }
+
+  await pool.query('DELETE FROM spec_aliases WHERE id = ?', [id]);
+  req.session.flash = '✅ Alias removed.';
+  res.redirect('/admin/spec-aliases');
+});
+
 // POST /admin/seed-fake-players
 router.post('/seed-fake-players', async (req, res) => {
   if (!requireAdmin(req, res)) return;

@@ -6,6 +6,7 @@ const nunjucks = require('nunjucks');
 const path = require('path');
 
 const { runMigrations } = require('./migrate');
+const pool = require('./db');
 const authRouter = require('./routes/auth');
 const raidsRouter = require('./routes/raids');
 const charactersRouter = require('./routes/characters');
@@ -26,6 +27,26 @@ app.use(
     },
   })
 );
+
+// Dynamic spec_aliases.js — served before static files so DB version takes priority
+app.get('/js/spec_aliases.js', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
+    );
+    // Build nested map: { class: { alias: canonical, … }, … }
+    const map = {};
+    for (const { char_class, alias, canonical } of rows) {
+      if (!map[char_class]) map[char_class] = {};
+      map[char_class][alias] = canonical;
+    }
+    const js = `const SPEC_ALIASES = ${JSON.stringify(map, null, 2)};\n`;
+    res.type('application/javascript').send(js);
+  } catch (err) {
+    console.error('[spec_aliases] Failed to load from DB:', err.message);
+    res.status(500).type('application/javascript').send('const SPEC_ALIASES = {};\n');
+  }
+});
 
 // Static files
 app.use(express.static(path.join(__dirname, 'static')));

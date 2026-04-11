@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Spec Aliases – RaidBot{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+  <h2>🔤 Spec Aliases</h2>
+  <a href="/raids" class="btn btn-sm btn-outline-secondary">← Back to Raids</a>
+</div>
+
+<p class="text-muted">
+  Control how player-typed spec names (e.g. "owl", "boomkin", "ret") are mapped to canonical
+  WotLK spec names. Changes take effect immediately for all users.
+</p>
+
+{# ── Add new alias ── #}
+<div class="card mb-4">
+  <div class="card-header fw-bold">➕ Add Alias</div>
+  <div class="card-body">
+    <form method="post" action="/admin/spec-aliases/add" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Class</label>
+        <select class="form-select" name="char_class" required>
+          <option value="" disabled selected>— choose class —</option>
+          {% for cls in wow_classes %}
+          <option value="{{ cls }}">{{ cls | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Alias <span class="text-muted small">(what the user types)</span></label>
+        <input type="text" class="form-control" name="alias" placeholder="e.g. boomy" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Canonical spec <span class="text-muted small">(how it's stored)</span></label>
+        <input type="text" class="form-control" name="canonical" placeholder="e.g. Balance" required>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-wow w-100">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Existing aliases grouped by class ── #}
+<div class="row g-4">
+  {% for cls in wow_classes %}
+  {% set entries = by_class[cls] %}
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">{{ cls | title }}</div>
+      <div class="card-body p-0">
+        {% if entries | length == 0 %}
+        <p class="text-muted p-3 mb-0">No aliases configured.</p>
+        {% else %}
+        <table class="table table-sm mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th>Alias</th>
+              <th>→ Canonical</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries %}
+            <tr>
+              <td class="text-muted font-monospace">{{ entry.alias }}</td>
+              <td>{{ entry.canonical }}</td>
+              <td class="text-end">
+                <form method="post" action="/admin/spec-aliases/delete"
+                      onsubmit="return confirm('Remove alias \'{{ entry.alias }}\'?');">
+                  <input type="hidden" name="id" value="{{ entry.id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger py-0">✕</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
