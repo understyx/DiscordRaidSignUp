@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
 const pool = require('../db');
-const { resolveIsAdmin } = require('./adminCheck');
+const { resolveIsAdmin, resolveCanSignup } = require('./adminCheck');
 
 // Load WotLK buff definitions once at startup
 const WOTLK_BUFFS = JSON.parse(
@@ -194,21 +194,23 @@ router.get('/', async (req, res) => {
   });
 });
 
-// GET /raids/admin-roles — manage which Discord roles have raid-admin access
-router.get('/admin-roles', async (req, res) => {
+// GET /raids/roles — manage Discord roles (admin + signup)
+router.get('/roles', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const guildId = process.env.DISCORD_GUILD_ID;
   const botToken = process.env.DISCORD_BOT_TOKEN;
 
-  // Fetch currently configured admin roles from DB
-  let configuredRoles = [];
+  // Fetch currently configured roles by type from DB
+  let configuredAdminRoleIds = [];
+  let configuredSignupRoleIds = [];
   if (guildId) {
     const [rows] = await pool.query(
-      'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
+      'SELECT role_id, role_type FROM guild_admin_roles WHERE guild_id = ?',
       [guildId]
     );
-    configuredRoles = rows.map(r => String(r.role_id));
+    configuredAdminRoleIds = rows.filter(r => r.role_type === 'admin').map(r => String(r.role_id));
+    configuredSignupRoleIds = rows.filter(r => r.role_type === 'signup').map(r => String(r.role_id));
   }
 
   // Fetch available guild roles from Discord API
@@ -230,16 +232,17 @@ router.get('/admin-roles', async (req, res) => {
             color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
           }));
       } else {
-        console.warn(`[admin-roles] Discord API returned ${resp.status} when fetching guild roles for guild ${guildId}`);
+        console.warn(`[roles] Discord API returned ${resp.status} when fetching guild roles for guild ${guildId}`);
       }
     } catch (_err) {
-      console.warn('[admin-roles] Failed to fetch guild roles from Discord:', _err.message || _err);
+      console.warn('[roles] Failed to fetch guild roles from Discord:', _err.message || _err);
     }
   }
 
-  res.render('admin_roles.html', {
+  res.render('roles.html', {
     guild_id: guildId || null,
-    configured_role_ids: configuredRoles,
+    configured_admin_role_ids: configuredAdminRoleIds,
+    configured_signup_role_ids: configuredSignupRoleIds,
     guild_roles: guildRoles,
     guild_roles_map: Object.fromEntries(guildRoles.map(r => [r.id, r])),
     flash: popFlash(req),
@@ -247,54 +250,61 @@ router.get('/admin-roles', async (req, res) => {
   });
 });
 
-// POST /raids/admin-roles/add — add a role to guild_admin_roles
-router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (req, res) => {
+// Redirect old URL to new one for backward compatibility
+router.get('/admin-roles', (req, res) => res.redirect(301, '/raids/roles'));
+
+// POST /raids/roles/add — add a role to guild_admin_roles with a given role_type
+router.post('/roles/add', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!guildId) {
     req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
-    return res.redirect('/raids/admin-roles');
+    return res.redirect('/raids/roles');
   }
 
   const roleId = String(req.body.role_id || '').trim();
   if (!roleId || !/^\d+$/.test(roleId)) {
     req.session.flash = '❌ Invalid role ID.';
-    return res.redirect('/raids/admin-roles');
+    return res.redirect('/raids/roles');
   }
 
+  const roleType = req.body.role_type === 'signup' ? 'signup' : 'admin';
+
   await pool.query(
-    'INSERT IGNORE INTO guild_admin_roles (guild_id, role_id) VALUES (?, ?)',
-    [guildId, roleId]
+    'INSERT IGNORE INTO guild_admin_roles (guild_id, role_id, role_type) VALUES (?, ?, ?)',
+    [guildId, roleId, roleType]
   );
 
-  req.session.flash = '✅ Role added to admin roles.';
-  res.redirect('/raids/admin-roles');
+  req.session.flash = '✅ Role added.';
+  res.redirect('/raids/roles');
 });
 
-// POST /raids/admin-roles/remove — remove a role from guild_admin_roles
-router.post('/admin-roles/remove', express.urlencoded({ extended: false }), async (req, res) => {
+// POST /raids/roles/remove — remove a role from guild_admin_roles
+router.post('/roles/remove', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!guildId) {
     req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
-    return res.redirect('/raids/admin-roles');
+    return res.redirect('/raids/roles');
   }
 
   const roleId = String(req.body.role_id || '').trim();
   if (!roleId || !/^\d+$/.test(roleId)) {
     req.session.flash = '❌ Invalid role ID.';
-    return res.redirect('/raids/admin-roles');
+    return res.redirect('/raids/roles');
   }
 
+  const roleType = req.body.role_type === 'signup' ? 'signup' : 'admin';
+
   await pool.query(
-    'DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ?',
-    [guildId, roleId]
+    'DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ? AND role_type = ?',
+    [guildId, roleId, roleType]
   );
 
-  req.session.flash = '✅ Role removed from admin roles.';
-  res.redirect('/raids/admin-roles');
+  req.session.flash = '✅ Role removed.';
+  res.redirect('/raids/roles');
 });
 
 // GET /raids/:raid_id
@@ -399,6 +409,8 @@ router.get('/:raid_id', async (req, res) => {
     }
   }
 
+  const canSignup = await resolveCanSignup(userId);
+
   res.render('raid_detail.html', {
     raid,
     user_char_groups: userCharGroups,
@@ -406,6 +418,7 @@ router.get('/:raid_id', async (req, res) => {
     my_signup_count: mySignupRows.length,
     grouped_signups: grouped,
     signup_types: ['fill', 'prio_role', 'prio_character'],
+    can_signup: canSignup,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -421,6 +434,13 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
   const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
   if (!raid || raid.status !== 'open') {
     req.session.flash = '❌ Raid is not open for sign-ups.';
+    return res.redirect(`/raids/${raidId}`);
+  }
+
+  // Check if the user is allowed to sign up based on signup roles
+  const canSignup = await resolveCanSignup(userId);
+  if (!canSignup) {
+    req.session.flash = '❌ You do not have a role that allows signing up for raids.';
     return res.redirect(`/raids/${raidId}`);
   }
 

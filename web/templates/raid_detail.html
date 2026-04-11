@@ -29,7 +29,11 @@
     <div class="card p-3">
       <h5>📝 Sign Up</h5>
       {% if raid.status == "open" %}
-        {% if user_char_groups %}
+        {% if not can_signup %}
+        <div class="alert alert-warning p-2 small mb-0">
+          🔒 You do not have a role that allows signing up for this raid.
+        </div>
+        {% elif user_char_groups %}
         <form method="post" action="/raids/{{ raid.id }}/signup" id="signupForm">
           <div class="mb-3">
             <label class="form-label small fw-bold">Select specs to sign up:</label>

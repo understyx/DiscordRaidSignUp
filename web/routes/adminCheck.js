@@ -1,14 +1,17 @@
 /**
  * adminCheck.js
  *
- * Resolves whether a Discord user has raid-admin access on the website.
+ * Resolves role-based access for Discord users on the website.
  *
- * Logic:
- *   1. If DISCORD_GUILD_ID is not configured → everyone is admin (backward-compatible).
- *   2. If no rows exist in guild_admin_roles for the guild → everyone is admin
- *      (no restrictions configured yet).
+ * Two role types are supported (stored in guild_admin_roles.role_type):
+ *   'admin'  – can manage raids on the website.
+ *   'signup' – allowed to sign up for raids.
+ *
+ * Base-case logic (applies to both types independently):
+ *   1. If DISCORD_GUILD_ID is not configured → everyone has access.
+ *   2. If no rows of that role_type exist for the guild → everyone has access.
  *   3. Otherwise → fetch the user's guild member record via the bot token and
- *      check whether any of their roles appear in guild_admin_roles.
+ *      check whether any of their roles appear in guild_admin_roles for that type.
  */
 
 const fetch = require('node-fetch');
@@ -17,50 +20,77 @@ const pool = require('../db');
 const DISCORD_API = 'https://discord.com/api/v10';
 
 /**
+ * Fetches the Discord guild member roles for a user.
+ * Returns an array of role ID strings, or null on failure.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {string} botToken
+ * @returns {Promise<string[]|null>}
+ */
+async function _fetchMemberRoles(guildId, userId, botToken) {
+  if (!botToken) return null;
+  try {
+    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (!resp.ok) return null;
+    const member = await resp.json();
+    return (member.roles || []).map(String);
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
+ * Generic resolver: returns true if the user has access for the given role_type.
+ *
+ * @param {string} userId    Discord user ID (string snowflake)
+ * @param {string} roleType  'admin' or 'signup'
+ * @returns {Promise<boolean>}
+ */
+async function _resolveAccess(userId, roleType) {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+
+  // If guild ID is not configured, grant access to everyone (backward-compatible).
+  if (!guildId) return true;
+
+  // Check if any roles of this type are configured for this guild.
+  const [rows] = await pool.query(
+    'SELECT role_id FROM guild_admin_roles WHERE guild_id = ? AND role_type = ?',
+    [guildId, roleType]
+  );
+
+  // Base case: no roles configured → everyone has access.
+  if (!rows || rows.length === 0) return true;
+
+  const configuredIds = new Set(rows.map(r => String(r.role_id)));
+
+  const memberRoles = await _fetchMemberRoles(guildId, userId, botToken);
+  if (!memberRoles) return false;
+
+  return memberRoles.some(rid => configuredIds.has(rid));
+}
+
+/**
  * Returns true if the given Discord user ID should be treated as a raid admin.
  *
  * @param {string} userId  Discord user ID (string snowflake)
  * @returns {Promise<boolean>}
  */
 async function resolveIsAdmin(userId) {
-  const guildId = process.env.DISCORD_GUILD_ID;
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-
-  // If guild ID is not configured, grant admin to everyone (backward-compatible).
-  if (!guildId) return true;
-
-  // Check if any admin roles are configured for this guild.
-  const [rows] = await pool.query(
-    'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
-    [guildId]
-  );
-
-  // If no admin roles are configured yet, grant admin to everyone.
-  if (!rows || rows.length === 0) return true;
-
-  const adminRoleIds = new Set(rows.map(r => String(r.role_id)));
-
-  // Fetch the user's guild member info using the bot token.
-  if (!botToken) return false;
-
-  try {
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-
-    if (!resp.ok) {
-      // User is not a member of the guild or an error occurred.
-      return false;
-    }
-
-    const member = await resp.json();
-    const memberRoles = member.roles || [];
-
-    return memberRoles.some(rid => adminRoleIds.has(String(rid)));
-  } catch (_err) {
-    // Network or parse error — fail closed.
-    return false;
-  }
+  return _resolveAccess(userId, 'admin');
 }
 
-module.exports = { resolveIsAdmin };
+/**
+ * Returns true if the given Discord user ID is allowed to sign up for raids.
+ *
+ * @param {string} userId  Discord user ID (string snowflake)
+ * @returns {Promise<boolean>}
+ */
+async function resolveCanSignup(userId) {
+  return _resolveAccess(userId, 'signup');
+}
+
+module.exports = { resolveIsAdmin, resolveCanSignup };
