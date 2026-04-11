@@ -73,9 +73,8 @@ function collectUniqueUserIds(groups) {
 function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
   const label = compTabLabel(compNumber, compLabels);
   const compLabel = totalComps > 1 ? ` – ${label}` : '';
-  const dateStr = raid.date instanceof Date
-    ? raid.date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
-    : String(raid.date).slice(0, 16) + ' UTC';
+  const unixTs = Math.floor(new Date(raid.date).getTime() / 1000);
+  const dateStr = `<t:${unixTs}:F>`;
 
   const fields = [];
 
@@ -401,12 +400,20 @@ router.get('/:raid_id', async (req, res) => {
     }
   }
 
+  // Only show the current user's own sign-ups in the sign-up view.
+  const myGrouped = {};
+  for (const bucket of ['fill', 'prio_role', 'prio_character', 'tentative']) {
+    myGrouped[bucket] = grouped[bucket].filter(
+      s => String(s.discord_user_id) === String(userId)
+    );
+  }
+
   res.render('raid_detail.html', {
     raid,
     user_char_groups: userCharGroups,
     my_signup_map: mySignupMap,
     my_signup_count: mySignupRows.length,
-    grouped_signups: grouped,
+    grouped_signups: myGrouped,
     signup_types: ['fill', 'prio_role', 'prio_character'],
     flash: popFlash(req),
     user: currentUser(req),

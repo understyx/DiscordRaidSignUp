@@ -152,7 +152,7 @@
   {# ── Current Sign-ups ─────────────────────────────────────────────── #}
   <div class="col-12">
     <div class="card p-3">
-      <h5 class="mb-2">📋 Current Sign-ups</h5>
+      <h5 class="mb-2">📋 Your Sign-ups</h5>
       {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
       {% if all_sups | length > 0 %}
         {# Preferred and Fill signups #}
@@ -209,7 +209,7 @@
         </div>
         {% endif %}
       {% else %}
-        <p class="text-muted">No sign-ups yet. Be the first!</p>
+        <p class="text-muted">You haven't signed up for this raid yet.</p>
       {% endif %}
     </div>
   </div>
