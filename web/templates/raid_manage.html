@@ -354,8 +354,9 @@
   {# ── Action bar (never scrolls) ───────────────────────────────────── #}
   <div class="roster-action-bar">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <h3 class="mb-0">🛠️ Manage: {{ raid.name }}</h3>
+      <h3 class="mb-0">🛠️ {{ raid.name }}</h3>
       <div>
+        {% if can_edit %}
         <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
           <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
         </form>
@@ -373,6 +374,9 @@
           <button type="submit" class="btn btn-outline-secondary btn-sm ms-2">🧪 Seed Fake Signups</button>
         </form>
         {% endif %}
+        {% else %}
+        <span class="badge bg-secondary">👁️ View Only</span>
+        {% endif %}
       </div>
     </div>
     {# ── Comp tabs ──────────────────────────────────────────────────── #}
@@ -382,7 +386,9 @@
       {% if cn == current_comp %}
       <span class="comp-tab active" id="activeCompTab">
         <span id="activeTabLabel">{{ tab_label }}</span>
+        {% if can_edit %}
         <button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>
+        {% endif %}
       </span>
       {% else %}
       <a href="/raids/{{ raid.id }}/manage?comp={{ cn }}"
@@ -392,10 +398,14 @@
       {% if current_comp not in comp_numbers %}
       <span class="comp-tab active" id="activeCompTab">
         <span id="activeTabLabel">Raid {{ current_comp }}</span>
+        {% if can_edit %}
         <button type="button" class="comp-tab-rename-btn" title="Rename this comp tab" onclick="startTabRename()">✏️</button>
+        {% endif %}
       </span>
       {% endif %}
+      {% if can_edit %}
       <a href="/raids/{{ raid.id }}/manage?comp={{ next_comp }}" class="comp-tab comp-tab-add">+ Add Raid</a>
+      {% endif %}
     </div>
   </div>
 
@@ -434,14 +444,14 @@
               {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
               {% set firstSpec = charGroup.specs[0] %}
               <div class="char-card card p-2 mb-1"
-                   draggable="true"
+                   draggable="{{ 'true' if can_edit else 'false' }}"
                    data-char-id="{{ firstSpec.character_id }}"
                    data-char-name="{{ charGroup.char_name }}"
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
                    data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
-                 ondragstart="onDragStart(event)"
+                 {% if can_edit %}ondragstart="onDragStart(event)"{% endif %}
                  style="position:relative;">
                 <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if charGroup.note %}<span class="note-icon"
                       data-bs-toggle="tooltip"
@@ -486,16 +496,20 @@
               <div class="slot-card card h-100 text-center slot-{{ slot_prefix }}"
                    data-slot="{{ slot }}"
                    data-slot-role="{{ slot_prefix }}"
+                   {% if can_edit %}
                    ondragover="event.preventDefault()"
                    ondragenter="this.classList.add('slot-drag-over')"
                    ondragleave="if (!this.contains(event.relatedTarget)) this.classList.remove('slot-drag-over')"
-                   ondrop="onDrop(event)">
+                   ondrop="onDrop(event)"
+                   {% endif %}>
+                {% if can_edit %}
                 <div class="slot-actions">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
                   <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
                   <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
                   <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
                 </div>
+                {% endif %}
                 <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
                   {% set s = signup_by_char_id[assigned_char_id] %}
@@ -535,12 +549,14 @@
 
         {# Tab switcher #}
         <div class="d-flex gap-1 mb-2 flex-shrink-0">
+          {% if can_edit %}
           <button type="button" class="right-panel-tab active" id="tabBtnPlaceholders" onclick="switchRightTab('placeholders')">🔖 Placeholders</button>
-          <button type="button" class="right-panel-tab" id="tabBtnBuffs" onclick="switchRightTab('buffs')">✨ Raid Buffs</button>
+          {% endif %}
+          <button type="button" class="right-panel-tab {% if not can_edit %}active{% endif %}" id="tabBtnBuffs" onclick="switchRightTab('buffs')">✨ Raid Buffs</button>
         </div>
 
         {# Placeholders panel #}
-        <div id="panelPlaceholders">
+        <div id="panelPlaceholders" {% if not can_edit %}style="display:none;"{% endif %}>
 
         <div class="placeholder-group-label">🛡️ Tanks</div>
         <div class="d-flex flex-column gap-1 mb-1">
@@ -590,7 +606,7 @@
         </div>{# /panelPlaceholders #}
 
         {# Raid Buffs panel #}
-        <div id="panelBuffs" style="display:none;">
+        <div id="panelBuffs" {% if not can_edit %}{% else %}style="display:none;"{% endif %}>
           <div id="buffPanelContent">
             <p class="text-muted small mt-2">Loading buff coverage…</p>
           </div>
@@ -627,6 +643,8 @@
 
 {% block scripts %}
 <script>
+  const CAN_EDIT = {{ 'true' if can_edit else 'false' }};
+
   let draggedCharId        = null;
   let draggedCharName      = null;
   let draggedCharClass     = null;
@@ -1086,6 +1104,7 @@
 
   /* ── Granular auto-save: only send dirty slots via PATCH ───────────── */
   function autoSave() {
+    if (!CAN_EDIT) return;
     if (dirtyChanges.size === 0) {
       markClean('✓ saved');
       return;
@@ -1131,6 +1150,7 @@
 
   /* ── Manual save button (keeps the reload for tab refresh) ─────────── */
   function saveComp() {
+    if (!CAN_EDIT) return;
     clearTimeout(saveTimer);
     dirtyChanges.clear();
     const payload = buildPayload();
