@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Admin Roles – RaidBot{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+  <h2>🛡️ Raid Admin Roles</h2>
+  <a href="/raids" class="btn btn-sm btn-outline-secondary">← Back to Raids</a>
+</div>
+
+<p class="text-muted">
+  Control which Discord roles can manage raids on this website.
+  When at least one role is configured, only members with a matching role will have access.
+  Removing all roles grants access to every logged-in user (backward-compatible default).
+</p>
+
+{% if not guild_id %}
+<div class="alert alert-warning">
+  ⚠️ <strong>DISCORD_GUILD_ID</strong> is not configured. Role-based access control is disabled —
+  all logged-in users currently have raid-admin access.
+</div>
+{% endif %}
+
+<div class="row g-4">
+  {# ── Currently configured admin roles ── #}
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">✅ Current Admin Roles</div>
+      <div class="card-body">
+        {% if configured_role_ids | length == 0 %}
+        <p class="text-muted mb-0">No roles configured — all logged-in users have admin access.</p>
+        {% else %}
+        <ul class="list-group list-group-flush">
+          {% for role_id in configured_role_ids %}
+          {% set matched = guild_roles_map[role_id] %}
+          <li class="list-group-item d-flex justify-content-between align-items-center"
+              style="background: var(--bg-card-2); border-color: var(--border-dim);">
+            <span>
+              {% if matched %}
+                <span class="fw-semibold"
+                  {% if matched.color_hex %}style="color: #{{ matched.color_hex }};"{% endif %}>
+                  @{{ matched.name }}
+                </span>
+              {% else %}
+                <span class="text-muted">Role {{ role_id | discordId }}</span>
+              {% endif %}
+            </span>
+            <form method="post" action="/raids/admin-roles/remove"
+                  onsubmit="return confirm('Remove this role from raid admin access?');">
+              <input type="hidden" name="role_id" value="{{ role_id }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Add a role ── #}
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">➕ Add a Role</div>
+      <div class="card-body">
+        {% if not guild_id %}
+        <p class="text-muted">Configure <code>DISCORD_GUILD_ID</code> to enable role management.</p>
+        {% else %}
+        <form method="post" action="/raids/admin-roles/add">
+          {% if guild_roles | length > 0 %}
+          <div class="mb-3">
+            <label for="roleSelect" class="form-label">Select a guild role</label>
+            <select class="form-select" id="roleSelect" name="role_id">
+              <option value="" disabled selected>— choose a role —</option>
+              {% for gr in guild_roles %}
+              {% if gr.id not in configured_role_ids %}
+              <option value="{{ gr.id }}">@{{ gr.name }}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-wow w-100">Add Role</button>
+          {% else %}
+          <p class="text-muted mb-3">
+            Could not load guild roles from Discord. You can enter a role ID manually below.
+          </p>
+          {% endif %}
+        </form>
+
+        {% if guild_roles | length == 0 %}
+        <hr class="border-secondary my-3">
+        <form method="post" action="/raids/admin-roles/add">
+          <div class="mb-3">
+            <label for="manualRoleId" class="form-label">Role ID (manual entry)</label>
+            <input type="text" class="form-control" id="manualRoleId" name="role_id"
+                   placeholder="e.g. 123456789012345678" pattern="\d+" required>
+            <div class="form-text">Right-click the role in Discord (Developer Mode) to copy its ID.</div>
+          </div>
+          <button type="submit" class="btn btn-wow w-100">Add Role</button>
+        </form>
+        {% else %}
+        <hr class="border-secondary my-3">
+        <p class="text-muted small mb-2">Or enter a role ID manually:</p>
+        <form method="post" action="/raids/admin-roles/add">
+          <div class="input-group">
+            <input type="text" class="form-control" name="role_id"
+                   placeholder="Role ID…" pattern="\d+" required>
+            <button type="submit" class="btn btn-outline-light">Add</button>
+          </div>
+          <div class="form-text">Right-click a role in Discord (Developer Mode) to copy its ID.</div>
+        </form>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
