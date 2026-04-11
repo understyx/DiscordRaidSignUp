@@ -55,7 +55,7 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
     embed.add_field(name="📍 Instance", value=raid.raid_instance, inline=True)
     embed.add_field(
         name="📅 Date",
-        value=raid.date.strftime("%Y-%m-%d %H:%M UTC"),
+        value=f"<t:{int(raid.date.timestamp())}:F>",
         inline=True,
     )
     embed.add_field(name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True)
