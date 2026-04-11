@@ -127,6 +127,9 @@
           {% if user and user.id %}
           <li class="nav-item"><a class="nav-link" href="/characters">My Characters</a></li>
           {% endif %}
+          {% if user and user.is_admin %}
+          <li class="nav-item"><a class="nav-link" href="/raids/admin-roles">Admin Roles</a></li>
+          {% endif %}
         </ul>
         <ul class="navbar-nav ms-auto">
           {% if user and user.id %}

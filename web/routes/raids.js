@@ -194,6 +194,107 @@ router.get('/', async (req, res) => {
   });
 });
 
+// GET /raids/admin-roles — manage which Discord roles have raid-admin access
+router.get('/admin-roles', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = process.env.DISCORD_GUILD_ID;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+
+  // Fetch currently configured admin roles from DB
+  let configuredRoles = [];
+  if (guildId) {
+    const [rows] = await pool.query(
+      'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
+      [guildId]
+    );
+    configuredRoles = rows.map(r => String(r.role_id));
+  }
+
+  // Fetch available guild roles from Discord API
+  let guildRoles = [];
+  if (guildId && botToken) {
+    try {
+      const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (resp.ok) {
+        const roles = await resp.json();
+        // Exclude the @everyone role (same id as guild_id) and sort by position desc
+        guildRoles = roles
+          .filter(r => r.id !== guildId)
+          .sort((a, b) => b.position - a.position)
+          .map(r => ({
+            id: r.id,
+            name: r.name,
+            color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
+          }));
+      }
+    } catch (_err) {
+      // Non-fatal: page still works without guild role list
+    }
+  }
+
+  res.render('admin_roles.html', {
+    guild_id: guildId || null,
+    configured_role_ids: configuredRoles,
+    guild_roles: guildRoles,
+    guild_roles_map: Object.fromEntries(guildRoles.map(r => [r.id, r])),
+    flash: popFlash(req),
+    user: currentUser(req),
+  });
+});
+
+// POST /raids/admin-roles/add — add a role to guild_admin_roles
+router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) {
+    req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
+    return res.redirect('/raids/admin-roles');
+  }
+
+  const roleId = String(req.body.role_id || '').trim();
+  if (!roleId || !/^\d+$/.test(roleId)) {
+    req.session.flash = '❌ Invalid role ID.';
+    return res.redirect('/raids/admin-roles');
+  }
+
+  await pool.query(
+    'INSERT IGNORE INTO guild_admin_roles (guild_id, role_id) VALUES (?, ?)',
+    [guildId, roleId]
+  );
+
+  req.session.flash = '✅ Role added to admin roles.';
+  res.redirect('/raids/admin-roles');
+});
+
+// POST /raids/admin-roles/remove — remove a role from guild_admin_roles
+router.post('/admin-roles/remove', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) {
+    req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
+    return res.redirect('/raids/admin-roles');
+  }
+
+  const roleId = String(req.body.role_id || '').trim();
+  if (!roleId || !/^\d+$/.test(roleId)) {
+    req.session.flash = '❌ Invalid role ID.';
+    return res.redirect('/raids/admin-roles');
+  }
+
+  await pool.query(
+    'DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ?',
+    [guildId, roleId]
+  );
+
+  req.session.flash = '✅ Role removed from admin roles.';
+  res.redirect('/raids/admin-roles');
+});
+
 // GET /raids/:raid_id
 router.get('/:raid_id', async (req, res) => {
   if (!requireLogin(req, res)) return;
