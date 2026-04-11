@@ -584,6 +584,15 @@ router.get('/:raid_id/manage', async (req, res) => {
   }
   const signupsByUser = Object.values(userSignupMap);
 
+  // Sort: players with starred (prio) characters first, tentative players last
+  signupsByUser.sort((a, b) => {
+    const aPrio = a.characters.some(cg => cg.specs.some(s => s.is_prio));
+    const bPrio = b.characters.some(cg => cg.specs.some(s => s.is_prio));
+    if (a.is_tentative !== b.is_tentative) return a.is_tentative ? 1 : -1;
+    if (aPrio !== bPrio) return aPrio ? -1 : 1;
+    return 0;
+  });
+
   // Determine which comp numbers already exist for this raid
   const [existingCompNums] = await pool.query(
     'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',

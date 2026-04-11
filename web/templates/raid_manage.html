@@ -335,6 +335,10 @@
     line-height: 1.5;
   }
 
+  /* ── Player group header colours ────────────────────────────────────── */
+  .user-group-header           { background: rgba(58, 255, 41, 0.21); }
+  .user-group-header.tentative { background: rgba(255, 182, 41, 0.21); }
+
   /* ── Signup status badges ────────────────────────────────────────────── */
   .badge-tentative {
     font-size: 0.62rem;
@@ -429,12 +433,12 @@
         {% for userGroup in signupsByUser %}
         {% set grp_id = "ug-" ~ loop.index %}
         <div class="user-group mb-2">
-          <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
+          <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1{% if userGroup.is_tentative %} tentative{% endif %}"
                id="{{ grp_id }}-header"
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
-            <span class="text-muted flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
             {% if userGroup.is_tentative %}<span class="badge-tentative">❓</span>{% endif %}
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
