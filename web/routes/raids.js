@@ -135,6 +135,7 @@ router.use(async (req, res, next) => {
 
 function requireLogin(req, res) {
   if (!req.session.user_id) {
+    req.session.next_url = req.originalUrl;
     res.redirect('/auth/login');
     return false;
   }
@@ -143,6 +144,7 @@ function requireLogin(req, res) {
 
 function requireAdmin(req, res) {
   if (!req.session.user_id) {
+    req.session.next_url = req.originalUrl;
     res.redirect('/auth/login');
     return false;
   }
