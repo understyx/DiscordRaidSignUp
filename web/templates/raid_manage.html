@@ -847,7 +847,7 @@
     if (s.includes('(heal') || s.includes('healer')) return 'healer';
     if (s.includes('(dps)')) return 'dps';
     // Fallback: keyword detection
-    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
+    if (/\b(holy|disc|discipline|resto|restoration|mistweaver|tree)\b/.test(s)) return 'healer';
     if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
     return 'dps';
   }
