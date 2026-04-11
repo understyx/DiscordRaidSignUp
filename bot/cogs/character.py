@@ -10,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.db import get_session
+from bot.class_utils import normalize_class
 from bot.cogs.signup import parse_gs
 from db.models import Character, CharacterRole
 
@@ -160,7 +161,7 @@ class CharacterCog(commands.Cog):
                         session.add(char)
 
                     char.gearscore = gs
-                    char.char_class = char_class.title()
+                    char.char_class = normalize_class(char_class)
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
                     saved_ids.append(char.id)
@@ -172,13 +173,14 @@ class CharacterCog(commands.Cog):
 
         char_ids = await loop.run_in_executor(None, _upsert_all)
 
+        canonical_class = normalize_class(char_class)
         lines = [
             f"• **{spec}** – GS {gs:.0f}"
             for spec, gs in specs
         ]
         embed = discord.Embed(
             title=f"✅ {name.capitalize()}-{realm.capitalize()} added!",
-            description=f"**Class:** {char_class.title()}\n" + "\n".join(lines),
+            description=f"**Class:** {canonical_class}\n" + "\n".join(lines),
             color=discord.Color.green(),
         )
         embed.set_footer(text="Use /my_characters to see all your characters.")

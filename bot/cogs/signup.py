@@ -10,6 +10,7 @@ import discord
 from discord.ext import commands
 
 from bot.db import get_session
+from bot.class_utils import normalize_class
 from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ def _parse_character_lines(text: str) -> list[dict]:
                     results.append(
                         {
                             "char_name": char_name.capitalize(),
-                            "char_class": char_class,
+                            "char_class": normalize_class(char_class),
                             "spec": spec,
                             "gearscore": gs,
                             "is_prio": spec_is_prio,
