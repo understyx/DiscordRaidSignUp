@@ -493,7 +493,8 @@ router.post('/:raid_id/withdraw', async (req, res) => {
 
 // GET /raids/:raid_id/manage
 router.get('/:raid_id/manage', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireLogin(req, res)) return;
+  const canEdit = req.session.is_admin !== false;
 
   const raidId = parseInt(req.params.raid_id);
 
@@ -691,6 +692,7 @@ router.get('/:raid_id/manage', async (req, res) => {
     wotlk_buffs: WOTLK_BUFFS,
     flash: popFlash(req),
     user: currentUser(req),
+    can_edit: canEdit,
   });
 });
 
@@ -889,7 +891,6 @@ router.patch('/:raid_id/manage', express.json(), async (req, res) => {
 // GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
 router.get('/:raid_id/manage/json', async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
-  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidId = parseInt(req.params.raid_id);
   const compNumber = parseInt(req.query.comp) || 1;
