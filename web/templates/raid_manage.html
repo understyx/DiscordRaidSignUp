@@ -1598,6 +1598,10 @@
     });
   }
 
+  // Render buff panel on initial load (needed for non-editors where the buffs
+  // tab is already active but renderBuffPanel() has not been called yet).
+  updateBuffPanel();
+
   // Initialise Bootstrap tooltips for sign-up note icons.
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
     new bootstrap.Tooltip(el);
