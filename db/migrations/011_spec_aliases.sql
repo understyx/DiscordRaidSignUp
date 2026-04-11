@@ -93,7 +93,7 @@ INSERT IGNORE INTO spec_aliases (char_class, alias, canonical) VALUES
   ('priest', 'holy',         'Holy'),
   ('priest', 'holy priest',  'Holy'),
   ('priest', 'shadow',       'Shadow'),
-  ('priest', 'shadow priest','Shadow'),
+  ('priest', 'shadow priest', 'Shadow'),
   ('priest', 'spriest',      'Shadow'),
 
   ('rogue', 'assassination',  'Assassination'),

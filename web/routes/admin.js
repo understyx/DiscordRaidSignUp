@@ -171,8 +171,12 @@ router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), asy
     return res.redirect('/admin/spec-aliases');
   }
 
-  await pool.query('DELETE FROM spec_aliases WHERE id = ?', [id]);
-  req.session.flash = '✅ Alias removed.';
+  const [result] = await pool.query('DELETE FROM spec_aliases WHERE id = ?', [id]);
+  if (result.affectedRows === 0) {
+    req.session.flash = '❌ Alias not found.';
+  } else {
+    req.session.flash = '✅ Alias removed.';
+  }
   res.redirect('/admin/spec-aliases');
 });
 
