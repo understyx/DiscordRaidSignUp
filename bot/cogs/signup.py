@@ -10,9 +10,32 @@ import discord
 from discord.ext import commands
 
 from bot.db import get_session
-from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from db.models import Character, DiscordUser, GuildAdminRole, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_can_signup(guild_id: int, member_role_ids: set[int]) -> bool:
+    """Return True if the user is allowed to sign up for raids.
+
+    Base case: if no signup roles are configured for this guild, everyone can sign up.
+    Otherwise, the user must have at least one of the configured signup roles.
+    """
+    from sqlalchemy import select
+    session = get_session()
+    try:
+        rows = session.execute(
+            select(GuildAdminRole).where(
+                GuildAdminRole.guild_id == guild_id,
+                GuildAdminRole.role_type == "signup",
+            )
+        ).scalars().all()
+        if not rows:
+            return True  # base case: everyone can sign up
+        allowed_ids = {r.role_id for r in rows}
+        return bool(member_role_ids & allowed_ids)
+    finally:
+        session.close()
 
 
 def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
@@ -602,6 +625,19 @@ class SignupView(discord.ui.View):
             )
             return
 
+        # Check signup role restriction
+        if interaction.guild and isinstance(interaction.user, discord.Member):
+            member_role_ids = {r.id for r in interaction.user.roles}
+            can_sign = await loop.run_in_executor(
+                None, lambda: _resolve_can_signup(interaction.guild.id, member_role_ids)
+            )
+            if not can_sign:
+                await interaction.response.send_message(
+                    "❌ You do not have a role that allows signing up for raids.",
+                    ephemeral=True,
+                )
+                return
+
         if not char_dicts:
             await interaction.response.send_message(
                 "❌ You have no registered characters. Post a sign-up line or use `/addcharacter` first.",
@@ -789,6 +825,26 @@ class SignupCog(commands.Cog):
         raid_info = await loop.run_in_executor(None, _find_raid)
         if not raid_info:
             return  # Not a raid channel with an open raid; ignore silently
+
+        # Check signup role restriction
+        if isinstance(message.author, discord.Member):
+            member_role_ids = {r.id for r in message.author.roles}
+            can_sign = await loop.run_in_executor(
+                None, lambda: _resolve_can_signup(message.guild.id, member_role_ids)
+            )
+            if not can_sign:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    await message.channel.send(
+                        f"❌ {message.author.mention} You do not have a role that allows signing up for raids.",
+                        delete_after=15,
+                    )
+                except Exception:
+                    pass
+                return
 
         discord_user_id = message.author.id
         raid_id = raid_info["id"]

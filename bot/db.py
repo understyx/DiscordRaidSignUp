@@ -105,12 +105,29 @@ with engine.begin() as _conn:
     _conn.execute(text(
         """
         CREATE TABLE IF NOT EXISTS guild_admin_roles (
-            guild_id BIGINT NOT NULL,
-            role_id  BIGINT NOT NULL,
-            PRIMARY KEY (guild_id, role_id)
+            guild_id  BIGINT NOT NULL,
+            role_id   BIGINT NOT NULL,
+            role_type VARCHAR(20) NOT NULL DEFAULT 'admin',
+            PRIMARY KEY (guild_id, role_id, role_type)
         )
         """
     ))
+    # Migration 010: add role_type column to existing guild_admin_roles tables
+    _inspector = inspect(engine)
+    if _inspector.has_table("guild_admin_roles"):
+        _gar_cols = {col["name"] for col in _inspector.get_columns("guild_admin_roles")}
+        if "role_type" not in _gar_cols:
+            _conn.execute(text(
+                "ALTER TABLE guild_admin_roles"
+                " ADD COLUMN role_type VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER role_id"
+            ))
+            _conn.execute(text(
+                "ALTER TABLE guild_admin_roles DROP PRIMARY KEY"
+            ))
+            _conn.execute(text(
+                "ALTER TABLE guild_admin_roles"
+                " ADD PRIMARY KEY (guild_id, role_id, role_type)"
+            ))
 
 
 def get_session():

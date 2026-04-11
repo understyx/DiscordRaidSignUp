@@ -107,3 +107,4 @@ class GuildAdminRole(Base):
     __tablename__ = "guild_admin_roles"
     guild_id = Column(BigInteger, primary_key=True)
     role_id = Column(BigInteger, primary_key=True)
+    role_type = Column(String(20), primary_key=True, default="admin")

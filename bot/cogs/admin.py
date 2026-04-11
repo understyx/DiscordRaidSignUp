@@ -54,10 +54,10 @@ class RaidAdminGroup(app_commands.Group):
         def _add():
             session = get_session()
             try:
-                existing = session.get(GuildAdminRole, (guild_id, role.id))
+                existing = session.get(GuildAdminRole, (guild_id, role.id, "admin"))
                 if existing:
                     return False
-                session.add(GuildAdminRole(guild_id=guild_id, role_id=role.id))
+                session.add(GuildAdminRole(guild_id=guild_id, role_id=role.id, role_type="admin"))
                 session.commit()
                 return True
             finally:
@@ -87,7 +87,7 @@ class RaidAdminGroup(app_commands.Group):
         def _remove():
             session = get_session()
             try:
-                existing = session.get(GuildAdminRole, (guild_id, role.id))
+                existing = session.get(GuildAdminRole, (guild_id, role.id, "admin"))
                 if not existing:
                     return False
                 session.delete(existing)
@@ -122,7 +122,10 @@ class RaidAdminGroup(app_commands.Group):
             try:
                 from sqlalchemy import select
                 rows = session.execute(
-                    select(GuildAdminRole).where(GuildAdminRole.guild_id == guild_id)
+                    select(GuildAdminRole).where(
+                        GuildAdminRole.guild_id == guild_id,
+                        GuildAdminRole.role_type == "admin",
+                    )
                 ).scalars().all()
                 return [r.role_id for r in rows]
             finally:
