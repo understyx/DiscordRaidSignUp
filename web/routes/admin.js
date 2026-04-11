@@ -5,7 +5,7 @@ const router = express.Router();
 
 const _WOW_CLASSES = [
   { name: 'Death Knight', specs: ['Blood', 'Frost', 'Unholy'] },
-  { name: 'Druid',        specs: ['Balance', 'Feral', 'Restoration'] },
+  { name: 'Druid',        specs: ['Balance', 'Feral (Cat)', 'Feral (Bear)', 'Restoration'] },
   { name: 'Hunter',       specs: ['Beast Mastery', 'Marksmanship', 'Survival'] },
   { name: 'Mage',         specs: ['Arcane', 'Fire', 'Frost'] },
   { name: 'Paladin',      specs: ['Holy', 'Protection', 'Retribution'] },
@@ -21,7 +21,8 @@ const _CLASS_SPEC_ROLES = {
   'Death Knight.Frost':       'dps',
   'Death Knight.Unholy':      'dps',
   'Druid.Balance':            'dps',
-  'Druid.Feral':              'dps',
+  'Druid.Feral (Cat)':        'dps',
+  'Druid.Feral (Bear)':       'tank',
   'Druid.Restoration':        'healer',
   'Hunter.Beast Mastery':     'dps',
   'Hunter.Marksmanship':      'dps',

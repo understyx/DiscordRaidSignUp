@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 _WOW_CLASSES = [
     ("Death Knight", ["Blood", "Frost", "Unholy"]),
-    ("Druid", ["Balance", "Feral", "Restoration"]),
+    ("Druid", ["Balance", "Feral (Cat)", "Feral (Bear)", "Restoration"]),
     ("Hunter", ["Beast Mastery", "Marksmanship", "Survival"]),
     ("Mage", ["Arcane", "Fire", "Frost"]),
     ("Paladin", ["Holy", "Protection", "Retribution"]),
@@ -34,7 +34,8 @@ _CLASS_SPEC_ROLES: dict[tuple[str, str], CharacterRole] = {
     ("Death Knight", "Frost"): CharacterRole.dps,
     ("Death Knight", "Unholy"): CharacterRole.dps,
     ("Druid", "Balance"): CharacterRole.dps,
-    ("Druid", "Feral"): CharacterRole.dps,
+    ("Druid", "Feral (Cat)"): CharacterRole.dps,
+    ("Druid", "Feral (Bear)"): CharacterRole.tank,
     ("Druid", "Restoration"): CharacterRole.healer,
     ("Hunter", "Beast Mastery"): CharacterRole.dps,
     ("Hunter", "Marksmanship"): CharacterRole.dps,
