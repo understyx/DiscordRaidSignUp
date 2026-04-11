@@ -1,5 +1,33 @@
 {% extends "base.html" %}
 {% block title %}{{ raid.name }} – RaidBot{% endblock %}
+{% block extra_head %}
+<style>
+  .row-group-alt { --bs-table-bg: var(--bg-card-2); }
+
+  /* Selected signup row — green tint overrides everything */
+  .signup-row.row-selected td {
+    background-color: rgba(25, 135, 84, 0.22) !important;
+  }
+  .table-hover .signup-row.row-selected:hover td {
+    background-color: rgba(25, 135, 84, 0.35) !important;
+  }
+
+  /* Priority star — rendered as a borderless button */
+  .prio-star {
+    cursor: pointer;
+    opacity: 0.22;
+    font-size: 1.05rem;
+    transition: opacity 0.12s;
+    display: inline-block;
+    background: none;
+    border: none;
+    padding: 0;
+    line-height: 1;
+  }
+  .prio-star:hover { opacity: 0.65; }
+  .prio-star.prio-active { opacity: 1; }
+</style>
+{% endblock %}
 {% block content %}
 
 {# ── Raid Header ──────────────────────────────────────────────────────── #}
@@ -25,69 +53,69 @@
 
 <div class="row">
   {# ── Sign-Up Form ─────────────────────────────────────────────────── #}
-  <div class="col-md-4 mb-4">
+  <div class="col-12 mb-4">
     <div class="card p-3">
       <h5>📝 Sign Up</h5>
       {% if raid.status == "open" %}
         {% if user_char_groups %}
+        <p class="text-muted small mb-2">Click a row to sign up with that spec (green = selected). Click ⭐ to mark it as priority.</p>
         <form method="post" action="/raids/{{ raid.id }}/signup" id="signupForm">
-          <div class="mb-3">
-            <label class="form-label small fw-bold">Select specs to sign up:</label>
-            {% for charGroup in user_char_groups %}
-            {% set slug = loop.index %}
-            {% set cls_key = (charGroup.char_class or "") | lower | replace(" ", "-") %}
-            <div class="border border-secondary rounded p-2 mb-2">
-              {# Character header with "select all" toggle #}
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox"
-                       id="char_grp_{{ slug }}"
-                       onchange="toggleCharGroup(this, {{ slug }})">
-                <label class="form-check-label" for="char_grp_{{ slug }}">
-                  <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
-                  <small class="text-muted ms-1">{{ charGroup.char_class or "?" }}</small>
-                </label>
-              </div>
-              {# Per-spec checkboxes — each independently selectable #}
-              <div class="ms-3 mt-1">
-                {% for s in charGroup.specs %}
-                <div class="form-check">
-                  <input class="form-check-input spec-cb-{{ slug }}" type="checkbox"
-                         name="character_ids" value="{{ s.id }}" id="spec_{{ s.id }}"
-                         {% if my_signup_map[s.id] %}checked{% endif %}
-                         onchange="updateGroupCheckbox({{ slug }})">
-                  <label class="form-check-label small" for="spec_{{ s.id }}">
-                    {{ s.spec or "?" }} GS {{ s.gearscore | int }}
-                  </label>
-                </div>
+          <div class="table-responsive mb-3">
+            <table class="table table-hover align-middle"
+                   aria-label="Your characters and specs. Click a row to sign up with that spec; click the star button to mark it as priority.">
+              <thead class="table-dark">
+                <tr>
+                  <th>Character</th>
+                  <th>Class</th>
+                  <th>Spec</th>
+                  <th>GS</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for group in user_char_groups %}
+                {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+                {% set alt = "row-group-alt" if loop.index is even else "" %}
+                {% for s in group.specs %}
+                {% set is_signed = my_signup_map[s.id] %}
+                {% set is_prio = my_signup_map[s.id] and my_signup_map[s.id].signup_type == 'prio_character' %}
+                <tr class="signup-row {{ alt }}{% if is_signed %} row-selected{% endif %}"
+                    data-char-id="{{ s.id }}"
+                    tabindex="0"
+                    role="row"
+                    aria-selected="{{ 'true' if is_signed else 'false' }}"
+                    onclick="toggleRow(this)"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRow(this);}"
+                    style="cursor:pointer; user-select:none">
+                  {% if loop.index == 1 %}
+                  <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.specs | length }}">{{ group.char_name }}</td>
+                  <td class="cls-{{ cls_key }}" rowspan="{{ group.specs | length }}">{{ group.char_class or "—" }}</td>
+                  {% endif %}
+                  <td>{{ s.spec or "?" }}</td>
+                  <td class="text-muted">{{ s.gearscore | int if s.gearscore else "—" }}</td>
+                  <td class="text-center" style="width:40px">
+                    <button type="button"
+                            class="prio-star{% if is_prio %} prio-active{% endif %}"
+                            onclick="event.stopPropagation(); togglePrio(this)"
+                            aria-pressed="{{ 'true' if is_prio else 'false' }}"
+                            aria-label="Mark {{ s.spec or group.char_name }} as priority">⭐</button>
+                  </td>
+                </tr>
                 {% endfor %}
-                {# Priority — applies to all signed specs for this character #}
-                <div class="form-check mt-1">
-                  <input class="form-check-input" type="checkbox"
-                         id="prio_grp_{{ slug }}"
-                         {% if charGroup.is_prio %}checked{% endif %}
-                         onchange="togglePrioGroup(this, {{ slug }})">
-                  <label class="form-check-label text-warning small" for="prio_grp_{{ slug }}">⭐ Preferred</label>
-                </div>
-                {% for s in charGroup.specs %}
-                <input type="checkbox" name="priority_ids" value="{{ s.id }}"
-                       class="d-none prio-cb-{{ slug }}"
-                       {% if charGroup.is_prio %}checked{% endif %}>
                 {% endfor %}
-              </div>
-            </div>
-            {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="d-grid gap-2">
-            <button type="submit" class="btn btn-wow">
+          <div id="hiddenInputs"></div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-wow" id="signupBtn">
               {% if my_signup_count > 0 %}Update Sign-up{% else %}Sign Up{% endif %}
             </button>
           </div>
         </form>
         {% if my_signup_count > 0 %}
         <form method="post" action="/raids/{{ raid.id }}/withdraw" class="mt-2">
-          <div class="d-grid">
-            <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
-          </div>
+          <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
         </form>
         {% endif %}
         {% else %}
@@ -108,7 +136,7 @@
   </div>
 
   {# ── Current Sign-ups ─────────────────────────────────────────────── #}
-  <div class="col-md-8">
+  <div class="col-12">
     <div class="card p-3">
       <h5 class="mb-2">📋 Current Sign-ups</h5>
       {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
@@ -176,45 +204,63 @@
 
 {% block scripts %}
 <script>
-  function toggleCharGroup(checkbox, slug) {
-    document.querySelectorAll('.spec-cb-' + slug).forEach(cb => { cb.checked = checkbox.checked; });
-    if (!checkbox.checked) {
-      document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = false; });
-      const prioCb = document.getElementById('prio_grp_' + slug);
-      if (prioCb) prioCb.checked = false;
+  function toggleRow(row) {
+    row.classList.toggle('row-selected');
+    const selected = row.classList.contains('row-selected');
+    row.setAttribute('aria-selected', selected ? 'true' : 'false');
+    // Deselecting a row also clears its priority star
+    if (!selected) {
+      const star = row.querySelector('.prio-star');
+      if (star) {
+        star.classList.remove('prio-active');
+        star.setAttribute('aria-pressed', 'false');
+      }
     }
+    buildHiddenInputs();
   }
 
-  function updateGroupCheckbox(slug) {
-    const specCbs = Array.from(document.querySelectorAll('.spec-cb-' + slug));
-    const allChecked = specCbs.every(cb => cb.checked);
-    const anyChecked = specCbs.some(cb => cb.checked);
-    const groupCb = document.getElementById('char_grp_' + slug);
-    if (groupCb) {
-      groupCb.indeterminate = anyChecked && !allChecked;
-      groupCb.checked = allChecked;
+  function togglePrio(star) {
+    star.classList.toggle('prio-active');
+    const active = star.classList.contains('prio-active');
+    star.setAttribute('aria-pressed', active ? 'true' : 'false');
+    // Auto-select the row when marking as priority
+    if (active) {
+      const row = star.closest('tr.signup-row');
+      row.classList.add('row-selected');
+      row.setAttribute('aria-selected', 'true');
     }
-    if (!anyChecked) {
-      document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = false; });
-      const prioCb = document.getElementById('prio_grp_' + slug);
-      if (prioCb) prioCb.checked = false;
-    }
+    buildHiddenInputs();
   }
 
-  function togglePrioGroup(checkbox, slug) {
-    document.querySelectorAll('.prio-cb-' + slug).forEach(cb => { cb.checked = checkbox.checked; });
-  }
+  function buildHiddenInputs() {
+    const container = document.getElementById('hiddenInputs');
+    container.innerHTML = '';
+    document.querySelectorAll('.signup-row.row-selected').forEach(row => {
+      const charId = row.dataset.charId;
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'character_ids';
+      inp.value = charId;
+      container.appendChild(inp);
 
-  document.addEventListener('DOMContentLoaded', function () {
-    // Initialise group checkboxes to reflect per-spec state on page load
-    const slugs = new Set();
-    document.querySelectorAll('[class*="spec-cb-"]').forEach(el => {
-      el.className.split(' ').forEach(cls => {
-        const m = cls.match(/^spec-cb-(\d+)$/);
-        if (m) slugs.add(parseInt(m[1]));
-      });
+      const star = row.querySelector('.prio-star');
+      if (star && star.classList.contains('prio-active')) {
+        const prioInp = document.createElement('input');
+        prioInp.type = 'hidden';
+        prioInp.name = 'priority_ids';
+        prioInp.value = charId;
+        container.appendChild(prioInp);
+      }
     });
-    slugs.forEach(slug => updateGroupCheckbox(slug));
-  });
+
+    const btn = document.getElementById('signupBtn');
+    if (btn) {
+      const count = document.querySelectorAll('.signup-row.row-selected').length;
+      btn.textContent = count > 0 ? 'Update Sign-up' : 'Sign Up';
+    }
+  }
+
+  // Populate hidden inputs on page load to reflect already-signed-up state
+  document.addEventListener('DOMContentLoaded', buildHiddenInputs);
 </script>
 {% endblock %}
