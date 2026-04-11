@@ -838,17 +838,39 @@
     chevron.textContent = collapsed ? '▾' : '▸';
   }
 
+  // ── Canonical spec → role lookup table ─────────────────────────────────
+  // Keys are the canonical spec names produced by normalizeSpec() / SPEC_ALIASES.
+  // Only healer and tank specs need entries; everything else defaults to 'dps'.
+  const SPEC_TO_ROLE = {
+    // Healers
+    'holy':         'healer',
+    'discipline':   'healer',
+    'restoration':  'healer',
+    'mistweaver':   'healer',
+    // Tanks
+    'protection':   'tank',
+    'blood':        'tank',
+    'bear':         'tank',
+    'guardian':     'tank',
+    'brewmaster':   'tank',
+    'vengeance':    'tank',
+  };
+
   // ── Detect role from spec name ──────────────────────────────────────────
+  // `spec` should already be the canonical name returned by normalizeSpec().
   function specToRole(spec) {
     if (!spec) return 'dps';
     const s = spec.toLowerCase();
-    // Check explicit role markers first so e.g. "Blood (DPS)" isn't misclassified
-    if (s.includes('(tank)')) return 'tank';
-    if (s.includes('(heal') || s.includes('healer')) return 'healer';
-    if (s.includes('(dps)')) return 'dps';
-    // Fallback: keyword detection
-    if (/\b(holy|disc|discipline|resto|restoration|mistweaver)\b/.test(s)) return 'healer';
-    if (/\b(prot|protection|blood|bear|guardian|brewmaster|vengeance)\b/.test(s)) return 'tank';
+    // Honour explicit inline role markers (e.g. "Blood (DPS)", "Feral (Bear) (Tank)")
+    if (s.includes('(tank)'))  return 'tank';
+    if (s.includes('(heal)') || s.includes('(healer)')) return 'healer';
+    if (s.includes('(dps)'))   return 'dps';
+    // Exact lookup against canonical spec names
+    if (SPEC_TO_ROLE[s]) return SPEC_TO_ROLE[s];
+    // Substring lookup for composite names like "Feral (Bear)" or "Holy Paladin"
+    for (const [canonical, role] of Object.entries(SPEC_TO_ROLE)) {
+      if (s.includes(canonical)) return role;
+    }
     return 'dps';
   }
 
@@ -861,8 +883,9 @@
     document.querySelectorAll('.user-group').forEach(group => {
       let anyVisible = false;
       group.querySelectorAll('.char-card').forEach(card => {
+        const charClass = card.dataset.charClass || '';
         const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
-        const show = role === 'all' || allSpecs.some(s => specToRole(s) === role);
+        const show = role === 'all' || allSpecs.some(s => specToRole(normalizeSpec(charClass, s)) === role);
         card.style.display = show ? '' : 'none';
         if (show) anyVisible = true;
       });
@@ -879,7 +902,7 @@
     draggedCharClass        = event.currentTarget.dataset.charClass || null;
     draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
     draggedSpec             = event.currentTarget.dataset.spec || null;
-    draggedRole             = specToRole(draggedSpec);
+    draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec));
     event.dataTransfer.effectAllowed = 'move';
   }
 
