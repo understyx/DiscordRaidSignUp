@@ -72,6 +72,7 @@ class Signup(Base):
     signup_type = Column(Enum(SignupType), default=SignupType.fill)
     status = Column(Enum(SignupStatus), default=SignupStatus.signed)
     is_saved = Column(Boolean, default=False)  # character is ID-locked / already saved this lockout
+    note = Column(String(500), nullable=True)  # optional free-text note from the sign-up line
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="signups")
     character = relationship("Character", back_populates="signups")

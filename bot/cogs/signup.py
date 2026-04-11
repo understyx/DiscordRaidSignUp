@@ -39,6 +39,10 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
 # Requires at least 4 slash-separated parts (name, class, spec, gs).
 _CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/.+/.+", re.IGNORECASE)
 
+# Matches a GS number (with optional k/K suffix) at the start of a segment,
+# followed by optional whitespace and an optional trailing note.
+_GS_NOTE_RE = re.compile(r"^([0-9]+(?:[.,][0-9]+)?[kK]?)\s*(.*)?$", re.DOTALL)
+
 # Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
 _TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
 
@@ -70,6 +74,22 @@ def parse_gs(raw: str) -> float:
     return value
 
 
+def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
+    """Parse a GS segment, returning ``(gearscore, note)``.
+
+    Star markers (⭐ ★) are stripped before parsing.  Any text that follows
+    the numeric GS value (after stripping stars and whitespace) is returned
+    as the note.  Raises ``ValueError`` if no valid GS number is found.
+    """
+    cleaned = gs_raw.replace("⭐", "").replace("★", "").strip()
+    m = _GS_NOTE_RE.match(cleaned)
+    if not m:
+        raise ValueError(f"Cannot parse GS from {gs_raw!r}")
+    gs = parse_gs(m.group(1))
+    note = (m.group(2) or "").strip()
+    return gs, note
+
+
 def _parse_character_lines(text: str) -> list[dict]:
     """
     Parse one or more character lines from a message body.
@@ -88,10 +108,11 @@ def _parse_character_lines(text: str) -> list[dict]:
     ❌  = saved character (already saved this lockout)
 
     Returns a list of dicts with keys:
-        char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool)
+        char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool), note (str)
 
     One dict is returned per spec/GS pair. Characters with multiple specs
     (e.g. Shadow/6500/Disc/6300) produce multiple dicts, one per spec.
+    All dicts for the same character line share the same ``note`` value.
     """
     results = []
     seen: set[tuple[str, str]] = set()  # (char_name_lower, spec_lower)
@@ -128,6 +149,9 @@ def _parse_character_lines(text: str) -> list[dict]:
         # for this character are priority.
         last_has_star = "⭐" in spec_gs[-1] or "★" in spec_gs[-1]
 
+        # Note for this line — accumulated from any GS segment that has trailing text.
+        line_note = ""
+
         i = 0
         while i + 1 < len(spec_gs):
             spec_raw = spec_gs[i]
@@ -141,13 +165,15 @@ def _parse_character_lines(text: str) -> list[dict]:
             spec_is_prio = last_has_star or spec_has_star or gs_has_star
 
             spec = spec_raw.replace("⭐", "").replace("★", "").strip()
-            gs_clean = gs_raw.replace("⭐", "").replace("★", "").strip()
 
             try:
-                gs = parse_gs(gs_clean)
+                gs, segment_note = _parse_gs_and_note(gs_raw)
             except ValueError:
                 i += 2
                 continue
+
+            if segment_note:
+                line_note = segment_note
 
             if spec:
                 key = (name_lower, spec.lower())
@@ -161,9 +187,16 @@ def _parse_character_lines(text: str) -> list[dict]:
                             "gearscore": gs,
                             "is_prio": spec_is_prio,
                             "is_saved": is_saved,
+                            "note": "",  # filled in after the loop
                         }
                     )
             i += 2
+
+        # Back-fill the note for all entries produced by this line.
+        if line_note:
+            for entry in results:
+                if entry["char_name"].lower() == name_lower and entry["note"] == "":
+                    entry["note"] = line_note
 
     return results
 
@@ -844,6 +877,7 @@ class SignupCog(commands.Cog):
                         existing.signup_type = signup_type
                         existing.status = signup_status
                         existing.is_saved = entry["is_saved"]
+                        existing.note = entry.get("note") or None
                     else:
                         session.add(
                             Signup(
@@ -853,6 +887,7 @@ class SignupCog(commands.Cog):
                                 signup_type=signup_type,
                                 status=signup_status,
                                 is_saved=entry["is_saved"],
+                                note=entry.get("note") or None,
                             )
                         )
 
@@ -864,6 +899,7 @@ class SignupCog(commands.Cog):
                             "char_class": entry["char_class"],
                             "specs": [],
                             "is_saved": entry["is_saved"],
+                            "note": entry.get("note", ""),
                         }
                     char_spec_info[key]["specs"].append(
                         {
@@ -884,8 +920,9 @@ class SignupCog(commands.Cog):
                         spec_parts.append(f"{s['spec']}{star} GS {s['gearscore']:.0f}")
                     specs_str = " / ".join(spec_parts)
                     saved_flag = " ❌" if data["is_saved"] else ""
+                    note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
                     summaries.append(
-                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}"
+                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}{note_str}"
                     )
                 return summaries
             finally:
