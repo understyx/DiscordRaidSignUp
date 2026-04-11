@@ -125,8 +125,9 @@ router.use(async (req, res, next) => {
   if (req.session.user_id) {
     try {
       req.session.is_admin = await resolveIsAdmin(req.session.user_id);
-    } catch (_) {
-      // Keep the existing cached value on transient errors.
+    } catch (err) {
+      // Keep the existing cached value on transient errors, but log for debugging.
+      console.warn('[adminCheck] Failed to refresh admin status for user %s:', req.session.user_id, err.message || err);
     }
   }
   next();
