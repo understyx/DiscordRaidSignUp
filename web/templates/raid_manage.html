@@ -1004,6 +1004,8 @@
 
   function clearSlot(btn) {
     clearAssigned(btn.closest('.slot-card').querySelector('.assigned-char'));
+    clearTimeout(saveTimer);
+    autoSave();
   }
 
   /* ── Per-slot dirty tracking ───────────────────────────────────────── */
