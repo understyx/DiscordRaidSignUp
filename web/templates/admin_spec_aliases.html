@@ -11,7 +11,8 @@
   WotLK spec names. Changes take effect immediately for all users.
 </p>
 
-{# ── Add new alias ── #}
+{# ── Add new alias (admins only) ── #}
+{% if is_admin %}
 <div class="card mb-4">
   <div class="card-header fw-bold">➕ Add Alias</div>
   <div class="card-body">
@@ -39,6 +40,7 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 {# ── Existing aliases grouped by class ── #}
 <div class="row g-4">
@@ -65,11 +67,13 @@
               <td class="text-muted font-monospace">{{ entry.alias }}</td>
               <td>{{ entry.canonical }}</td>
               <td class="text-end">
+                {% if is_admin %}
                 <form method="post" action="/admin/spec-aliases/delete"
                       onsubmit="return confirm('Remove alias \'{{ entry.alias }}\'?');">
                   <input type="hidden" name="id" value="{{ entry.id }}">
                   <button type="submit" class="btn btn-sm btn-outline-danger py-0">✕</button>
                 </form>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
