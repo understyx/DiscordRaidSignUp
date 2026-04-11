@@ -66,7 +66,8 @@
     "desc": "+5% Melee/Ranged Crit (Leader of the Pack – Feral / Rampage – Fury Warrior)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "druid",   "spec": "Feral" },
+      { "cls": "druid",   "spec": "Feral (Cat)" },
+      { "cls": "druid",   "spec": "Feral (Bear)" },
       { "cls": "warrior", "spec": "Fury" }
     ],
     "can_bring": []
@@ -302,7 +303,8 @@
     "desc": "+30% Bleed dmg taken (Mangle – Feral Druid / Trauma – Arms Warrior)",
     "cat": "Offensive Debuffs",
     "preferred": [
-      { "cls": "druid",   "spec": "Feral" },
+      { "cls": "druid",   "spec": "Feral (Cat)" },
+      { "cls": "druid",   "spec": "Feral (Bear)" },
       { "cls": "warrior", "spec": "Arms" }
     ],
     "can_bring": []
@@ -390,7 +392,8 @@
       { "cls": "death knight", "spec": null }
     ],
     "can_bring": [
-      { "cls": "druid",   "spec": "Feral" },
+      { "cls": "druid",   "spec": "Feral (Cat)" },
+      { "cls": "druid",   "spec": "Feral (Bear)" },
       { "cls": "paladin", "spec": "Protection" }
     ]
   },
@@ -402,7 +405,8 @@
     "preferred": [
       { "cls": "paladin", "spec": "Protection" },
       { "cls": "warrior", "spec": null },
-      { "cls": "druid",   "spec": "Feral" }
+      { "cls": "druid",   "spec": "Feral (Cat)" },
+      { "cls": "druid",   "spec": "Feral (Bear)" }
     ],
     "can_bring": [
       { "cls": "warlock", "spec": null },
@@ -507,7 +511,7 @@
     "name": "Imp Leader of the Pack",
     "desc": "Heals raid on crit (Improved LotP – Feral Druid)",
     "cat": "Health Return",
-    "preferred": [{ "cls": "druid", "spec": "Feral" }],
+    "preferred": [{ "cls": "druid", "spec": "Feral (Cat)" }, { "cls": "druid", "spec": "Feral (Bear)" }],
     "can_bring": []
   },
   {
