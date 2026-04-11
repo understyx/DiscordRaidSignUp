@@ -8,7 +8,7 @@
 
 <p class="text-muted">
   Control which Discord roles have specific permissions on this website.
-  For each permission type, if no roles are configured then <strong>everyone</strong> has access by default.
+  For both role types below, if no roles are configured then <strong>everyone</strong> has access by default.
 </p>
 
 {% if not guild_id %}
@@ -22,7 +22,7 @@
 <h5 class="mt-4 mb-3">🔧 Raid Admin Roles</h5>
 <p class="text-muted small mb-3">
   Members with one of these roles can manage raids on the website.
-  Removing all roles grants admin access to every logged-in user.
+  Removing all roles allows every logged-in user to manage raids.
 </p>
 <div class="row g-4 mb-5">
   {# Current admin roles #}
@@ -127,7 +127,7 @@
 <h5 class="mt-2 mb-3">📝 Allow Signing Up With This Role</h5>
 <p class="text-muted small mb-3">
   Only members with one of these roles will be able to sign up for raids.
-  Removing all roles allows every logged-in user to sign up (base case).
+  Removing all roles allows every logged-in user to sign up (everyone can sign up by default).
 </p>
 <div class="row g-4">
   {# Current signup roles #}
