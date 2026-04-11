@@ -12,6 +12,14 @@
     background-color: rgba(25, 135, 84, 0.35) !important;
   }
 
+  /* Group (char/class) cells highlighted when any spec in the group is selected */
+  .group-cell.group-cell-selected {
+    background-color: rgba(25, 135, 84, 0.22) !important;
+  }
+  .table-hover .group-cell.group-cell-selected:hover {
+    background-color: rgba(25, 135, 84, 0.35) !important;
+  }
+
   /* Priority star — rendered as a borderless button */
   .prio-star {
     cursor: pointer;
@@ -58,7 +66,7 @@
       <h5>📝 Sign Up</h5>
       {% if raid.status == "open" %}
         {% if user_char_groups %}
-        <p class="text-muted small mb-2">Click a row to sign up with that spec (green = selected). Click ⭐ to mark it as priority.</p>
+        <p class="text-muted small mb-2">Click a spec row to sign up with that spec (green = selected). Click the character or class name to toggle all specs at once. Click ⭐ to mark a spec as priority.</p>
         <form method="post" action="/raids/{{ raid.id }}/signup" id="signupForm">
           <div class="table-responsive mb-3">
             <table class="table table-hover align-middle"
@@ -74,6 +82,7 @@
               </thead>
               <tbody>
                 {% for group in user_char_groups %}
+                {% set group_idx = loop.index0 %}
                 {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
                 {% set alt = "row-group-alt" if loop.index is even else "" %}
                 {% for s in group.specs %}
@@ -81,6 +90,7 @@
                 {% set is_prio = my_signup_map[s.id] and my_signup_map[s.id].signup_type == 'prio_character' %}
                 <tr class="signup-row {{ alt }}{% if is_signed %} row-selected{% endif %}"
                     data-char-id="{{ s.id }}"
+                    data-group-idx="{{ group_idx }}"
                     tabindex="0"
                     role="row"
                     aria-selected="{{ 'true' if is_signed else 'false' }}"
@@ -88,8 +98,12 @@
                     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRow(this);}"
                     style="cursor:pointer; user-select:none">
                   {% if loop.index == 1 %}
-                  <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.specs | length }}">{{ group.char_name }}</td>
-                  <td class="cls-{{ cls_key }}" rowspan="{{ group.specs | length }}">{{ group.char_class or "—" }}</td>
+                  <td class="fw-bold cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
+                      onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
+                      style="cursor:pointer">{{ group.char_name }}</td>
+                  <td class="cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
+                      onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
+                      style="cursor:pointer">{{ group.char_class or "—" }}</td>
                   {% endif %}
                   <td>{{ s.spec or "?" }}</td>
                   <td class="text-muted">{{ s.gearscore | int if s.gearscore else "—" }}</td>
@@ -216,7 +230,38 @@
         star.setAttribute('aria-pressed', 'false');
       }
     }
+    updateGroupHighlight(row.dataset.groupIdx);
     buildHiddenInputs();
+  }
+
+  function toggleGroupRows(groupIdx) {
+    const rows = document.querySelectorAll(`.signup-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
+    const anySelected = Array.from(rows).some(r => r.classList.contains('row-selected'));
+    const shouldSelect = !anySelected;
+    rows.forEach(row => {
+      row.classList.toggle('row-selected', shouldSelect);
+      row.setAttribute('aria-selected', shouldSelect ? 'true' : 'false');
+      if (!shouldSelect) {
+        const star = row.querySelector('.prio-star');
+        if (star) {
+          star.classList.remove('prio-active');
+          star.setAttribute('aria-pressed', 'false');
+        }
+      }
+    });
+    updateGroupHighlight(groupIdx);
+    buildHiddenInputs();
+  }
+
+  function updateGroupHighlight(groupIdx) {
+    const rows = document.querySelectorAll(`.signup-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
+    const anySelected = Array.from(rows).some(r => r.classList.contains('row-selected'));
+    const firstRow = rows[0];
+    if (firstRow) {
+      firstRow.querySelectorAll('.group-cell').forEach(cell => {
+        cell.classList.toggle('group-cell-selected', anySelected);
+      });
+    }
   }
 
   function togglePrio(star) {
@@ -228,6 +273,7 @@
       const row = star.closest('tr.signup-row');
       row.classList.add('row-selected');
       row.setAttribute('aria-selected', 'true');
+      updateGroupHighlight(row.dataset.groupIdx);
     }
     buildHiddenInputs();
   }
@@ -260,7 +306,14 @@
     }
   }
 
-  // Populate hidden inputs on page load to reflect already-signed-up state
-  document.addEventListener('DOMContentLoaded', buildHiddenInputs);
+  // Populate hidden inputs and group highlights on page load
+  document.addEventListener('DOMContentLoaded', () => {
+    buildHiddenInputs();
+    const groups = new Set();
+    document.querySelectorAll('.signup-row[data-group-idx]').forEach(row => {
+      groups.add(row.dataset.groupIdx);
+    });
+    groups.forEach(gIdx => updateGroupHighlight(gIdx));
+  });
 </script>
 {% endblock %}
