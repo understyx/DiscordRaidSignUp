@@ -13,6 +13,7 @@ const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://localho
 const DISCORD_OAUTH_URL = 'https://discord.com/api/oauth2/authorize';
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
+const DISCORD_USER_GUILDS_URL = 'https://discord.com/api/users/@me/guilds';
 
 router.get('/login', (req, res) => {
   const state = crypto.randomBytes(32).toString('hex');
@@ -22,7 +23,7 @@ router.get('/login', (req, res) => {
     client_id: DISCORD_CLIENT_ID,
     redirect_uri: DISCORD_REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify',
+    scope: 'identify guilds',
     state,
   });
 
@@ -68,12 +69,20 @@ router.get('/callback', async (req, res) => {
     req.session.avatar = userData.avatar || null;
     req.session.flash = `Welcome, ${userData.username}!`;
 
-    // Determine and cache admin status for this session.
+    // Fetch user's guild memberships to determine which bot-enabled guild to activate
+    let userGuildIds = [];
     try {
-      req.session.is_admin = await resolveIsAdmin(userData.id);
-    } catch (_adminErr) {
-      req.session.is_admin = true; // fail open on error
+      const guildsRes = await fetch(DISCORD_USER_GUILDS_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (guildsRes.ok) {
+        const guildsData = await guildsRes.json();
+        userGuildIds = guildsData.map(g => String(g.id));
+      }
+    } catch (_guildsErr) {
+      // Non-fatal: fall back to no guild filtering
     }
+    req.session.user_guild_ids = userGuildIds;
 
     // Cache Discord user info in the database for display in raid management
     try {
@@ -85,6 +94,49 @@ router.get('/callback', async (req, res) => {
       );
     } catch (_dbErr) {
       // Non-fatal: table may not exist yet or another transient error
+    }
+
+    // Find which of the user's guilds have the bot installed
+    let activeGuildId = null;
+    let activeGuildName = null;
+    if (userGuildIds.length > 0) {
+      const placeholders = userGuildIds.map(() => '?').join(', ');
+      try {
+        const [botGuildRows] = await pool.query(
+          `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
+          userGuildIds
+        );
+        if (botGuildRows.length === 1) {
+          activeGuildId = String(botGuildRows[0].guild_id);
+          activeGuildName = botGuildRows[0].guild_name;
+        } else if (botGuildRows.length > 1) {
+          // Store available guilds and redirect to picker
+          req.session.available_guilds = botGuildRows.map(r => ({
+            guild_id: String(r.guild_id),
+            guild_name: r.guild_name,
+          }));
+          req.session.active_guild_id = null;
+          req.session.active_guild_name = null;
+
+          const nextUrl = req.session.next_url;
+          delete req.session.next_url;
+          req.session.post_guild_select_url = nextUrl || '/raids';
+          return res.redirect('/select-guild');
+        }
+        // botGuildRows.length === 0: no matching guilds, leave activeGuildId null
+      } catch (_botGuildErr) {
+        // Non-fatal: bot_guilds table may not exist yet
+      }
+    }
+
+    req.session.active_guild_id = activeGuildId;
+    req.session.active_guild_name = activeGuildName;
+
+    // Determine and cache admin status for this session.
+    try {
+      req.session.is_admin = await resolveIsAdmin(userData.id, activeGuildId);
+    } catch (_adminErr) {
+      req.session.is_admin = true; // fail open on error
     }
 
     const nextUrl = req.session.next_url;

@@ -115,6 +115,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                         max_size=size,
                         status=RaidStatus.open,
                         created_by=discord_user_id,
+                        guild_id=interaction.guild_id,
                     )
                     session.add(raid)
                     session.commit()

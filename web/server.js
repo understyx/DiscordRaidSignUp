@@ -11,6 +11,7 @@ const authRouter = require('./routes/auth');
 const raidsRouter = require('./routes/raids');
 const charactersRouter = require('./routes/characters');
 const adminRouter = require('./routes/admin');
+const guildSettingsRouter = require('./routes/guildSettings');
 
 const app = express();
 
@@ -114,9 +115,12 @@ njkEnv.addFilter('discordId', val => {
   return s.length > 6 ? '\u2026' + s.slice(-6) : s;
 });
 
-// Expose dev_mode flag to all templates
+// Expose dev_mode flag and active guild info to all templates
 app.use((req, res, next) => {
   res.locals.dev_mode = process.env.DEV_MODE === 'true';
+  res.locals.dev_user_id = process.env.DEV_USER_ID || '';
+  res.locals.active_guild_id = req.session.active_guild_id || null;
+  res.locals.active_guild_name = req.session.active_guild_name || null;
   next();
 });
 
@@ -125,6 +129,64 @@ app.use('/auth', authRouter);
 app.use('/raids', raidsRouter);
 app.use('/', charactersRouter);
 app.use('/admin', adminRouter);
+app.use('/guild-settings', guildSettingsRouter);
+
+// GET /select-guild — guild picker page
+app.get('/select-guild', (req, res) => {
+  if (!req.session.user_id) return res.redirect('/auth/login');
+  const availableGuilds = req.session.available_guilds || [];
+  res.render('select_guild.html', {
+    available_guilds: availableGuilds,
+    flash: req.session.flash || null,
+    user: req.session.user_id
+      ? { id: req.session.user_id, username: req.session.username, is_admin: req.session.is_admin !== false }
+      : null,
+  });
+  delete req.session.flash;
+});
+
+// POST /select-guild — set active guild from picker
+app.post('/select-guild', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!req.session.user_id) return res.redirect('/auth/login');
+
+  const chosenId = String(req.body.guild_id || '').trim();
+  if (!chosenId || !/^\d+$/.test(chosenId)) {
+    req.session.flash = '❌ Invalid guild selection.';
+    return res.redirect('/select-guild');
+  }
+
+  // Validate that this guild is in the user's available guilds
+  const available = req.session.available_guilds || [];
+  const chosen = available.find(g => g.guild_id === chosenId);
+  if (!chosen) {
+    req.session.flash = '❌ Guild not available.';
+    return res.redirect('/select-guild');
+  }
+
+  req.session.active_guild_id = chosenId;
+  req.session.active_guild_name = chosen.guild_name;
+
+  const { resolveIsAdmin } = require('./routes/adminCheck');
+  try {
+    req.session.is_admin = await resolveIsAdmin(req.session.user_id, chosenId);
+  } catch (_err) {
+    req.session.is_admin = true;
+  }
+
+  const nextUrl = req.session.post_guild_select_url || '/raids';
+  delete req.session.post_guild_select_url;
+
+  let redirectTo = '/raids';
+  try {
+    const decoded = decodeURIComponent(nextUrl);
+    if (decoded.startsWith('/') && !decoded.startsWith('//') && !/[\r\n]/.test(decoded)) {
+      redirectTo = decoded;
+    }
+  } catch (_) {
+    // fall back
+  }
+  res.redirect(redirectTo);
+});
 
 // Root redirect
 app.get('/', (req, res) => {
