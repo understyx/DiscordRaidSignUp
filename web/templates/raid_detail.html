@@ -67,7 +67,7 @@
       {% if raid.status == "open" %}
         {% if user_char_groups %}
         <p class="text-muted small mb-2">Click a spec row to sign up with that spec (green = selected). Click the character or class name to toggle all specs at once. Click ⭐ to mark a spec as priority.</p>
-        <form method="post" action="/raids/{{ raid.id }}/signup" id="signupForm">
+        <form method="post" action="{{ raid_url }}/signup" id="signupForm">
           <div class="table-responsive mb-3">
             <table class="table table-hover align-middle"
                    aria-label="Your characters and specs. Click a row to sign up with that spec; click the star button to mark it as priority.">
@@ -128,7 +128,7 @@
           </div>
         </form>
         {% if my_signup_count > 0 %}
-        <form method="post" action="/raids/{{ raid.id }}/withdraw" class="mt-2">
+        <form method="post" action="{{ raid_url }}/withdraw" class="mt-2">
           <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
         </form>
         {% endif %}

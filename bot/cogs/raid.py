@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import discord
 from discord import app_commands
 from discord.ext import commands
+from sqlalchemy import select, func
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
@@ -107,6 +108,10 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             def _create():
                 session = get_session()
                 try:
+                    next_num = session.execute(
+                        select(func.coalesce(func.max(Raid.guild_raid_number), 0) + 1)
+                        .where(Raid.guild_id == interaction.guild_id)
+                    ).scalar()
                     raid = Raid(
                         name=self.raid_name.value.strip(),
                         date=raid_dt,
@@ -116,6 +121,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                         status=RaidStatus.open,
                         created_by=discord_user_id,
                         guild_id=interaction.guild_id,
+                        guild_raid_number=next_num,
                     )
                     session.add(raid)
                     session.commit()

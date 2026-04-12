@@ -752,7 +752,26 @@ class SignupView(discord.ui.View):
                 "❌ Could not determine raid ID from this message.", ephemeral=True
             )
             return
-        url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"
+
+        loop = asyncio.get_event_loop()
+
+        def _fetch_raid():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                if raid is None:
+                    return None, None
+                return raid.guild_id, raid.guild_raid_number
+            finally:
+                session.close()
+
+        guild_id, guild_raid_number = await loop.run_in_executor(None, _fetch_raid)
+
+        if guild_id is not None and guild_raid_number:
+            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{guild_id}/{guild_raid_number}"
+        else:
+            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"
+
         await interaction.response.send_message(
             f"🌐 Sign up for this raid on the website: {url}",
             ephemeral=True,

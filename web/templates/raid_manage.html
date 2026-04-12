@@ -361,15 +361,15 @@
       <h3 class="mb-0">🛠️ {{ raid.name }}</h3>
       <div>
         {% if can_edit %}
-        <form method="post" action="/raids/{{ raid.id }}/lock" class="d-inline">
+        <form method="post" action="{{ raid_url }}/lock" class="d-inline">
           <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
         </form>
-        <form method="post" action="/raids/{{ raid.id }}/unlock" class="d-inline">
+        <form method="post" action="{{ raid_url }}/unlock" class="d-inline">
           <button class="btn btn-outline-success btn-sm me-2">🟢 Unlock Raid</button>
         </form>
         <span id="saveStatus" class="text-muted me-2" style="font-size:0.78rem;"></span>
         <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save &amp; Reload</button>
-        <form method="post" action="/raids/{{ raid.id }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">
+        <form method="post" action="{{ raid_url }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">
           <button type="button" class="btn btn-info btn-sm" onclick="showPostConfirmModal()">📋 Finalize &amp; Post</button>
         </form>
         {% if dev_mode %}
@@ -395,7 +395,7 @@
         {% endif %}
       </span>
       {% else %}
-      <a href="/raids/{{ raid.id }}/manage?comp={{ cn }}"
+      <a href="{{ raid_url }}/manage?comp={{ cn }}"
          class="comp-tab">{{ tab_label }}</a>
       {% endif %}
       {% endfor %}
@@ -408,7 +408,7 @@
       </span>
       {% endif %}
       {% if can_edit %}
-      <a href="/raids/{{ raid.id }}/manage?comp={{ next_comp }}" class="comp-tab comp-tab-add">+ Add Raid</a>
+      <a href="{{ raid_url }}/manage?comp={{ next_comp }}" class="comp-tab comp-tab-add">+ Add Raid</a>
       {% endif %}
     </div>
   </div>
@@ -1123,7 +1123,7 @@
       payload.push({ role_slot, ...change });
     }
 
-    fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
+    fetch('{{ raid_url }}/manage?comp={{ current_comp }}', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1162,7 +1162,7 @@
     clearTimeout(saveTimer);
     dirtyChanges.clear();
     const payload = buildPayload();
-    fetch('/raids/{{ raid.id }}/manage?comp={{ current_comp }}', {
+    fetch('{{ raid_url }}/manage?comp={{ current_comp }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1260,7 +1260,7 @@
 
   function pollRemoteState() {
     if (document.hidden) return; // Don't poll hidden tabs
-    fetch('/raids/{{ raid.id }}/manage/json?comp={{ current_comp }}')
+    fetch('{{ raid_url }}/manage/json?comp={{ current_comp }}')
       .then(r => r.json())
       .then(data => {
         if (!data.ok || !data.entries) return;
@@ -1364,7 +1364,7 @@
 
   document.getElementById('postAllBtn').addEventListener('click', () => {
     const form = document.getElementById('postForm');
-    form.action = `/raids/{{ raid.id }}/post_comp`;
+    form.action = `{{ raid_url }}/post_comp`;
     form.submit();
   });
 
@@ -1576,7 +1576,7 @@
     async function commitRename() {
       const newLabel = input.value.trim();
       try {
-        const resp = await fetch('/raids/{{ raid.id }}/comp_label', {
+        const resp = await fetch('{{ raid_url }}/comp_label', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ comp_number: CURRENT_COMP, label: newLabel }),

@@ -42,6 +42,7 @@ class Raid(Base):
     __tablename__ = "raids"
     id = Column(Integer, primary_key=True, autoincrement=True)
     guild_id = Column(BigInteger, nullable=True)
+    guild_raid_number = Column(Integer, nullable=False, default=0)
     name = Column(String(100), nullable=False)
     date = Column(DateTime, nullable=False)
     description = Column(Text, default="")
