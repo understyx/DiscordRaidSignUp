@@ -215,6 +215,71 @@ router.get('/', async (req, res) => {
     userBotGuilds = [{ guild_id: req.session.active_guild_id, guild_name: req.session.active_guild_name || '' }];
   }
 
+  // Dynamically pick up guild memberships acquired after login (e.g. user joined a new Discord
+  // server that already has the bot). Check any bot_guilds not yet known to this session by
+  // querying Discord's member endpoint with the bot token. Discovered guilds are persisted into
+  // the session so subsequent page loads skip the API calls.
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (botToken) {
+    const verifiedIds = new Set(userBotGuilds.map(g => g.guild_id));
+    if (req.session.active_guild_id) verifiedIds.add(String(req.session.active_guild_id));
+
+    let unverifiedQuery = 'SELECT guild_id, guild_name FROM bot_guilds';
+    let unverifiedParams = [];
+    if (verifiedIds.size > 0) {
+      const excl = [...verifiedIds].map(() => '?').join(', ');
+      unverifiedQuery += ` WHERE guild_id NOT IN (${excl})`;
+      unverifiedParams = [...verifiedIds];
+    }
+    const [unverifiedRows] = await pool.query(unverifiedQuery, unverifiedParams);
+
+    if (unverifiedRows.length > 0) {
+      const checks = await Promise.all(
+        unverifiedRows.map(async row => {
+          const guildId = String(row.guild_id);
+          try {
+            const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+              headers: { Authorization: `Bot ${botToken}` },
+            });
+            return resp.ok ? { guild_id: guildId, guild_name: row.guild_name } : null;
+          } catch (err) {
+            console.warn(`[raids] Failed to check membership in guild ${guildId}:`, err.message || err);
+            return null;
+          }
+        })
+      );
+      const newGuilds = checks.filter(Boolean);
+      if (newGuilds.length > 0) {
+        userBotGuilds = [...userBotGuilds, ...newGuilds];
+        // Persist the updated list so future page loads don't re-check these guilds.
+        req.session.user_guild_ids = userBotGuilds.map(g => g.guild_id);
+        // Keep active_guild_id / available_guilds in sync.
+        if (!req.session.active_guild_id) {
+          if (userBotGuilds.length === 1) {
+            req.session.active_guild_id = userBotGuilds[0].guild_id;
+            req.session.active_guild_name = userBotGuilds[0].guild_name;
+            try {
+              req.session.is_admin = await resolveIsAdmin(userId, userBotGuilds[0].guild_id);
+            } catch (_) {
+              req.session.is_admin = false;
+            }
+          } else {
+            req.session.available_guilds = userBotGuilds.map(g => ({
+              guild_id: g.guild_id,
+              guild_name: g.guild_name,
+            }));
+          }
+        } else {
+          // active_guild_id is already set; just keep available_guilds current.
+          req.session.available_guilds = userBotGuilds.map(g => ({
+            guild_id: g.guild_id,
+            guild_name: g.guild_name,
+          }));
+        }
+      }
+    }
+  }
+
   // Resolve admin status for every guild in parallel to drive button labels.
   const adminStatusMap = {};
   await Promise.all(
