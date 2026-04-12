@@ -26,6 +26,22 @@ function currentUser(req) {
   };
 }
 
+// Instances that share the same weekly lockout are collapsed to a single
+// canonical name — mirrors LOCKOUT_CANONICAL in bot/cogs/saves.py.
+const LOCKOUT_CANONICAL = {
+  'ICC10 HC': 'ICC10',
+  'ICC25 HC': 'ICC25',
+  'TOGC10':   'TOC10',
+  'TOGC25':   'TOC25',
+  'RS10 HC':  'RS10',
+  'RS25 HC':  'RS25',
+};
+
+function canonicalizeInstance(name) {
+  const trimmed = (name || '').trim();
+  return LOCKOUT_CANONICAL[trimmed] || trimmed;
+}
+
 // GET /characters
 router.get('/characters', async (req, res) => {
   if (!requireLogin(req, res)) return;
@@ -50,12 +66,14 @@ router.get('/characters', async (req, res) => {
     }
   }
 
-  // Fixed list of raid instances for save tracking (do not pull from raids table)
+  // Fixed list of raid instances for save tracking (do not pull from raids table).
+  // HC variants and TOGC share a lockout with their canonical counterpart, so
+  // only the canonical name is listed here (matching bot/cogs/saves.py).
   const instances = [
-    'ICC10', 'ICC10 HC', 'ICC25', 'ICC25 HC',
-    'TOC10', 'TOGC10', 'TOC25', 'TOGC25',
+    'ICC10', 'ICC25',
+    'TOC10', 'TOC25',
     'ULD10', 'ULD25',
-    'RS10', 'RS10 HC', 'RS25', 'RS25 HC',
+    'RS10', 'RS25',
     'NAXX10', 'NAXX25',
     'EOE10', 'EOE25',
     'ONY10', 'ONY25',
@@ -225,7 +243,7 @@ router.post('/characters/saves/toggle', express.json(), async (req, res) => {
 
   const userId = req.session.user_id;
   const charId = parseInt(req.body.char_id);
-  const instanceName = (req.body.instance_name || '').trim();
+  const instanceName = canonicalizeInstance(req.body.instance_name);
 
   if (!charId || !instanceName) {
     return res.status(400).json({ error: 'char_id and instance_name are required' });
