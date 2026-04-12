@@ -263,5 +263,54 @@ class SavesCog(commands.Cog):
         )
 
 
+    # ── /savecharacter  (top-level shortcut) ──────────────────────────────
+
+    @app_commands.command(
+        name="savecharacter",
+        description="Toggle the raid-save state for one of your characters on an instance.",
+    )
+    @app_commands.describe(
+        character="Character name",
+        instance="Raid instance name (e.g. ICC, ToGC, RS)",
+    )
+    async def savecharacter(
+        self,
+        interaction: discord.Interaction,
+        character: str,
+        instance: str,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        loop = asyncio.get_event_loop()
+
+        chars = await loop.run_in_executor(
+            None, _fetch_user_chars, interaction.user.id, character
+        )
+
+        if not chars:
+            await interaction.followup.send(
+                f"❌ No character named **{character}** found in your registered list.",
+                ephemeral=True,
+            )
+            return
+
+        char = chars[0]
+        instance_clean = instance.strip()
+
+        current = await loop.run_in_executor(
+            None, _get_save_state, char.id, instance_clean
+        )
+        new_state = 0 if current else 1
+
+        await loop.run_in_executor(
+            None, _set_save_state, char.id, instance_clean, new_state
+        )
+
+        state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
+        await interaction.followup.send(
+            f"{char.char_name}-{char.realm} is now {state_str} for **{instance_clean}**.",
+            ephemeral=True,
+        )
+
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(SavesCog(bot))
