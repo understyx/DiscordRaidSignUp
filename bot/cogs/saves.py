@@ -49,6 +49,17 @@ def _canonicalize_instance(instance_name: str) -> str:
     return LOCKOUT_CANONICAL.get(instance_name.strip(), instance_name.strip())
 
 
+async def _autocomplete_instance(
+    interaction: discord.Interaction,  # noqa: ARG001
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    return [
+        app_commands.Choice(name=i, value=i)
+        for i in RAID_SAVE_INSTANCES
+        if current.lower() in i.lower()
+    ]
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _fetch_user_chars(discord_user_id: int, name_filter: Optional[str] = None) -> list[Character]:
@@ -195,11 +206,7 @@ class SavesCog(commands.Cog):
         instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
         saved="Whether the character is saved (locked out) this week",
     )
-    @app_commands.autocomplete(instance=lambda interaction, current: [
-        app_commands.Choice(name=i, value=i)
-        for i in RAID_SAVE_INSTANCES
-        if current.lower() in i.lower()
-    ])
+    @app_commands.autocomplete(instance=_autocomplete_instance)
     async def saves_set(
         self,
         interaction: discord.Interaction,
@@ -246,11 +253,7 @@ class SavesCog(commands.Cog):
         character="Character name",
         instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
     )
-    @app_commands.autocomplete(instance=lambda interaction, current: [
-        app_commands.Choice(name=i, value=i)
-        for i in RAID_SAVE_INSTANCES
-        if current.lower() in i.lower()
-    ])
+    @app_commands.autocomplete(instance=_autocomplete_instance)
     async def saves_toggle(
         self,
         interaction: discord.Interaction,
@@ -318,11 +321,7 @@ class SavesCog(commands.Cog):
         character="Character name",
         instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
     )
-    @app_commands.autocomplete(instance=lambda interaction, current: [
-        app_commands.Choice(name=i, value=i)
-        for i in RAID_SAVE_INSTANCES
-        if current.lower() in i.lower()
-    ])
+    @app_commands.autocomplete(instance=_autocomplete_instance)
     async def savecharacter(
         self,
         interaction: discord.Interaction,
