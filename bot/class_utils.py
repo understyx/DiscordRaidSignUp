@@ -2,6 +2,20 @@
 
 from __future__ import annotations
 
+# All valid WoW (WotLK) class names in canonical form.
+KNOWN_CLASSES: frozenset[str] = frozenset({
+    "Death Knight",
+    "Druid",
+    "Hunter",
+    "Mage",
+    "Paladin",
+    "Priest",
+    "Rogue",
+    "Shaman",
+    "Warlock",
+    "Warrior",
+})
+
 # Maps lower-cased aliases / common misspellings to the canonical class name.
 CLASS_ALIASES: dict[str, str] = {
     # Death Knight

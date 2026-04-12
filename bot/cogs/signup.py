@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from bot.config import WEB_BASE_URL
 from bot.db import get_session
-from bot.class_utils import normalize_class
+from bot.class_utils import normalize_class, KNOWN_CLASSES
 from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
@@ -37,9 +37,20 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
 # Chat message parser helpers
 # ---------------------------------------------------------------------------
 
-# Matches: CharName / CharClass / Spec / GS [/ Spec / GS ...] [⭐ or ❌]
+# Matches a potential character sign-up line.
+# Name must be 1–12 letters, optionally preceded and/or followed by
+# whitespace / saved (❌✗) or priority (⭐★) markers, then the first "/".
 # Requires at least 4 slash-separated parts (name, class, spec, gs).
-_CHAR_LINE_RE = re.compile(r"^[^\s/].+/.+/.+/.+", re.IGNORECASE)
+_CHAR_LINE_RE = re.compile(
+    r"^[⭐★❌✗]?\s*[A-Za-z]{1,12}\s*[⭐★❌✗]?\s*/.+/.+/.+",
+    re.IGNORECASE,
+)
+
+# Validates a bare character name (after stripping markers): letters only, 1–12 chars.
+_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
+
+# Maximum number of random/invalid lines shown in a single rejection error.
+_MAX_RANDOM_LINES_IN_ERROR = 5
 
 # Matches a GS number (with optional k/K suffix) at the start of a segment,
 # followed by optional whitespace and an optional trailing note.
@@ -92,7 +103,7 @@ def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
     return gs, note
 
 
-def _parse_character_lines(text: str) -> list[dict]:
+def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
     """
     Parse one or more character lines from a message body.
 
@@ -109,14 +120,16 @@ def _parse_character_lines(text: str) -> list[dict]:
 
     ❌  = saved character (already saved this lockout)
 
-    Returns a list of dicts with keys:
+    Returns ``(results, errors)`` where *results* is a list of dicts with keys:
         char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool), note (str)
+    and *errors* is a list of human-readable rejection reasons.
 
     One dict is returned per spec/GS pair. Characters with multiple specs
     (e.g. Shadow/6500/Disc/6300) produce multiple dicts, one per spec.
     All dicts for the same character line share the same ``note`` value.
     """
     results = []
+    errors = []
     seen: set[tuple[str, str]] = set()  # (char_name_lower, spec_lower)
 
     for raw_line in text.splitlines():
@@ -136,8 +149,24 @@ def _parse_character_lines(text: str) -> list[dict]:
             continue
 
         char_name = parts[0].replace("⭐", "").replace("★", "").strip()
-        char_class = parts[1].replace("⭐", "").replace("★", "").strip()
-        if not char_name or not char_class:
+        char_class_raw = parts[1].replace("⭐", "").replace("★", "").strip()
+        if not char_name or not char_class_raw:
+            continue
+
+        # Strict name validation: letters only, 1–12 characters.
+        if not _NAME_RE.match(char_name):
+            errors.append(
+                f"**{char_name}**: invalid character name — names must be 1–12 letters only (A–Z)."
+            )
+            continue
+
+        # Class validation: must resolve to a known WoW class.
+        char_class = normalize_class(char_class_raw)
+        if char_class not in KNOWN_CLASSES:
+            errors.append(
+                f"**{char_name}**: unrecognised class `{char_class_raw}` — "
+                f"valid classes are: {', '.join(sorted(KNOWN_CLASSES))}."
+            )
             continue
 
         name_lower = char_name.lower()
@@ -145,6 +174,7 @@ def _parse_character_lines(text: str) -> list[dict]:
         # Remaining parts alternate: spec, gs, spec, gs, …
         spec_gs = parts[2:]
         if len(spec_gs) < 2:
+            errors.append(f"**{char_name}**: missing spec/GS data.")
             continue
 
         # ⭐ in the very last part (trailing star after final GS) means all specs
@@ -171,6 +201,7 @@ def _parse_character_lines(text: str) -> list[dict]:
             try:
                 gs, segment_note = _parse_gs_and_note(gs_raw)
             except ValueError:
+                errors.append(f"**{char_name}**: could not parse GS value from `{gs_raw.strip()}`.")
                 i += 2
                 continue
 
@@ -184,7 +215,7 @@ def _parse_character_lines(text: str) -> list[dict]:
                     results.append(
                         {
                             "char_name": char_name.capitalize(),
-                            "char_class": normalize_class(char_class),
+                            "char_class": char_class,
                             "spec": spec,
                             "gearscore": gs,
                             "is_prio": spec_is_prio,
@@ -200,7 +231,40 @@ def _parse_character_lines(text: str) -> list[dict]:
                 if entry["char_name"].lower() == name_lower and entry["note"] == "":
                     entry["note"] = line_note
 
-    return results
+    return results, errors
+
+
+def _find_random_text_lines(text: str) -> list[str]:
+    """
+    Return a list of non-empty lines that are neither a leading tentative
+    keyword nor a valid character sign-up line.
+
+    Only call this when the message already contains at least one character
+    line (detected via ``_CHAR_LINE_RE``); the function is a no-op otherwise
+    because the caller guards on that condition.
+
+    Rules:
+      - The *first* non-empty line may be a tentative keyword ("tentative" /
+        "maybe") — it is allowed and excluded from the results.
+      - Every other non-empty line must match ``_CHAR_LINE_RE``.  Lines that
+        do not match are returned as random-text offenders.
+    """
+    random_lines: list[str] = []
+    first_non_empty_checked = False
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Allow the very first non-empty line to be a tentative keyword.
+        if not first_non_empty_checked:
+            first_non_empty_checked = True
+            if line.lower() in _TENTATIVE_KEYWORDS:
+                continue
+        if not _CHAR_LINE_RE.match(line):
+            random_lines.append(line)
+
+    return random_lines
 
 
 def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
@@ -811,12 +875,15 @@ class SignupCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        parsed = _parse_character_lines(message.content)
-        if not parsed:
+        # Quick pre-check: does the message contain at least one potential
+        # character sign-up line?  If not, ignore silently (normal chat).
+        content = message.content
+        if not any(
+            _CHAR_LINE_RE.match(line.strip())
+            for line in content.splitlines()
+            if line.strip()
+        ):
             return
-
-        is_tentative_msg = _is_tentative_message(message.content)
-        signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
 
         loop = asyncio.get_event_loop()
         channel_id = message.channel.id
@@ -844,6 +911,50 @@ class SignupCog(commands.Cog):
         raid_info = await loop.run_in_executor(None, _find_raid)
         if not raid_info:
             return  # Not a raid channel with an open raid; ignore silently
+
+        # ── Strict validation ────────────────────────────────────────────────
+        # Now that we know this is a raid channel, validate the full message.
+
+        # 1. Check for non-signup lines mixed in with character lines.
+        random_lines = _find_random_text_lines(content)
+
+        # 2. Parse character lines with strict name + class validation.
+        parsed, parse_errors = _parse_character_lines(content)
+
+        is_tentative_msg = _is_tentative_message(content)
+        signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
+
+        all_errors: list[str] = []
+        if random_lines:
+            quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
+            all_errors.append(
+                "Your message contains text that is not a character sign-up line:\n"
+                + quoted
+                + "\nPlease post **only** your character sign-up lines "
+                "(optionally preceded by `tentative` or `maybe` on its own line)."
+            )
+        all_errors.extend(parse_errors)
+
+        if all_errors or not parsed:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            if not all_errors:
+                all_errors.append(
+                    "No valid sign-up lines could be parsed. "
+                    "Expected format: `CharName / Class / Spec / GS`"
+                )
+            error_text = (
+                f"❌ {message.author.mention} Sign-up rejected:\n"
+                + "\n".join(all_errors)
+            )
+            try:
+                await message.channel.send(error_text)
+            except Exception:
+                pass
+            return
+        # ── end validation ───────────────────────────────────────────────────
 
         discord_user_id = message.author.id
         raid_id = raid_info["id"]
