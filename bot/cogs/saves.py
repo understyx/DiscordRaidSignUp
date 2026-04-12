@@ -17,17 +17,17 @@ logger = logging.getLogger(__name__)
 # ── constants ─────────────────────────────────────────────────────────────────
 
 RAID_SAVE_INSTANCES = [
+    # RS10 / RS10 HC and RS25 / RS25 HC share a lockout — stored as "RS10" / "RS25"
+    "RS10", "RS25",
     # ICC10 / ICC10 HC share a lockout — stored as "ICC10"
     "ICC10", "ICC25",
     # TOC10 / TOGC10 and TOC25 / TOGC25 share a lockout — stored as "TOC10" / "TOC25"
     "TOC10", "TOC25",
-    "ULD10", "ULD25",
-    # RS10 / RS10 HC and RS25 / RS25 HC share a lockout — stored as "RS10" / "RS25"
-    "RS10", "RS25",
-    "NAXX10", "NAXX25",
-    "EOE10", "EOE25",
     "ONY10", "ONY25",
+    "ULD10", "ULD25",
+    "EOE10", "EOE25",
     "OS10", "OS25",
+    "NAXX10", "NAXX25",
 ]
 
 # Instances that share the same weekly lockout are mapped to a single canonical

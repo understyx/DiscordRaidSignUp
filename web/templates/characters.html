@@ -202,7 +202,7 @@
       No raid instances found. Raids need to be created before save tracking is available.
     </div>
     {% else %}
-    <p class="text-muted small mb-2">Click a cell to toggle a character's save status for that instance. 🟢 = saved &nbsp; 🔴 = not saved</p>
+    <p class="text-muted small mb-2">Click a cell to toggle a character's save status for that instance. 🔴 = saved &nbsp; 🟢 = not saved</p>
     <div class="saves-grid-wrap">
       <table class="table table-bordered saves-table align-middle">
         <thead class="table-dark">
@@ -225,7 +225,7 @@
                     data-char-id="{{ ch.id }}"
                     data-instance="{{ inst }}"
                     title="{{ ch.name }} – {{ inst }}">
-                {{ "🟢" if saved else "🔴" }}
+                {{ "🔴" if saved else "🟢" }}
               </span>
             </td>
             {% endfor %}
@@ -258,7 +258,7 @@ document.querySelectorAll('.save-cell').forEach(cell => {
       const data = await resp.json();
       if (resp.ok) {
         const isSaved = data.is_saved === 1;
-        cell.textContent = isSaved ? '🟢' : '🔴';
+        cell.textContent = isSaved ? '🔴' : '🟢';
         cell.classList.toggle('saved', isSaved);
         cell.classList.toggle('unsaved', !isSaved);
       }

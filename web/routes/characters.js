@@ -70,14 +70,14 @@ router.get('/characters', async (req, res) => {
   // HC variants and TOGC share a lockout with their canonical counterpart, so
   // only the canonical name is listed here (matching bot/cogs/saves.py).
   const instances = [
+    'RS10', 'RS25',
     'ICC10', 'ICC25',
     'TOC10', 'TOC25',
-    'ULD10', 'ULD25',
-    'RS10', 'RS25',
-    'NAXX10', 'NAXX25',
-    'EOE10', 'EOE25',
     'ONY10', 'ONY25',
+    'ULD10', 'ULD25',
+    'EOE10', 'EOE25',
     'OS10', 'OS25',
+    'NAXX10', 'NAXX25',
   ];
 
   // Build a flat list of character rows for the grid (one row per character name).
