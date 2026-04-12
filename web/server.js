@@ -11,6 +11,7 @@ const authRouter = require('./routes/auth');
 const raidsRouter = require('./routes/raids');
 const charactersRouter = require('./routes/characters');
 const adminRouter = require('./routes/admin');
+const guildSettingsRouter = require('./routes/guildSettings');
 
 const app = express();
 
@@ -128,6 +129,7 @@ app.use('/auth', authRouter);
 app.use('/raids', raidsRouter);
 app.use('/', charactersRouter);
 app.use('/admin', adminRouter);
+app.use('/guild-settings', guildSettingsRouter);
 
 // GET /select-guild — guild picker page
 app.get('/select-guild', (req, res) => {

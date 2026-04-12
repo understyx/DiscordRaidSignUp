@@ -199,107 +199,19 @@ router.get('/', async (req, res) => {
   });
 });
 
-// GET /raids/admin-roles — manage which Discord roles have raid-admin access
-router.get('/admin-roles', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
-  const guildId = req.session.active_guild_id || null;
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-
-  // Fetch currently configured admin roles from DB
-  let configuredRoles = [];
-  if (guildId) {
-    const [rows] = await pool.query(
-      'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
-      [guildId]
-    );
-    configuredRoles = rows.map(r => String(r.role_id));
-  }
-
-  // Fetch available guild roles from Discord API
-  let guildRoles = [];
-  if (guildId && botToken) {
-    try {
-      const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
-        headers: { Authorization: `Bot ${botToken}` },
-      });
-      if (resp.ok) {
-        const roles = await resp.json();
-        // Exclude the @everyone role (same id as guild_id) and sort by position desc
-        guildRoles = roles
-          .filter(r => r.id !== guildId)
-          .sort((a, b) => b.position - a.position)
-          .map(r => ({
-            id: r.id,
-            name: r.name,
-            color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
-          }));
-      } else {
-        console.warn(`[admin-roles] Discord API returned ${resp.status} when fetching guild roles for guild ${guildId}`);
-      }
-    } catch (_err) {
-      console.warn('[admin-roles] Failed to fetch guild roles from Discord:', _err.message || _err);
-    }
-  }
-
-  res.render('admin_roles.html', {
-    guild_id: guildId || null,
-    configured_role_ids: configuredRoles,
-    guild_roles: guildRoles,
-    guild_roles_map: Object.fromEntries(guildRoles.map(r => [r.id, r])),
-    flash: popFlash(req),
-    user: currentUser(req),
-  });
+// GET /raids/admin-roles — redirect to the new Guild Settings page (backward-compat)
+router.get('/admin-roles', (req, res) => {
+  res.redirect('/guild-settings');
 });
 
-// POST /raids/admin-roles/add — add a role to guild_admin_roles
-router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
-  const guildId = req.session.active_guild_id || null;
-  if (!guildId) {
-    req.session.flash = '❌ No active guild selected.';
-    return res.redirect('/raids/admin-roles');
-  }
-
-  const roleId = String(req.body.role_id || '').trim();
-  if (!roleId || !/^\d+$/.test(roleId)) {
-    req.session.flash = '❌ Invalid role ID.';
-    return res.redirect('/raids/admin-roles');
-  }
-
-  await pool.query(
-    'INSERT IGNORE INTO guild_admin_roles (guild_id, role_id) VALUES (?, ?)',
-    [guildId, roleId]
-  );
-
-  req.session.flash = '✅ Role added to admin roles.';
-  res.redirect('/raids/admin-roles');
+// POST /raids/admin-roles/add — redirect to new route (backward-compat)
+router.post('/admin-roles/add', express.urlencoded({ extended: false }), (req, res) => {
+  res.redirect(307, '/guild-settings/admin-roles/add');
 });
 
-// POST /raids/admin-roles/remove — remove a role from guild_admin_roles
-router.post('/admin-roles/remove', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
-  const guildId = req.session.active_guild_id || null;
-  if (!guildId) {
-    req.session.flash = '❌ No active guild selected.';
-    return res.redirect('/raids/admin-roles');
-  }
-
-  const roleId = String(req.body.role_id || '').trim();
-  if (!roleId || !/^\d+$/.test(roleId)) {
-    req.session.flash = '❌ Invalid role ID.';
-    return res.redirect('/raids/admin-roles');
-  }
-
-  await pool.query(
-    'DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ?',
-    [guildId, roleId]
-  );
-
-  req.session.flash = '✅ Role removed from admin roles.';
-  res.redirect('/raids/admin-roles');
+// POST /raids/admin-roles/remove — redirect to new route (backward-compat)
+router.post('/admin-roles/remove', express.urlencoded({ extended: false }), (req, res) => {
+  res.redirect(307, '/guild-settings/admin-roles/remove');
 });
 
 // GET /raids/:raid_id
@@ -443,6 +355,50 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
   if (!raid || raid.status !== 'open') {
     req.session.flash = '❌ Raid is not open for sign-ups.';
     return res.redirect(`/raids/${raidId}`);
+  }
+
+  // Enforce per-guild signup restrictions
+  if (guildId) {
+    const [[guildSettings]] = await pool.query(
+      'SELECT signup_restriction, signup_role_id FROM guild_settings WHERE guild_id = ?',
+      [guildId]
+    );
+    const restriction = guildSettings ? guildSettings.signup_restriction : 'all';
+
+    if (restriction === 'guild_member' || restriction === 'role') {
+      const botToken = process.env.DISCORD_BOT_TOKEN;
+      let member = null;
+      if (botToken) {
+        try {
+          const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+            headers: { Authorization: `Bot ${botToken}` },
+          });
+          if (resp.ok) {
+            member = await resp.json();
+          }
+        } catch (_err) {
+          console.warn('[signup] Failed to fetch guild member for restriction check:', _err.message || _err);
+        }
+      }
+
+      if (!member) {
+        if (restriction === 'role') {
+          req.session.flash = '❌ You must be a member of the guild with the required role to sign up for raids.';
+        } else {
+          req.session.flash = '❌ You must be a member of the guild to sign up for raids.';
+        }
+        return res.redirect(`/raids/${raidId}`);
+      }
+
+      if (restriction === 'role') {
+        const requiredRoleId = guildSettings.signup_role_id ? String(guildSettings.signup_role_id) : null;
+        const memberRoles = (member.roles || []).map(String);
+        if (!requiredRoleId || !memberRoles.includes(requiredRoleId)) {
+          req.session.flash = '❌ You do not have the required role to sign up for raids.';
+          return res.redirect(`/raids/${raidId}`);
+        }
+      }
+    }
   }
 
   // Support multi-select: character_ids[] and priority_ids[]
