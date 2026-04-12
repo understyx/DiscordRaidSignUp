@@ -125,6 +125,8 @@ app.use((req, res, next) => {
     req.session.active_guild_id ||
     (req.session.available_guilds && req.session.available_guilds.length > 0)
   );
+  const _availableCount = req.session.available_guilds ? req.session.available_guilds.length : 0;
+  res.locals.has_multiple_guilds = _availableCount > 1;
   next();
 });
 
