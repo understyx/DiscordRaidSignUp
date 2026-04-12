@@ -16,6 +16,7 @@
     <thead class="table-dark">
       <tr>
         <th>#</th>
+        <th>Guild</th>
         <th>Name</th>
         <th>Instance</th>
         <th>Date</th>
@@ -29,6 +30,7 @@
       {% set r = item.raid %}
       <tr>
         <td>{{ r.guild_raid_number }}</td>
+        <td class="text-muted small">{{ item.guild_name or '—' }}</td>
         <td class="fw-bold">{{ r.name }}</td>
         <td>{{ r.raid_instance }}</td>
         <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
@@ -42,7 +44,11 @@
         <td>{{ item.signup_count }} / {{ r.max_size }}</td>
         <td>
           <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
-          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">Manage</a>
+          {% if item.can_manage %}
+          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
+          {% else %}
+          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

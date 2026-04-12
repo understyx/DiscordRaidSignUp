@@ -127,7 +127,7 @@
           {% if user and user.id %}
           <li class="nav-item"><a class="nav-link" href="/characters">My Characters</a></li>
           {% endif %}
-          {% if user and user.is_admin %}
+          {% if user and user.is_admin and has_any_guild %}
           <li class="nav-item"><a class="nav-link" href="/guild-settings">⚙️ Guild Settings</a></li>
           {% endif %}
           {% if user and user.id and user.id == dev_user_id and dev_user_id %}
