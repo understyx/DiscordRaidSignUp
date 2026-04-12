@@ -31,7 +31,6 @@ router.get('/characters', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id || null;
 
   const [chars] = await pool.query(
     'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC, id ASC',
@@ -51,14 +50,17 @@ router.get('/characters', async (req, res) => {
     }
   }
 
-  // Distinct raid instances from raids visible to this guild
-  const [instanceRows] = await pool.query(
-    `SELECT DISTINCT raid_instance FROM raids
-     WHERE (guild_id = ? OR guild_id IS NULL)
-     ORDER BY raid_instance ASC`,
-    [guildId]
-  );
-  const instances = instanceRows.map(r => r.raid_instance);
+  // Fixed list of raid instances for save tracking (do not pull from raids table)
+  const instances = [
+    'ICC10', 'ICC10 HC', 'ICC25', 'ICC25 HC',
+    'TOC10', 'TOGC10', 'TOC25', 'TOGC25',
+    'ULD10', 'ULD25',
+    'RS10', 'RS10 HC', 'RS25', 'RS25 HC',
+    'NAXX10', 'NAXX25',
+    'EOE10', 'EOE25',
+    'ONY10', 'ONY25',
+    'OS10', 'OS25',
+  ];
 
   // Build a flat list of character rows for the grid (one row per character name).
   // We use the first spec row's id as a stable representative ID for the character,
