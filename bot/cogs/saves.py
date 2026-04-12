@@ -17,15 +17,37 @@ logger = logging.getLogger(__name__)
 # ── constants ─────────────────────────────────────────────────────────────────
 
 RAID_SAVE_INSTANCES = [
-    "ICC10", "ICC10 HC", "ICC25", "ICC25 HC",
-    "TOC10", "TOGC10", "TOC25", "TOGC25",
+    # ICC10 / ICC10 HC share a lockout — stored as "ICC10"
+    "ICC10", "ICC25",
+    # TOC10 / TOGC10 and TOC25 / TOGC25 share a lockout — stored as "TOC10" / "TOC25"
+    "TOC10", "TOC25",
     "ULD10", "ULD25",
-    "RS10", "RS10 HC", "RS25", "RS25 HC",
+    # RS10 / RS10 HC and RS25 / RS25 HC share a lockout — stored as "RS10" / "RS25"
+    "RS10", "RS25",
     "NAXX10", "NAXX25",
     "EOE10", "EOE25",
     "ONY10", "ONY25",
     "OS10", "OS25",
 ]
+
+# Instances that share the same weekly lockout are mapped to a single canonical
+# name.  Setting or toggling a save for any alias transparently stores it under
+# the canonical name, so e.g. "ICC10 HC" and "ICC10" always resolve to the same
+# row in char_raid_saves.
+LOCKOUT_CANONICAL: dict[str, str] = {
+    "ICC10 HC": "ICC10",
+    "ICC25 HC": "ICC25",
+    "TOGC10":   "TOC10",
+    "TOGC25":   "TOC25",
+    "RS10 HC":  "RS10",
+    "RS25 HC":  "RS25",
+}
+
+
+def _canonicalize_instance(instance_name: str) -> str:
+    """Return the canonical (shared-lockout) name for the given instance."""
+    return LOCKOUT_CANONICAL.get(instance_name.strip(), instance_name.strip())
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,13 +76,13 @@ def _get_save_state(character_id: int, instance_name: str) -> int:
                 "SELECT is_saved FROM char_raid_saves"
                 " WHERE character_id = :cid AND instance_name = :inst"
             ),
-            {"cid": character_id, "inst": instance_name},
+            {"cid": character_id, "inst": _canonicalize_instance(instance_name)},
         ).fetchone()
     return int(row[0]) if row else 0
 
 
 def _set_save_state(character_id: int, instance_name: str, is_saved: int) -> None:
-    """Upsert save state for the given character/instance."""
+    """Upsert save state for the given character/instance (canonical lockout key)."""
     from bot.db import engine
     from sqlalchemy import text
     with engine.begin() as conn:
@@ -70,7 +92,7 @@ def _set_save_state(character_id: int, instance_name: str, is_saved: int) -> Non
                 " VALUES (:cid, :inst, :saved)"
                 " ON DUPLICATE KEY UPDATE is_saved = VALUES(is_saved), updated_at = NOW()"
             ),
-            {"cid": character_id, "inst": instance_name, "saved": is_saved},
+            {"cid": character_id, "inst": _canonicalize_instance(instance_name), "saved": is_saved},
         )
 
 
