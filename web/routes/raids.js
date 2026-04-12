@@ -170,6 +170,30 @@ function currentUser(req) {
   };
 }
 
+/**
+ * Look up a raid by the guild_id and guild_raid_number from the URL.
+ * guild_id '0' is treated as NULL (legacy global raids).
+ */
+async function getRaidByUrlParams(urlGuildId, raidNumber) {
+  const guildIdParam = (urlGuildId === '0' || urlGuildId === 'null') ? null : urlGuildId;
+  let query, params;
+  if (guildIdParam === null) {
+    query = 'SELECT * FROM raids WHERE guild_id IS NULL AND guild_raid_number = ?';
+    params = [raidNumber];
+  } else {
+    query = 'SELECT * FROM raids WHERE guild_id = ? AND guild_raid_number = ?';
+    params = [guildIdParam, raidNumber];
+  }
+  const [[raid]] = await pool.query(query, params);
+  return raid || null;
+}
+
+/** Build the base URL for a raid: /raids/{guild_id}/{guild_raid_number} */
+function raidBaseUrl(raid) {
+  const g = raid.guild_id || '0';
+  return `/raids/${g}/${raid.guild_raid_number}`;
+}
+
 // GET /raids
 router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
@@ -177,12 +201,11 @@ router.get('/', async (req, res) => {
   const guildId = req.session.active_guild_id || null;
 
   const [raids] = await pool.query(
-    `SELECT r.*, COALESCE(s.player_count, 0) AS signup_count
+    `SELECT r.*, COUNT(DISTINCT s.discord_user_id) AS signup_count
      FROM raids r
-     LEFT JOIN (
-       SELECT raid_id, COUNT(DISTINCT discord_user_id) AS player_count FROM signups GROUP BY raid_id
-     ) s ON s.raid_id = r.id
+     LEFT JOIN signups s ON s.raid_id = r.id
      WHERE (r.guild_id = ? OR r.guild_id IS NULL)
+     GROUP BY r.id
      ORDER BY r.id DESC`,
     [guildId]
   );
@@ -214,19 +237,17 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), (req
   res.redirect(307, '/guild-settings/admin-roles/remove');
 });
 
-// GET /raids/:raid_id
-router.get('/:raid_id', async (req, res) => {
+// GET /raids/:guild_id/:raid_number
+router.get('/:guild_id/:raid_number', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
   if (!raid) return res.redirect('/raids');
+
+  const raidId = raid.id;
 
   const [[{ player_count }]] = await pool.query(
     'SELECT COUNT(DISTINCT discord_user_id) AS player_count FROM signups WHERE raid_id = ?',
@@ -330,6 +351,7 @@ router.get('/:raid_id', async (req, res) => {
 
   res.render('raid_detail.html', {
     raid,
+    raid_url: raidBaseUrl(raid),
     user_char_groups: userCharGroups,
     my_signup_map: mySignupMap,
     my_signup_count: mySignupRows.length,
@@ -340,22 +362,22 @@ router.get('/:raid_id', async (req, res) => {
   });
 });
 
-// POST /raids/:raid_id/signup
-router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (req, res) => {
+// POST /raids/:guild_id/:raid_number/signup
+router.post('/:guild_id/:raid_number/signup', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireLogin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
   const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
   if (!raid || raid.status !== 'open') {
     req.session.flash = '❌ Raid is not open for sign-ups.';
-    return res.redirect(`/raids/${raidId}`);
+    return res.redirect(raid ? raidBaseUrl(raid) : '/raids');
   }
+
+  const raidId = raid.id;
+  const raidUrl = raidBaseUrl(raid);
 
   // Enforce per-guild signup restrictions
   if (guildId) {
@@ -387,7 +409,7 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
         } else {
           req.session.flash = '❌ You must be a member of the guild to sign up for raids.';
         }
-        return res.redirect(`/raids/${raidId}`);
+        return res.redirect(raidUrl);
       }
 
       if (restriction === 'role') {
@@ -395,7 +417,7 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
         const memberRoles = (member.roles || []).map(String);
         if (!requiredRoleId || !memberRoles.includes(requiredRoleId)) {
           req.session.flash = '❌ You do not have the required role to sign up for raids.';
-          return res.redirect(`/raids/${raidId}`);
+          return res.redirect(raidUrl);
         }
       }
     }
@@ -416,7 +438,7 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
 
   if (characterIds.length === 0) {
     req.session.flash = '❌ Please select at least one character.';
-    return res.redirect(`/raids/${raidId}`);
+    return res.redirect(raidUrl);
   }
 
   // Verify all selected characters belong to this user
@@ -428,7 +450,7 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
     );
     if (owned.length !== characterIds.length) {
       req.session.flash = '❌ Invalid character selection.';
-      return res.redirect(`/raids/${raidId}`);
+      return res.redirect(raidUrl);
     }
   }
 
@@ -444,19 +466,22 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
   }
 
   req.session.flash = '✅ Signed up!';
-  res.redirect(`/raids/${raidId}`);
+  res.redirect(raidUrl);
 });
 
-// POST /raids/:raid_id/withdraw
-router.post('/:raid_id/withdraw', async (req, res) => {
+// POST /raids/:guild_id/:raid_number/withdraw
+router.post('/:guild_id/:raid_number/withdraw', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
+
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  if (!raid) return res.redirect('/raids');
 
   const [result] = await pool.query(
     'DELETE FROM signups WHERE raid_id = ? AND discord_user_id = ?',
-    [raidId, userId]
+    [raid.id, userId]
   );
 
   if (result.affectedRows > 0) {
@@ -465,22 +490,19 @@ router.post('/:raid_id/withdraw', async (req, res) => {
     req.session.flash = 'You were not signed up.';
   }
 
-  res.redirect(`/raids/${raidId}`);
+  res.redirect(raidBaseUrl(raid));
 });
 
-// GET /raids/:raid_id/manage
-router.get('/:raid_id/manage', async (req, res) => {
+// GET /raids/:guild_id/:raid_number/manage
+router.get('/:guild_id/:raid_number/manage', async (req, res) => {
   if (!requireLogin(req, res)) return;
   const canEdit = req.session.is_admin !== false;
 
-  const raidId = parseInt(req.params.raid_id);
-  const guildId = req.session.active_guild_id || null;
-
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
   if (!raid) return res.redirect('/raids');
+
+  const raidId = raid.id;
 
   const [allSignups] = await pool.query(
     `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role,
@@ -701,6 +723,7 @@ router.get('/:raid_id/manage', async (req, res) => {
 
   res.render('raid_manage.html', {
     raid,
+    raid_url: raidBaseUrl(raid),
     signups,
     signupsByUser,
     signup_by_char_id: signupByCharId,
@@ -722,11 +745,15 @@ router.get('/:raid_id/manage', async (req, res) => {
   });
 });
 
-// POST /raids/:raid_id/manage (JSON body) — full-state save used by manual "Save & Reload"
-router.post('/:raid_id/manage', express.json(), async (req, res) => {
+// POST /raids/:guild_id/:raid_number/manage (JSON body) — full-state save used by manual "Save & Reload"
+router.post('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const raidId = raid.id;
   const userId = req.session.user_id;
   const compNumber = parseInt(req.query.comp) || 1;
   const body = req.body;
@@ -792,14 +819,18 @@ router.post('/:raid_id/manage', express.json(), async (req, res) => {
   res.json({ ok: true });
 });
 
-// PATCH /raids/:raid_id/manage — granular per-slot auto-save (last-write-wins per slot)
+// PATCH /raids/:guild_id/:raid_number/manage — granular per-slot auto-save (last-write-wins per slot)
 // Body: array of { role_slot, slot_role?, character_id? | placeholder_text? | clear: true }
 // Only the slots present in the payload are touched; all other slots are left as-is.
-router.patch('/:raid_id/manage', express.json(), async (req, res) => {
+router.patch('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
   if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const raidId = raid.id;
   const userId = req.session.user_id;
   const compNumber = parseInt(req.query.comp) || 1;
   const body = req.body;
@@ -914,11 +945,15 @@ router.patch('/:raid_id/manage', express.json(), async (req, res) => {
   res.json({ ok: true, saved: savedSlots, entries });
 });
 
-// GET /raids/:raid_id/manage/json  — polling endpoint for collaborative auto-load
-router.get('/:raid_id/manage/json', async (req, res) => {
+// GET /raids/:guild_id/:raid_number/manage/json  — polling endpoint for collaborative auto-load
+router.get('/:guild_id/:raid_number/manage/json', async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const raidId = raid.id;
   const compNumber = parseInt(req.query.comp) || 1;
 
   const [rows] = await pool.query(
@@ -953,12 +988,16 @@ router.get('/:raid_id/manage/json', async (req, res) => {
   res.json({ ok: true, version: version || '', entries });
 });
 
-// PUT /raids/:raid_id/comp_label — set or clear a custom label for a comp tab
-router.put('/:raid_id/comp_label', express.json(), async (req, res) => {
+// PUT /raids/:guild_id/:raid_number/comp_label — set or clear a custom label for a comp tab
+router.put('/:guild_id/:raid_number/comp_label', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
   if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const raidId = raid.id;
   const { comp_number, label } = req.body || {};
 
   if (comp_number == null || typeof label !== 'string') {
@@ -978,18 +1017,15 @@ router.put('/:raid_id/comp_label', express.json(), async (req, res) => {
   res.json({ ok: true, label: trimmed || null });
 });
 
-// GET /raids/:raid_id/comp
-router.get('/:raid_id/comp', async (req, res) => {
+// GET /raids/:guild_id/:raid_number/comp
+router.get('/:guild_id/:raid_number/comp', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
-  const guildId = req.session.active_guild_id || null;
-
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
   if (!raid) return res.redirect('/raids');
+
+  const raidId = raid.id;
 
   // Determine which comp numbers exist
   const [existingCompNums] = await pool.query(
@@ -1039,6 +1075,7 @@ router.get('/:raid_id/comp', async (req, res) => {
 
   res.render('raid_comp.html', {
     raid,
+    raid_url: raidBaseUrl(raid),
     groups,
     comp_numbers: compNumbers,
     comp_labels: compLabels,
@@ -1048,39 +1085,31 @@ router.get('/:raid_id/comp', async (req, res) => {
   });
 });
 
-// POST /raids/:raid_id/lock
-router.post('/:raid_id/lock', async (req, res) => {
+// POST /raids/:guild_id/:raid_number/lock
+router.post('/:guild_id/:raid_number/lock', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
-  const guildId = req.session.active_guild_id || null;
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
 
   if (raid) {
-    await pool.query("UPDATE raids SET status = 'locked' WHERE id = ?", [raidId]);
+    await pool.query("UPDATE raids SET status = 'locked' WHERE id = ?", [raid.id]);
     req.session.flash = `🔒 Raid '${raid.name}' locked.`;
   }
 
-  res.redirect(`/raids/${raidId}/manage`);
+  res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
 });
 
-// POST /raids/:raid_id/post_comp
-router.post('/:raid_id/post_comp', async (req, res) => {
+// POST /raids/:guild_id/:raid_number/post_comp
+router.post('/:guild_id/:raid_number/post_comp', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
+  const raidNumber = parseInt(req.params.raid_number);
   const compNumber = req.query.comp ? parseInt(req.query.comp) : null;
-  const guildId = req.session.active_guild_id || null;
-
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
 
   if (raid) {
+    const raidId = raid.id;
     // Determine all comp numbers so we know if this is a multi-comp raid
     const [existingCompNums] = await pool.query(
       'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
@@ -1147,28 +1176,24 @@ router.post('/:raid_id/post_comp', async (req, res) => {
   }
 
   const compParam = compNumber !== null ? `?comp=${compNumber}` : '';
-  res.redirect(`/raids/${raidId}/comp${compParam}`);
+  res.redirect(raid ? `${raidBaseUrl(raid)}/comp${compParam}` : '/raids');
 });
 
-// POST /raids/:raid_id/unlock
-router.post('/:raid_id/unlock', async (req, res) => {
+// POST /raids/:guild_id/:raid_number/unlock
+router.post('/:guild_id/:raid_number/unlock', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const raidId = parseInt(req.params.raid_id);
-  const guildId = req.session.active_guild_id || null;
-  const [[raid]] = await pool.query(
-    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
-    [raidId, guildId]
-  );
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
 
   if (raid && raid.status === 'locked') {
-    await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raidId]);
+    await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raid.id]);
     req.session.flash = `🟢 Raid '${raid.name}' unlocked and open for sign-ups.`;
   } else if (raid) {
     req.session.flash = `ℹ️ Raid '${raid.name}' is already open.`;
   }
 
-  res.redirect(`/raids/${raidId}/manage`);
+  res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
 });
 
 module.exports = router;

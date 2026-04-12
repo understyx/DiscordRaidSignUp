@@ -16,7 +16,7 @@
 {% if comp_numbers | length > 1 %}
 <div class="d-flex gap-2 flex-wrap mb-3">
   {% for cn in comp_numbers %}
-  <a href="/raids/{{ raid.id }}/comp?comp={{ cn }}"
+  <a href="{{ raid_url }}/comp?comp={{ cn }}"
      class="btn btn-sm {% if cn == current_comp %}btn-warning{% else %}btn-outline-secondary{% endif %}">
     {{ comp_labels[cn] if comp_labels[cn] else 'Raid ' ~ cn }}
   </a>
@@ -56,9 +56,9 @@
 {% endfor %}
 
 <div class="mt-3">
-  <a href="/raids/{{ raid.id }}" class="btn btn-outline-light me-2">← Back to Raid</a>
+  <a href="{{ raid_url }}" class="btn btn-outline-light me-2">← Back to Raid</a>
   {% if user.is_admin %}
-  <a href="/raids/{{ raid.id }}/manage?comp={{ current_comp }}" class="btn btn-outline-warning">Edit Composition</a>
+  <a href="{{ raid_url }}/manage?comp={{ current_comp }}" class="btn btn-outline-warning">Edit Composition</a>
   {% endif %}
 </div>
 {% endblock %}

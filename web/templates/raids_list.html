@@ -28,7 +28,7 @@
       {% for item in raids %}
       {% set r = item.raid %}
       <tr>
-        <td>{{ r.id }}</td>
+        <td>{{ r.guild_raid_number }}</td>
         <td class="fw-bold">{{ r.name }}</td>
         <td>{{ r.raid_instance }}</td>
         <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
@@ -41,8 +41,8 @@
         </td>
         <td>{{ item.signup_count }} / {{ r.max_size }}</td>
         <td>
-          <a href="/raids/{{ r.id }}" class="btn btn-sm btn-outline-light">Sign Up</a>
-          <a href="/raids/{{ r.id }}/manage" class="btn btn-sm btn-outline-warning">Manage</a>
+          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
+          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">Manage</a>
         </td>
       </tr>
       {% endfor %}
