@@ -198,22 +198,54 @@ function raidBaseUrl(raid) {
 router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
-  const guildId = req.session.active_guild_id || null;
+  const userId = req.session.user_id;
+  const userGuildIds = req.session.user_guild_ids || [];
 
-  const [raids] = await pool.query(
-    `SELECT r.*, COUNT(DISTINCT s.discord_user_id) AS signup_count
-     FROM raids r
-     LEFT JOIN signups s ON s.raid_id = r.id
-     WHERE (r.guild_id = ? OR r.guild_id IS NULL)
-     GROUP BY r.id
-     ORDER BY r.id DESC`,
-    [guildId]
+  // Resolve all bot-enabled guilds the user belongs to.
+  // Fall back to active_guild_id for older sessions that pre-date user_guild_ids.
+  let userBotGuilds = [];
+  if (userGuildIds.length > 0) {
+    const placeholders = userGuildIds.map(() => '?').join(', ');
+    const [botGuildRows] = await pool.query(
+      `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
+      userGuildIds
+    );
+    userBotGuilds = botGuildRows.map(r => ({ guild_id: String(r.guild_id), guild_name: r.guild_name }));
+  } else if (req.session.active_guild_id) {
+    userBotGuilds = [{ guild_id: req.session.active_guild_id, guild_name: req.session.active_guild_name || '' }];
+  }
+
+  // Resolve admin status for every guild in parallel to drive button labels.
+  const adminStatusMap = {};
+  await Promise.all(
+    userBotGuilds.map(async g => {
+      adminStatusMap[g.guild_id] = await resolveIsAdmin(userId, g.guild_id);
+    })
   );
 
-  const raidData = raids.map(r => ({
-    raid: r,
-    signup_count: r.signup_count,
-  }));
+  let raidData = [];
+  if (userBotGuilds.length > 0) {
+    const guildIds = userBotGuilds.map(g => g.guild_id);
+    const guildNameMap = Object.fromEntries(userBotGuilds.map(g => [g.guild_id, g.guild_name]));
+
+    const placeholders = guildIds.map(() => '?').join(', ');
+    const [raids] = await pool.query(
+      `SELECT r.*, COUNT(DISTINCT s.discord_user_id) AS signup_count
+       FROM raids r
+       LEFT JOIN signups s ON s.raid_id = r.id
+       WHERE r.guild_id IN (${placeholders})
+       GROUP BY r.id
+       ORDER BY r.id DESC`,
+      guildIds
+    );
+
+    raidData = raids.map(r => ({
+      raid: r,
+      signup_count: r.signup_count,
+      guild_name: guildNameMap[String(r.guild_id)] || null,
+      can_manage: adminStatusMap[String(r.guild_id)] || false,
+    }));
+  }
 
   res.render('raids_list.html', {
     raids: raidData,
