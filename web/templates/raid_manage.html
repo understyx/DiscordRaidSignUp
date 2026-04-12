@@ -457,7 +457,7 @@
                    data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
                  {% if can_edit %}ondragstart="onDragStart(event)"{% endif %}
                  style="position:relative;">
-                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if charGroup.saved_instances %}<span class="saves-icon"
+                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if charGroup.saved_instances | length %}<span class="saves-icon"
                       data-bs-toggle="tooltip"
                       data-bs-placement="top"
                       data-bs-title="Saved: {{ charGroup.saved_instances | join(', ') }}"
