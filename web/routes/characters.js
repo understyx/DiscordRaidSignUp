@@ -60,13 +60,16 @@ router.get('/characters', async (req, res) => {
   );
   const instances = instanceRows.map(r => r.raid_instance);
 
-  // Build a flat list of character rows for the grid (one row per character name)
+  // Build a flat list of character rows for the grid (one row per character name).
+  // We use the first spec row's id as a stable representative ID for the character,
+  // since raid saves are tracked per-character-name, not per-spec.
   const gridChars = charGroups.map(g => ({ id: g.rows[0].id, name: g.name }));
 
   // Fetch all save records for this user's characters
   const charIds = chars.map(c => c.id);
   let savesMap = {}; // key: `${char_id}:${instance_name}` → is_saved (0/1)
   if (charIds.length > 0) {
+    // Build placeholder list from a known-safe integer array (charIds are parsed with parseInt).
     const placeholders = charIds.map(() => '?').join(',');
     const [saveRows] = await pool.query(
       `SELECT character_id, instance_name, is_saved FROM char_raid_saves

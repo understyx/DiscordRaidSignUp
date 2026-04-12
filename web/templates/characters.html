@@ -221,7 +221,7 @@
             {% set key = ch.id ~ ":" ~ inst %}
             {% set saved = savesMap[key] if key in savesMap else 0 %}
             <td>
-              <span class="save-cell {% if saved %}saved{% else %}unsaved{% endif %}"
+              <span class="save-cell"
                     data-char-id="{{ ch.id }}"
                     data-instance="{{ inst }}"
                     title="{{ ch.name }} – {{ inst }}">
