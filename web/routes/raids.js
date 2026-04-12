@@ -563,6 +563,42 @@ router.get('/:raid_id/manage', async (req, res) => {
   }
   const signupsByUser = Object.values(userSignupMap);
 
+  // Fetch which raid instances each signed-up character is currently saved to,
+  // so the raid_manage UI can show a lockout-warning tooltip on the signup card.
+  const allSignedCharIds = signups
+    .filter(s => s.character && s.character.id)
+    .map(s => s.character.id);
+  const uniqueCharIds = [...new Set(allSignedCharIds)];
+  // Map: charId (string) → [instance_name, …]
+  const charSavedInstances = {};
+  if (uniqueCharIds.length > 0) {
+    const placeholders = uniqueCharIds.map(() => '?').join(',');
+    const [saveRows] = await pool.query(
+      `SELECT character_id, instance_name FROM char_raid_saves
+       WHERE character_id IN (${placeholders}) AND is_saved = 1`,
+      uniqueCharIds
+    );
+    for (const row of saveRows) {
+      const cid = String(row.character_id);
+      if (!charSavedInstances[cid]) charSavedInstances[cid] = [];
+      charSavedInstances[cid].push(row.instance_name);
+    }
+  }
+
+  // Attach saved_instances to each charGroup (union across all specs of that character name)
+  for (const userGroup of signupsByUser) {
+    for (const charGroup of userGroup.characters) {
+      const instanceSet = new Set();
+      for (const spec of charGroup.specs) {
+        const cid = String(spec.character_id);
+        if (charSavedInstances[cid]) {
+          for (const inst of charSavedInstances[cid]) instanceSet.add(inst);
+        }
+      }
+      charGroup.saved_instances = [...instanceSet].sort();
+    }
+  }
+
   // Sort: players with starred (prio) characters first, tentative players last
   signupsByUser.sort((a, b) => {
     const aPrio = a.characters.some(cg => cg.specs.some(s => s.is_prio));

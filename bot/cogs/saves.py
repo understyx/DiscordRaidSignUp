@@ -14,6 +14,19 @@ from db.models import Character
 
 logger = logging.getLogger(__name__)
 
+# ── constants ─────────────────────────────────────────────────────────────────
+
+RAID_SAVE_INSTANCES = [
+    "ICC10", "ICC10 HC", "ICC25", "ICC25 HC",
+    "TOC10", "TOGC10", "TOC25", "TOGC25",
+    "ULD10", "ULD25",
+    "RS10", "RS10 HC", "RS25", "RS25 HC",
+    "NAXX10", "NAXX25",
+    "EOE10", "EOE25",
+    "ONY10", "ONY25",
+    "OS10", "OS25",
+]
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _fetch_user_chars(discord_user_id: int, name_filter: Optional[str] = None) -> list[Character]:
@@ -157,9 +170,14 @@ class SavesCog(commands.Cog):
     )
     @app_commands.describe(
         character="Character name",
-        instance="Raid instance name (e.g. ICC, ToGC, RS)",
+        instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
         saved="Whether the character is saved (locked out) this week",
     )
+    @app_commands.autocomplete(instance=lambda interaction, current: [
+        app_commands.Choice(name=i, value=i)
+        for i in RAID_SAVE_INSTANCES
+        if current.lower() in i.lower()
+    ])
     async def saves_set(
         self,
         interaction: discord.Interaction,
@@ -204,8 +222,13 @@ class SavesCog(commands.Cog):
     )
     @app_commands.describe(
         character="Character name",
-        instance="Raid instance name (e.g. ICC, ToGC, RS)",
+        instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
     )
+    @app_commands.autocomplete(instance=lambda interaction, current: [
+        app_commands.Choice(name=i, value=i)
+        for i in RAID_SAVE_INSTANCES
+        if current.lower() in i.lower()
+    ])
     async def saves_toggle(
         self,
         interaction: discord.Interaction,
@@ -271,8 +294,13 @@ class SavesCog(commands.Cog):
     )
     @app_commands.describe(
         character="Character name",
-        instance="Raid instance name (e.g. ICC, ToGC, RS)",
+        instance="Raid instance name (e.g. ICC10, TOGC25, ULD25)",
     )
+    @app_commands.autocomplete(instance=lambda interaction, current: [
+        app_commands.Choice(name=i, value=i)
+        for i in RAID_SAVE_INSTANCES
+        if current.lower() in i.lower()
+    ])
     async def savecharacter(
         self,
         interaction: discord.Interaction,
