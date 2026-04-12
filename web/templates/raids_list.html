@@ -28,7 +28,7 @@
       {% for item in raids %}
       {% set r = item.raid %}
       <tr>
-        <td>{{ r.id }}</td>
+        <td>{{ loop.index }}</td>
         <td class="fw-bold">{{ r.name }}</td>
         <td>{{ r.raid_instance }}</td>
         <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
