@@ -123,7 +123,7 @@ const router = express.Router();
 router.use(async (req, res, next) => {
   if (req.session.user_id) {
     try {
-      req.session.is_admin = await resolveIsAdmin(req.session.user_id);
+      req.session.is_admin = await resolveIsAdmin(req.session.user_id, req.session.active_guild_id || null);
     } catch (err) {
       // Keep the existing cached value on transient errors, but log for debugging.
       console.warn('[adminCheck] Failed to refresh admin status for user %s:', req.session.user_id, err.message || err);
@@ -174,13 +174,17 @@ function currentUser(req) {
 router.get('/', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
+  const guildId = req.session.active_guild_id || null;
+
   const [raids] = await pool.query(
     `SELECT r.*, COALESCE(s.player_count, 0) AS signup_count
      FROM raids r
      LEFT JOIN (
        SELECT raid_id, COUNT(DISTINCT discord_user_id) AS player_count FROM signups GROUP BY raid_id
      ) s ON s.raid_id = r.id
-     ORDER BY r.id DESC`
+     WHERE (r.guild_id = ? OR r.guild_id IS NULL)
+     ORDER BY r.id DESC`,
+    [guildId]
   );
 
   const raidData = raids.map(r => ({
@@ -199,7 +203,7 @@ router.get('/', async (req, res) => {
 router.get('/admin-roles', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const guildId = req.session.active_guild_id || null;
   const botToken = process.env.DISCORD_BOT_TOKEN;
 
   // Fetch currently configured admin roles from DB
@@ -252,9 +256,9 @@ router.get('/admin-roles', async (req, res) => {
 router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const guildId = req.session.active_guild_id || null;
   if (!guildId) {
-    req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
+    req.session.flash = '❌ No active guild selected.';
     return res.redirect('/raids/admin-roles');
   }
 
@@ -277,9 +281,9 @@ router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (
 router.post('/admin-roles/remove', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const guildId = req.session.active_guild_id || null;
   if (!guildId) {
-    req.session.flash = '❌ DISCORD_GUILD_ID is not configured.';
+    req.session.flash = '❌ No active guild selected.';
     return res.redirect('/raids/admin-roles');
   }
 
@@ -304,8 +308,12 @@ router.get('/:raid_id', async (req, res) => {
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
   if (!raid) return res.redirect('/raids');
 
   const [[{ player_count }]] = await pool.query(
@@ -426,8 +434,12 @@ router.post('/:raid_id/signup', express.urlencoded({ extended: false }), async (
 
   const raidId = parseInt(req.params.raid_id);
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
   if (!raid || raid.status !== 'open') {
     req.session.flash = '❌ Raid is not open for sign-ups.';
     return res.redirect(`/raids/${raidId}`);
@@ -506,8 +518,12 @@ router.get('/:raid_id/manage', async (req, res) => {
   const canEdit = req.session.is_admin !== false;
 
   const raidId = parseInt(req.params.raid_id);
+  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
   if (!raid) return res.redirect('/raids');
 
   const [allSignups] = await pool.query(
@@ -975,8 +991,12 @@ router.get('/:raid_id/comp', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
+  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
   if (!raid) return res.redirect('/raids');
 
   // Determine which comp numbers exist
@@ -1041,7 +1061,11 @@ router.post('/:raid_id/lock', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const guildId = req.session.active_guild_id || null;
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
 
   if (raid) {
     await pool.query("UPDATE raids SET status = 'locked' WHERE id = ?", [raidId]);
@@ -1057,8 +1081,12 @@ router.post('/:raid_id/post_comp', async (req, res) => {
 
   const raidId = parseInt(req.params.raid_id);
   const compNumber = req.query.comp ? parseInt(req.query.comp) : null;
+  const guildId = req.session.active_guild_id || null;
 
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
 
   if (raid) {
     // Determine all comp numbers so we know if this is a multi-comp raid
@@ -1135,7 +1163,11 @@ router.post('/:raid_id/unlock', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const raidId = parseInt(req.params.raid_id);
-  const [[raid]] = await pool.query('SELECT * FROM raids WHERE id = ?', [raidId]);
+  const guildId = req.session.active_guild_id || null;
+  const [[raid]] = await pool.query(
+    'SELECT * FROM raids WHERE id = ? AND (guild_id = ? OR guild_id IS NULL)',
+    [raidId, guildId]
+  );
 
   if (raid && raid.status === 'locked') {
     await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raidId]);

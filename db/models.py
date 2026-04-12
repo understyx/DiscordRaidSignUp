@@ -31,9 +31,17 @@ class CharacterRole(str, enum.Enum):
     dps = "dps"
 
 
+class BotGuild(Base):
+    __tablename__ = "bot_guilds"
+    guild_id = Column(BigInteger, primary_key=True)
+    guild_name = Column(String(200), nullable=False)
+    icon = Column(String(200), nullable=True)
+
+
 class Raid(Base):
     __tablename__ = "raids"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=True)
     name = Column(String(100), nullable=False)
     date = Column(DateTime, nullable=False)
     description = Column(Text, default="")

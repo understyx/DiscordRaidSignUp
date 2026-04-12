@@ -129,10 +129,20 @@
           {% endif %}
           {% if user and user.is_admin %}
           <li class="nav-item"><a class="nav-link" href="/raids/admin-roles">Admin Roles</a></li>
+          {% endif %}
+          {% if user and user.id and user.id == dev_user_id and dev_user_id %}
           <li class="nav-item"><a class="nav-link" href="/admin/spec-aliases">Spec Aliases</a></li>
           {% endif %}
         </ul>
         <ul class="navbar-nav ms-auto">
+          {% if active_guild_name %}
+          <li class="nav-item">
+            <span class="nav-link">🏰 {{ active_guild_name }}</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/select-guild">Switch Guild</a>
+          </li>
+          {% endif %}
           {% if user and user.id %}
           <li class="nav-item">
             <span class="nav-link">👤 {{ user.username }}</span>

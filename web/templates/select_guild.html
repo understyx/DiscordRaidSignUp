@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Select Server – RaidBot{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title mb-3">⚔️ Select Your Server</h2>
+        <p class="text-muted mb-4">
+          You are a member of multiple Discord servers that use RaidBot.
+          Choose the server you want to manage raids for.
+        </p>
+
+        {% if available_guilds and available_guilds | length > 0 %}
+        <form method="POST" action="/select-guild">
+          <div class="list-group mb-4">
+            {% for guild in available_guilds %}
+            <button
+              type="submit"
+              name="guild_id"
+              value="{{ guild.guild_id }}"
+              class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+            >
+              <span class="fs-4">🏰</span>
+              <span class="fw-semibold">{{ guild.guild_name }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </form>
+        {% else %}
+        <div class="alert alert-warning">
+          <strong>No servers found.</strong><br>
+          You are not a member of any Discord server where RaidBot is installed,
+          or the bot has not started up yet.
+          Please contact your server administrator.
+        </div>
+        <a href="/auth/logout" class="btn btn-outline-secondary">Logout</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

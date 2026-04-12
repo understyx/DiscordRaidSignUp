@@ -98,8 +98,14 @@ function requireAdmin(req, res) {
 // lowercase class names used for spec aliases management
 const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
 
-// GET /admin/spec-aliases — viewable by anyone; modifications require admin
+// GET /admin/spec-aliases — viewable by developers only
 router.get('/spec-aliases', async (req, res) => {
+  const devUserId = process.env.DEV_USER_ID || '';
+  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+    req.session.flash = '❌ Access denied. This page is only available to developers.';
+    return res.redirect('/raids');
+  }
+
   const [rows] = await pool.query(
     'SELECT id, char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
   );
@@ -130,7 +136,11 @@ router.get('/spec-aliases', async (req, res) => {
 
 // POST /admin/spec-aliases/add
 router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  const devUserId = process.env.DEV_USER_ID || '';
+  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+    req.session.flash = '❌ Access denied.';
+    return res.redirect('/raids');
+  }
 
   const { char_class, alias, canonical } = req.body;
   if (!char_class || !alias || !canonical) {
@@ -166,7 +176,11 @@ router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async 
 
 // POST /admin/spec-aliases/delete
 router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  const devUserId = process.env.DEV_USER_ID || '';
+  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+    req.session.flash = '❌ Access denied.';
+    return res.redirect('/raids');
+  }
 
   const id = parseInt(req.body.id, 10);
   if (isNaN(id)) {
