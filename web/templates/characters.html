@@ -3,143 +3,272 @@
 {% block extra_head %}
 <style>
   .row-group-alt { --bs-table-bg: var(--bg-card-2); }
+
+  /* ── Raid Saves grid ──────────────────────────────────────────────── */
+  .saves-grid-wrap {
+    overflow-x: auto;
+  }
+  .saves-table th, .saves-table td {
+    white-space: nowrap;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .saves-table th.char-col {
+    text-align: left;
+    min-width: 120px;
+  }
+  .saves-table th.instance-col {
+    min-width: 110px;
+    font-size: 0.82rem;
+  }
+  .save-cell {
+    cursor: pointer;
+    user-select: none;
+    font-size: 1.15rem;
+    transition: opacity 0.1s;
+    border-radius: 4px;
+    padding: 4px 10px;
+  }
+  .save-cell:hover { opacity: 0.75; }
+  .save-cell.loading { opacity: 0.4; pointer-events: none; }
 </style>
 {% endblock %}
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
 
-{% if charGroups %}
-<div class="table-responsive mb-3">
-  <table class="table table-hover align-middle">
-    <thead class="table-dark">
-      <tr>
-        <th>Character</th>
-        <th>Realm</th>
-        <th>Class</th>
-        <th>Spec</th>
-        <th>GS</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for group in charGroups %}
-      {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
-      {% set alt = "row-group-alt" if loop.index is even else "" %}
-      {% set group_id = group.rows[0].id %}
-      {% for row in group.rows %}
-      <tr class="{{ alt }}">
-        {% if loop.index == 1 %}
-        <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
-          {{ group.name }}
-          <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
-                  data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
-                  title="Add Spec">➕</button>
-        </td>
-        <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
-        <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
-        {% endif %}
-        <td>
-          <form method="post" action="/characters/{{ row.id }}/update-spec" class="d-flex gap-1 align-items-center">
-            <input type="text" name="spec" value="{{ row.spec or '' }}"
-                   class="form-control form-control-sm bg-dark text-light border-secondary"
-                   style="width:110px" placeholder="—" />
-            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Spec">💾</button>
-          </form>
-        </td>
-        <td>
-          <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-1 align-items-center">
-            <input type="text" name="gearscore" value="{{ row.gearscore | int if row.gearscore else '' }}"
-                   class="form-control form-control-sm bg-dark text-light border-secondary"
-                   style="width:80px" placeholder="—" />
-            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
-          </form>
-        </td>
-        <td class="text-end">
-          <form method="post" action="/characters/{{ row.id }}/delete"
-                onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from your list but keeps old raid history.')">
-            <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-      <tr class="{{ alt }}">
-        <td colspan="6" class="p-0 border-0">
-          <div class="collapse" id="add-spec-{{ group_id }}">
-            <div class="p-2">
-              <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
-                <input type="hidden" name="char_name" value="{{ group.name }}" />
-                <input type="hidden" name="realm" value="{{ group.realm }}" />
-                <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
-                <input type="text" name="spec"
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="charTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="edit-tab" data-bs-toggle="tab" data-bs-target="#edit-pane"
+            type="button" role="tab">✏️ Edit Characters</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="saves-tab" data-bs-toggle="tab" data-bs-target="#saves-pane"
+            type="button" role="tab">🔒 Raid Saves</button>
+  </li>
+</ul>
+
+<div class="tab-content" id="charTabsContent">
+
+  <!-- ── Tab 1: Edit Characters ──────────────────────────────────────── -->
+  <div class="tab-pane fade show active" id="edit-pane" role="tabpanel">
+
+    {% if charGroups %}
+    <div class="table-responsive mb-3">
+      <table class="table table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Character</th>
+            <th>Realm</th>
+            <th>Class</th>
+            <th>Spec</th>
+            <th>GS</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in charGroups %}
+          {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+          {% set alt = "row-group-alt" if loop.index is even else "" %}
+          {% set group_id = group.rows[0].id %}
+          {% for row in group.rows %}
+          <tr class="{{ alt }}">
+            {% if loop.index == 1 %}
+            <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
+              {{ group.name }}
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
+                      data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
+                      title="Add Spec">➕</button>
+            </td>
+            <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
+            <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
+            {% endif %}
+            <td>
+              <form method="post" action="/characters/{{ row.id }}/update-spec" class="d-flex gap-1 align-items-center">
+                <input type="text" name="spec" value="{{ row.spec or '' }}"
                        class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:120px" placeholder="New spec" maxlength="50" />
-                <input type="text" name="gearscore"
-                       class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:80px" placeholder="GS" maxlength="10" />
-                <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
+                       style="width:110px" placeholder="—" />
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Spec">💾</button>
               </form>
-            </div>
+            </td>
+            <td>
+              <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-1 align-items-center">
+                <input type="text" name="gearscore" value="{{ row.gearscore | int if row.gearscore else '' }}"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:80px" placeholder="—" />
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
+              </form>
+            </td>
+            <td class="text-end">
+              <form method="post" action="/characters/{{ row.id }}/delete"
+                    onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from your list but keeps old raid history.')">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr class="{{ alt }}">
+            <td colspan="6" class="p-0 border-0">
+              <div class="collapse" id="add-spec-{{ group_id }}">
+                <div class="p-2">
+                  <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="hidden" name="char_name" value="{{ group.name }}" />
+                    <input type="hidden" name="realm" value="{{ group.realm }}" />
+                    <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
+                    <input type="text" name="spec"
+                           class="form-control form-control-sm bg-dark text-light border-secondary"
+                           style="width:120px" placeholder="New spec" maxlength="50" />
+                    <input type="text" name="gearscore"
+                           class="form-control form-control-sm bg-dark text-light border-secondary"
+                           style="width:80px" placeholder="GS" maxlength="10" />
+                    <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
+                  </form>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card p-4 text-center text-muted mb-3">
+      No characters registered yet. Add one below!
+    </div>
+    {% endif %}
+
+    <button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm" aria-expanded="false">
+      ➕ Add new character
+    </button>
+
+    <div class="collapse mt-3" id="addCharForm">
+      <div class="card p-3">
+        <h6 class="mb-3">Add Character</h6>
+        <form method="post" action="/characters/register" class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small">Character Name</label>
+            <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
+                   required maxlength="50" placeholder="e.g. Arthas" />
           </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% else %}
-<div class="card p-4 text-center text-muted mb-3">
-  No characters registered yet. Add one below!
-</div>
-{% endif %}
+          <div class="col-auto">
+            <label class="form-label small">Realm</label>
+            <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
+                   value="Icecrown" maxlength="50" />
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Class</label>
+            <select name="char_class" class="form-select bg-dark text-light border-secondary">
+              <option value="">— select —</option>
+              <option>Death Knight</option>
+              <option>Druid</option>
+              <option>Hunter</option>
+              <option>Mage</option>
+              <option>Paladin</option>
+              <option>Priest</option>
+              <option>Rogue</option>
+              <option>Shaman</option>
+              <option>Warlock</option>
+              <option>Warrior</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Spec</label>
+            <input type="text" name="spec" class="form-control bg-dark text-light border-secondary"
+                   maxlength="50" placeholder="e.g. Holy" />
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">GS</label>
+            <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
+                   maxlength="10" placeholder="e.g. 6300" style="width:90px" />
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-wow">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
-<button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm" aria-expanded="false">
-  ➕ Add new character
-</button>
+  </div>{# /edit-pane #}
 
-<div class="collapse mt-3" id="addCharForm">
-  <div class="card p-3">
-    <h6 class="mb-3">Add Character</h6>
-    <form method="post" action="/characters/register" class="row g-2 align-items-end">
-      <div class="col-auto">
-        <label class="form-label small">Character Name</label>
-        <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
-               required maxlength="50" placeholder="e.g. Arthas" />
-      </div>
-      <div class="col-auto">
-        <label class="form-label small">Realm</label>
-        <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
-               value="Icecrown" maxlength="50" />
-      </div>
-      <div class="col-auto">
-        <label class="form-label small">Class</label>
-        <select name="char_class" class="form-select bg-dark text-light border-secondary">
-          <option value="">— select —</option>
-          <option>Death Knight</option>
-          <option>Druid</option>
-          <option>Hunter</option>
-          <option>Mage</option>
-          <option>Paladin</option>
-          <option>Priest</option>
-          <option>Rogue</option>
-          <option>Shaman</option>
-          <option>Warlock</option>
-          <option>Warrior</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <label class="form-label small">Spec</label>
-        <input type="text" name="spec" class="form-control bg-dark text-light border-secondary"
-               maxlength="50" placeholder="e.g. Holy" />
-      </div>
-      <div class="col-auto">
-        <label class="form-label small">GS</label>
-        <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
-               maxlength="10" placeholder="e.g. 6300" style="width:90px" />
-      </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-wow">Add</button>
-      </div>
-    </form>
-  </div>
-</div>
+  <!-- ── Tab 2: Raid Saves ───────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="saves-pane" role="tabpanel">
+
+    {% if not gridChars %}
+    <div class="card p-4 text-center text-muted">
+      No characters registered yet. Add some in the <strong>Edit Characters</strong> tab first.
+    </div>
+    {% elif not instances %}
+    <div class="card p-4 text-center text-muted">
+      No raid instances found. Raids need to be created before save tracking is available.
+    </div>
+    {% else %}
+    <p class="text-muted small mb-2">Click a cell to toggle a character's save status for that instance. 🟢 = saved &nbsp; 🔴 = not saved</p>
+    <div class="saves-grid-wrap">
+      <table class="table table-bordered saves-table align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th class="char-col">Character</th>
+            {% for inst in instances %}
+            <th class="instance-col">{{ inst }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for ch in gridChars %}
+          <tr>
+            <td class="text-start fw-bold">{{ ch.name }}</td>
+            {% for inst in instances %}
+            {% set key = ch.id ~ ":" ~ inst %}
+            {% set saved = savesMap[key] if key in savesMap else 0 %}
+            <td>
+              <span class="save-cell {% if saved %}saved{% else %}unsaved{% endif %}"
+                    data-char-id="{{ ch.id }}"
+                    data-instance="{{ inst }}"
+                    title="{{ ch.name }} – {{ inst }}">
+                {{ "🟢" if saved else "🔴" }}
+              </span>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+  </div>{# /saves-pane #}
+
+</div>{# /tab-content #}
+
+<script>
+document.querySelectorAll('.save-cell').forEach(cell => {
+  cell.addEventListener('click', async () => {
+    if (cell.classList.contains('loading')) return;
+    cell.classList.add('loading');
+
+    const charId = cell.dataset.charId;
+    const instanceName = cell.dataset.instance;
+
+    try {
+      const resp = await fetch('/characters/saves/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ char_id: parseInt(charId), instance_name: instanceName }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        const isSaved = data.is_saved === 1;
+        cell.textContent = isSaved ? '🟢' : '🔴';
+        cell.classList.toggle('saved', isSaved);
+        cell.classList.toggle('unsaved', !isSaved);
+      }
+    } catch (e) {
+      console.error('Toggle failed', e);
+    } finally {
+      cell.classList.remove('loading');
+    }
+  });
+});
+</script>
 {% endblock %}
+
