@@ -280,35 +280,33 @@ router.get('/', async (req, res) => {
     }
   }
 
-  // Resolve admin status for every guild in parallel to drive button labels.
-  const adminStatusMap = {};
-  await Promise.all(
-    userBotGuilds.map(async g => {
-      adminStatusMap[g.guild_id] = await resolveIsAdmin(userId, g.guild_id);
-    })
-  );
+  const activeGuildId = req.session.active_guild_id || null;
+
+  // Resolve admin status for the active guild only.
+  const canManageActive = activeGuildId
+    ? await resolveIsAdmin(userId, activeGuildId)
+    : false;
 
   let raidData = [];
-  if (userBotGuilds.length > 0) {
-    const guildIds = userBotGuilds.map(g => g.guild_id);
-    const guildNameMap = Object.fromEntries(userBotGuilds.map(g => [g.guild_id, g.guild_name]));
+  if (activeGuildId) {
+    const activeGuild = userBotGuilds.find(g => g.guild_id === activeGuildId);
+    const guildName = activeGuild ? activeGuild.guild_name : null;
 
-    const placeholders = guildIds.map(() => '?').join(', ');
     const [raids] = await pool.query(
       `SELECT r.*, COUNT(DISTINCT s.discord_user_id) AS signup_count
        FROM raids r
        LEFT JOIN signups s ON s.raid_id = r.id
-       WHERE r.guild_id IN (${placeholders})
+       WHERE r.guild_id = ?
        GROUP BY r.id
        ORDER BY r.id DESC`,
-      guildIds
+      [activeGuildId]
     );
 
     raidData = raids.map(r => ({
       raid: r,
       signup_count: r.signup_count,
-      guild_name: guildNameMap[String(r.guild_id)] || null,
-      can_manage: adminStatusMap[String(r.guild_id)] || false,
+      guild_name: guildName,
+      can_manage: canManageActive,
     }));
   }
 

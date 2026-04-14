@@ -53,7 +53,6 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
         description=raid.description or "",
         color=discord.Color.gold() if raid.status == RaidStatus.open else discord.Color.red(),
     )
-    embed.add_field(name="📍 Instance", value=raid.raid_instance, inline=True)
     embed.add_field(
         name="📅 Date",
         value=f"<t:{int(raid.date.timestamp())}:F>",
@@ -71,7 +70,6 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
 
 class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
     raid_name = discord.ui.TextInput(label="Raid Name", max_length=100)
-    raid_instance = discord.ui.TextInput(label="Raid Instance", max_length=100, placeholder="e.g. ICC 25")
     raid_date = discord.ui.TextInput(
         label="Date (YYYY-MM-DD HH:MM)",
         placeholder="2024-12-31 20:00",
@@ -116,7 +114,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                         name=self.raid_name.value.strip(),
                         date=raid_dt,
                         description=self.description.value.strip() if self.description.value else "",
-                        raid_instance=self.raid_instance.value.strip(),
+                        raid_instance="",
                         max_size=size,
                         status=RaidStatus.open,
                         created_by=discord_user_id,

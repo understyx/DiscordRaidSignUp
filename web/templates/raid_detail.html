@@ -43,7 +43,7 @@
   <div class="d-flex justify-content-between align-items-start">
     <div>
       <h2>⚔️ {{ raid.name }}</h2>
-      <p class="text-muted mb-1">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%A, %d %B %Y %H:%M UTC") }}</p>
+      <p class="text-muted mb-1">{{ raid.date | dateformat("%A, %d %B %Y %H:%M UTC") }}</p>
       {% if raid.description %}
       <p>{{ raid.description }}</p>
       {% endif %}

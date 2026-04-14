@@ -10,7 +10,7 @@
 {% endblock %}
 {% block content %}
 <h2 class="mb-1">📋 {{ raid.name }}</h2>
-<p class="text-muted mb-3">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%Y-%m-%d %H:%M") }} UTC</p>
+<p class="text-muted mb-3">{{ raid.date | dateformat("%Y-%m-%d %H:%M") }} UTC</p>
 
 {# ── Comp tabs ─────────────────────────────────────────────────────── #}
 {% if comp_numbers | length > 1 %}
