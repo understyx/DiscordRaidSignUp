@@ -172,37 +172,42 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
         except Exception:
             logger.warning("Failed to store discord_message_id for raid %s", raid_id, exc_info=True)
 
-        # Create "How to Sign Up" thread on the raid embed message and a standalone log thread
+        # The "How to Sign Up" text is shared between the thread post and the ephemeral fallback.
+        _HOWTO_TEXT = (
+            "**How to Sign Up for the Raid**\n\n"
+            "**Method 1: Sign up on the Website**\n"
+            "Visit the raid page on the website and sign up directly with your Discord account.\n"
+            "Click the **🌐 Sign Up on Website** button on the raid message to get the link.\n\n"
+            "**Method 2: Use `/addcharacter` then click the Sign Up button**\n"
+            "1. Register your character: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<gearscore>`\n"
+            "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
+            "3. Select your character(s), optionally mark preferred, then confirm\n\n"
+            "**Method 3: Post your character(s) as a text message in this channel**\n"
+            "Post one character per line in the format below. "
+            "This will both **register your character** and **sign you up** automatically.\n"
+            "```\nCharName / Class / Spec / GS\n```\n"
+            "Multiple specs: `Thralladin / Paladin / Holy / 5800 / Ret / 5600`\n\n"
+            "**Signing up as tentative (Method 3)**\n"
+            "Put `tentative` or `maybe` on the **first line** of your message to sign up as tentative:\n"
+            "```\ntentative\n\nBlazelord / Mage / Fire / 6200\nCloudsky / Paladin / Holy / 6300 / Protection / 6300\n```\n\n"
+            "**Marking preferred specs (⭐)**\n"
+            "Put ⭐ after the spec name to mark that specific spec as preferred:\n"
+            "`Lifedenier / Priest / Shadow ⭐ / 6500 / Disc / 6300` → Shadow is preferred\n"
+            "Put ⭐ at the very end of the line (after the last GS) to mark **all** specs as preferred:\n"
+            "`Puredecay / Hunter / Survival / 6500 ⭐` → all listed specs are preferred\n\n"
+            "Add ❌ anywhere in the line if your character is already saved this lockout.\n\n"
+            "*Your message will be deleted automatically and a sign-up summary will be posted in the log thread.*"
+        )
+
+        # Create "How to Sign Up" thread on the raid embed message and a standalone log thread.
+        # If the bot lacks thread-creation permissions, fall back to sending the how-to guide
+        # as an ephemeral message visible only to the officer who created the raid.
         try:
             howto_thread = await msg.create_thread(
                 name="📖 How to Sign Up",
                 auto_archive_duration=10080,  # 7 days in minutes
             )
-            await howto_thread.send(
-                "**How to Sign Up for the Raid**\n\n"
-                "**Method 1: Sign up on the Website**\n"
-                "Visit the raid page on the website and sign up directly with your Discord account.\n"
-                "Click the **🌐 Sign Up on Website** button on the raid message to get the link.\n\n"
-                "**Method 2: Use `/addcharacter` then click the Sign Up button**\n"
-                "1. Register your character: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<gearscore>`\n"
-                "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
-                "3. Select your character(s), optionally mark preferred, then confirm\n\n"
-                "**Method 3: Post your character(s) as a text message in this channel**\n"
-                "Post one character per line in the format below. "
-                "This will both **register your character** and **sign you up** automatically.\n"
-                "```\nCharName / Class / Spec / GS\n```\n"
-                "Multiple specs: `Thralladin / Paladin / Holy / 5800 / Ret / 5600`\n\n"
-                "**Signing up as tentative (Method 3)**\n"
-                "Put `tentative` or `maybe` on the **first line** of your message to sign up as tentative:\n"
-                "```\ntentative\n\nBlazelord / Mage / Fire / 6200\nCloudsky / Paladin / Holy / 6300 / Protection / 6300\n```\n\n"
-                "**Marking preferred specs (⭐)**\n"
-                "Put ⭐ after the spec name to mark that specific spec as preferred:\n"
-                "`Lifedenier / Priest / Shadow ⭐ / 6500 / Disc / 6300` → Shadow is preferred\n"
-                "Put ⭐ at the very end of the line (after the last GS) to mark **all** specs as preferred:\n"
-                "`Puredecay / Hunter / Survival / 6500 ⭐` → all listed specs are preferred\n\n"
-                "Add ❌ anywhere in the line if your character is already saved this lockout.\n\n"
-                "*Your message will be deleted automatically and a sign-up summary will be posted in the log thread.*"
-            )
+            await howto_thread.send(_HOWTO_TEXT)
 
             channel = interaction.channel
             log_thread = await channel.create_thread(
@@ -223,6 +228,15 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                     session.close()
 
             await loop.run_in_executor(None, _store_log_thread)
+        except discord.Forbidden:
+            logger.info(
+                "No permission to create threads for raid %s; sending how-to guide ephemerally",
+                raid_id,
+            )
+            try:
+                await interaction.followup.send(_HOWTO_TEXT, ephemeral=True)
+            except Exception:
+                logger.warning("Failed to send ephemeral how-to for raid %s", raid_id, exc_info=True)
         except Exception:
             logger.warning("Failed to create raid threads for raid %s", raid_id, exc_info=True)
 

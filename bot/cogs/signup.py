@@ -345,6 +345,8 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)
+    except discord.Forbidden as e:
+        logger.info(f"Missing access to update raid embed for raid {raid_id}: {e}")
     except Exception as e:
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
 
@@ -905,15 +907,20 @@ class SignupCog(commands.Cog):
             return
 
         loop = asyncio.get_event_loop()
-        channel_id = message.channel.id
 
-        # Find an open raid in this channel
+        # If the message is in a thread, use the parent channel to look up the raid.
+        if isinstance(message.channel, discord.Thread):
+            raid_channel_id = message.channel.parent_id
+        else:
+            raid_channel_id = message.channel.id
+
+        # Find an open raid in this channel (or parent channel if in a thread)
         def _find_raid():
             session = get_session()
             try:
                 raid = (
                     session.query(Raid)
-                    .filter_by(discord_channel_id=channel_id, status=RaidStatus.open)
+                    .filter_by(discord_channel_id=raid_channel_id, status=RaidStatus.open)
                     .order_by(Raid.id.desc())
                     .first()
                 )
