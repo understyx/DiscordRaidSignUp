@@ -345,6 +345,8 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)
+    except discord.Forbidden as e:
+        logger.info(f"Missing access to update raid embed for raid {raid_id}: {e}")
     except Exception as e:
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
 
