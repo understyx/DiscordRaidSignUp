@@ -156,8 +156,8 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
     );
   } else {
     await pool.query(
-      `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
       [userId, charNameCap, realmCap, charClass, spec, gearscore]
     );
   }
