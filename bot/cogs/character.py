@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from bot.db import get_session
 from bot.class_utils import normalize_class
-from bot.cogs.signup import parse_gs
+from bot.cogs.signup import parse_gs, format_gs
 from db.models import Character, CharacterRole
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class CharacterCog(commands.Cog):
         try:
             parsed_gs1 = parse_gs(gs1)
         except ValueError:
-            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, or `6.2` (auto-scaled to 6200).", ephemeral=True)
+            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, `6.2` (auto-scaled to 6200), or `BiS`.", ephemeral=True)
             return
 
         specs: list[tuple[str, float]] = [(spec1.strip(), parsed_gs1)]
@@ -285,7 +285,7 @@ class CharacterCog(commands.Cog):
                 name=field_name,
                 value=(
                     f"Class: {char.char_class or 'Unknown'}\n"
-                    f"GS: {char.gearscore:.0f}\n"
+                    f"GS: {format_gs(char.gearscore)}\n"
                     f"Role: {role_str}"
                 ),
                 inline=True,

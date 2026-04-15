@@ -474,7 +474,7 @@
                           data-gs="{{ s.gearscore | int }}"
                           data-spec="{{ s.spec or '' }}"
                           onclick="selectSpec(this)">
-                    {% if s.is_prio %}⭐ {% endif %}{{ s.spec or "?" }} {{ s.gearscore | int }}
+                    {% if s.is_prio %}⭐ {% endif %}{{ s.spec or "?" }} {{ s.gearscore | gsformat }}
                   </button>
                   {% endfor %}
                 </div>

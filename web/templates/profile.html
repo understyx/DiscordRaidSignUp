@@ -48,7 +48,7 @@
           <table class="table table-sm table-borderless mb-2" style="color:#e0e0e0; font-size:.85rem;">
             <tr><td>Class</td><td class="fw-bold cls-{{ cls_key }}">{{ c.char_class or "Unknown" }}</td></tr>
             <tr><td>Spec</td><td>{{ c.spec or "Unknown" }}</td></tr>
-            <tr><td>GearScore</td><td>{{ c.gearscore | int }}</td></tr>
+            <tr><td>GearScore</td><td>{{ c.gearscore | gsformat }}</td></tr>
             <tr><td>Last Updated</td><td>{{ c.last_updated | dateformat("%Y-%m-%d") if c.last_updated else "—" }}</td></tr>
           </table>
           <form method="post" action="/characters/{{ c.id }}/role" class="d-flex gap-2 align-items-center">
