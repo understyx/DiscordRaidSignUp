@@ -146,6 +146,7 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const gearscore = parseGS(gsRaw);
 
   if (!charName) {
+    req.session.flash = '❌ Character name is required.';
     return res.redirect('/characters');
   }
 
