@@ -905,15 +905,20 @@ class SignupCog(commands.Cog):
             return
 
         loop = asyncio.get_event_loop()
-        channel_id = message.channel.id
 
-        # Find an open raid in this channel
+        # If the message is in a thread, use the parent channel to look up the raid.
+        if isinstance(message.channel, discord.Thread):
+            raid_channel_id = message.channel.parent_id
+        else:
+            raid_channel_id = message.channel.id
+
+        # Find an open raid in this channel (or parent channel if in a thread)
         def _find_raid():
             session = get_session()
             try:
                 raid = (
                     session.query(Raid)
-                    .filter_by(discord_channel_id=channel_id, status=RaidStatus.open)
+                    .filter_by(discord_channel_id=raid_channel_id, status=RaidStatus.open)
                     .order_by(Raid.id.desc())
                     .first()
                 )
