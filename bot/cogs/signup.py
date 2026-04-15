@@ -16,6 +16,41 @@ from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupSt
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# "How to Sign Up" guide – shared between the raid-creation thread post,
+# the ephemeral button reply, and the fallback officer DM.
+# ---------------------------------------------------------------------------
+HOWTO_TEXT = (
+    "**How to Sign Up for the Raid**\n\n"
+    "**Method 1: Sign up on the Website**\n"
+    "Visit the raid page on the website and sign up directly with your Discord account.\n"
+    "Click the **🌐 Sign Up on Website** button on the raid message to get the link.\n\n"
+    "**Method 2: Use `/addcharacter` then click the Sign Up button**\n"
+    "1. Register your character: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<gearscore>`\n"
+    "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
+    "3. Select your character(s), optionally mark preferred, then confirm\n\n"
+    "**Method 3: Post your character(s) as a text message in this channel**\n"
+    "Post one character per line in the format below. "
+    "This will both **register your character** and **sign you up** automatically.\n"
+    "```\nCharName / Class / Spec / GS\n```\n"
+    "Multiple specs: `Thralladin / Paladin / Holy / 5800 / Ret / 5600`\n\n"
+    "**Method 4: Send a DM to the bot**\n"
+    "You can also DM the bot with the same character format.\n"
+    "⚠️ **Note:** DM sign-ups will only **register your character** — "
+    "they will **not** sign you up for any specific raid. "
+    "After registering via DM, use the **✅ Sign Up** button on the raid message to sign up.\n\n"
+    "**Signing up as tentative (Method 3)**\n"
+    "Put `tentative` or `maybe` on the **first line** of your message to sign up as tentative:\n"
+    "```\ntentative\n\nBlazelord / Mage / Fire / 6200\nCloudsky / Paladin / Holy / 6300 / Protection / 6300\n```\n\n"
+    "**Marking preferred specs (⭐)**\n"
+    "Put ⭐ after the spec name to mark that specific spec as preferred:\n"
+    "`Lifedenier / Priest / Shadow ⭐ / 6500 / Disc / 6300` → Shadow is preferred\n"
+    "Put ⭐ at the very end of the line (after the last GS) to mark **all** specs as preferred:\n"
+    "`Puredecay / Hunter / Survival / 6500 ⭐` → all listed specs are preferred\n\n"
+    "Add ❌ anywhere in the line if your character is already saved this lockout.\n\n"
+    "*Your message will be deleted automatically and a sign-up summary will be posted in the log thread.*"
+)
+
 
 def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
     """Upsert Discord username/display_name into discord_users table."""
@@ -780,6 +815,16 @@ class SignupView(discord.ui.View):
         )
 
     @discord.ui.button(
+        label="How to Sign Up",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:howto",
+        emoji="❓",
+        row=1,
+    )
+    async def btn_howto(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(HOWTO_TEXT, ephemeral=True)
+
+    @discord.ui.button(
         label="Show Characters",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:show_characters",
@@ -872,6 +917,131 @@ class SignupCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    # ── DM handler: register characters only ──────────────────────────────
+    async def _handle_dm_signup(self, message: discord.Message):
+        """
+        Handle character registration via DM.
+
+        Parses character lines in the same format as the channel parser but
+        only registers the character(s) in the database — it does not sign the
+        player up for any specific raid.
+        """
+        content = message.content
+        # Silently ignore DMs that contain no character sign-up lines
+        if not any(
+            _CHAR_LINE_RE.match(line.strip())
+            for line in content.splitlines()
+            if line.strip()
+        ):
+            return
+
+        random_lines = _find_random_text_lines(content)
+        parsed, parse_errors = _parse_character_lines(content)
+
+        all_errors: list[str] = []
+        if random_lines:
+            quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
+            all_errors.append(
+                "Your message contains text that is not a character sign-up line:\n"
+                + quoted
+                + "\nPlease post **only** your character sign-up lines."
+            )
+        all_errors.extend(parse_errors)
+
+        if all_errors or not parsed:
+            if not all_errors:
+                all_errors.append(
+                    "No valid sign-up lines could be parsed. "
+                    "Expected format: `CharName / Class / Spec / GS`"
+                )
+            error_text = "❌ Character registration failed:\n" + "\n".join(all_errors)
+            try:
+                await message.channel.send(error_text)
+            except Exception:
+                pass
+            return
+
+        discord_user_id = message.author.id
+        loop = asyncio.get_event_loop()
+
+        def _register():
+            session = get_session()
+            try:
+                _upsert_discord_user(session, message.author)
+                char_spec_info: dict[str, dict] = {}
+                for entry in parsed:
+                    char = (
+                        session.query(Character)
+                        .filter_by(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                            spec=entry["spec"],
+                        )
+                        .first()
+                    )
+                    if char is None:
+                        char = Character(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                        )
+                        session.add(char)
+                    char.char_class = entry["char_class"]
+                    char.spec = entry["spec"]
+                    char.gearscore = entry["gearscore"]
+                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    session.flush()
+
+                    key = entry["char_name"].lower()
+                    if key not in char_spec_info:
+                        char_spec_info[key] = {
+                            "char_name": entry["char_name"],
+                            "char_class": entry["char_class"],
+                            "specs": [],
+                        }
+                    char_spec_info[key]["specs"].append(
+                        {
+                            "spec": entry["spec"],
+                            "gearscore": entry["gearscore"],
+                        }
+                    )
+                session.commit()
+
+                summaries = []
+                for data in char_spec_info.values():
+                    spec_parts = [
+                        f"{s['spec']} GS {s['gearscore']:.0f}" for s in data["specs"]
+                    ]
+                    summaries.append(
+                        f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
+                    )
+                return summaries
+            finally:
+                session.close()
+
+        try:
+            summaries = await loop.run_in_executor(None, _register)
+        except Exception:
+            logger.exception("Failed to process DM character registration from %s", discord_user_id)
+            try:
+                await message.channel.send(
+                    "❌ An error occurred while registering your character(s). Please try again later."
+                )
+            except Exception:
+                pass
+            return
+
+        reply = (
+            "✅ Character(s) registered successfully:\n"
+            + "\n".join(summaries)
+            + "\n\n⚠️ **Note:** This only registered your character(s) — "
+            "it did **not** sign you up for any raid. "
+            "Use the **✅ Sign Up** button on the raid message to sign up."
+        )
+        try:
+            await message.channel.send(reply)
+        except Exception:
+            pass
+
     # ── on_message: character list parser ─────────────────────────────────
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -892,8 +1062,13 @@ class SignupCog(commands.Cog):
         It saves/updates the character(s) in the DB and auto-signs the
         player up for the raid.  A summary reply is sent to the channel.
         """
-        # Ignore bot messages and DMs
-        if message.author.bot or not message.guild:
+        # Ignore bot messages
+        if message.author.bot:
+            return
+
+        # Handle DMs: register characters only (no raid sign-up)
+        if not message.guild:
+            await self._handle_dm_signup(message)
             return
 
         # Quick pre-check: does the message contain at least one potential
