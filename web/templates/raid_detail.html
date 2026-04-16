@@ -106,7 +106,7 @@
                       style="cursor:pointer">{{ group.char_class or "—" }}</td>
                   {% endif %}
                   <td>{{ s.spec or "?" }}</td>
-                  <td class="text-muted">{{ s.gearscore | int if s.gearscore else "—" }}</td>
+                  <td class="text-muted">{{ s.gearscore | gsformat if s.gearscore else "—" }}</td>
                   <td class="text-center" style="width:40px">
                     <button type="button"
                             class="prio-star{% if is_prio %} prio-active{% endif %}"
@@ -174,7 +174,7 @@
                     <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                   </div>
                   <small class="text-muted">
-                    {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                    {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
                   </small>
                 </div>
               </div>
@@ -200,7 +200,7 @@
                   <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                 </div>
                 <small class="text-muted">
-                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | int }}{% if not loop.last %} / {% endif %}{% endfor %}
+                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
                 </small>
               </div>
             </div>

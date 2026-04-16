@@ -98,6 +98,14 @@ njkEnv.addFilter('dateformat', (value, fmt) => {
 // int filter
 njkEnv.addFilter('int', val => Math.floor(Number(val)) || 0);
 
+// gsformat filter: formats a gearscore for display.
+// Returns "BiS" for the sentinel value (99999), otherwise the integer.
+njkEnv.addFilter('gsformat', val => {
+  const n = Number(val);
+  if (n >= 99999) return 'BiS';
+  return Math.floor(n) || 0;
+});
+
 // map filter: extracts a named attribute from each item in an array
 // Usage: array | map('attrName')
 njkEnv.addFilter('map', (arr, attr) => {

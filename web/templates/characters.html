@@ -93,7 +93,7 @@
             </td>
             <td>
               <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-1 align-items-center">
-                <input type="text" name="gearscore" value="{{ row.gearscore | int if row.gearscore else '' }}"
+                <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}"
                        class="form-control form-control-sm bg-dark text-light border-secondary"
                        style="width:80px" placeholder="—" />
                 <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>

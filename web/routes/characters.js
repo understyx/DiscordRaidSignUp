@@ -3,6 +3,23 @@ const pool = require('../db');
 
 const router = express.Router();
 
+// Sentinel value stored in the database to represent "Best in Slot".
+const BIS_GS = 99999;
+
+/**
+ * Parse a gearscore string into a number (or null).
+ * Accepts plain numbers, "k" shorthand, and "bis" (case-insensitive).
+ * Returns null when the input is empty or unrecognisable.
+ */
+function parseGS(raw) {
+  const s = (raw || '').trim();
+  if (s === '') return null;
+  if (s.toLowerCase() === 'bis') return BIS_GS;
+  const v = parseFloat(s);
+  if (isNaN(v)) return null;
+  return v;
+}
+
 function requireLogin(req, res) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
@@ -126,7 +143,7 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const charClass = (req.body.char_class || '').trim() || null;
   const spec = (req.body.spec || '').trim() || null;
   const gsRaw = (req.body.gearscore || '').trim();
-  const gearscore = gsRaw !== '' && !isNaN(parseFloat(gsRaw)) ? parseFloat(gsRaw) : null;
+  const gearscore = parseGS(gsRaw);
 
   if (!charName) {
     req.session.flash = '❌ Character name is required.';
@@ -173,7 +190,7 @@ router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: fal
   const userId = req.session.user_id;
   const charId = parseInt(req.params.char_id);
   const gsRaw = (req.body.gearscore || '').trim();
-  const gearscore = gsRaw !== '' && !isNaN(parseFloat(gsRaw)) ? parseFloat(gsRaw) : null;
+  const gearscore = parseGS(gsRaw);
 
   const [[char]] = await pool.query(
     'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',

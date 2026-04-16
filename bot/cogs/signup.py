@@ -33,6 +33,7 @@ HOWTO_TEXT = (
     "Post one character per line in the format below. "
     "This will both **register your character** and **sign you up** automatically.\n"
     "```\nCharName / Class / Spec / GS\n```\n"
+    "Use a number (`6200`), shorthand (`6.2k`), or `BiS` for Best in Slot as your GS.\n"
     "Multiple specs: `Thralladin / Paladin / Holy / 5800 / Ret / 5600`\n\n"
     "**Method 4: Send a DM to the bot**\n"
     "You can also DM the bot with the same character format.\n"
@@ -91,6 +92,9 @@ _MAX_RANDOM_LINES_IN_ERROR = 5
 # followed by optional whitespace and an optional trailing note.
 _GS_NOTE_RE = re.compile(r"^([0-9]+(?:[.,][0-9]+)?[kK]?)\s*(.*)?$", re.DOTALL)
 
+# Sentinel float value representing a "Best in Slot" gearscore.
+BIS_GS = 99999.0
+
 # Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
 _TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
 
@@ -104,16 +108,27 @@ def _is_tentative_message(text: str) -> bool:
     return False
 
 
+def format_gs(value: float) -> str:
+    """Format a gearscore for display, returning ``"BiS"`` for the sentinel value."""
+    if value >= BIS_GS:
+        return "BiS"
+    return f"{value:.0f}"
+
+
 def parse_gs(raw: str) -> float:
     """Parse a gearscore string into a float.
 
     Accepts full numbers (``"6200"``), decimal shorthand (``"6.2"`` → 6200),
-    and the explicit *k* suffix (``"6.2k"`` → 6200).  Values already in the
-    thousands are returned unchanged.  Any commas are treated as decimal
-    separators (e.g. ``"6,2"`` → 6200).  Values below 1000 are auto-scaled
-    by 1000, so ``"999"`` → 999000 — use the full number for sub-1000 scores.
+    the explicit *k* suffix (``"6.2k"`` → 6200), and ``"bis"`` (case-insensitive)
+    for Best-in-Slot.  Values already in the thousands are returned unchanged.
+    Any commas are treated as decimal separators (e.g. ``"6,2"`` → 6200).
+    Values below 1000 are auto-scaled by 1000, so ``"999"`` → 999000 — use the
+    full number for sub-1000 scores.
     """
-    cleaned = raw.strip().replace(",", ".")
+    stripped = raw.strip()
+    if stripped.lower() == "bis":
+        return BIS_GS
+    cleaned = stripped.replace(",", ".")
     if cleaned.lower().endswith("k"):
         return float(cleaned[:-1]) * 1000
     value = float(cleaned)
@@ -125,11 +140,14 @@ def parse_gs(raw: str) -> float:
 def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
     """Parse a GS segment, returning ``(gearscore, note)``.
 
-    Star markers (⭐ ★) are stripped before parsing.  Any text that follows
-    the numeric GS value (after stripping stars and whitespace) is returned
-    as the note.  Raises ``ValueError`` if no valid GS number is found.
+    Star markers (⭐ ★) are stripped before parsing.  ``"bis"`` (case-insensitive)
+    is accepted as a synonym for Best-in-Slot.  Any text that follows the numeric
+    GS value (after stripping stars and whitespace) is returned as the note.
+    Raises ``ValueError`` if no valid GS number is found.
     """
     cleaned = gs_raw.replace("⭐", "").replace("★", "").strip()
+    if cleaned.lower() == "bis":
+        return BIS_GS, ""
     m = _GS_NOTE_RE.match(cleaned)
     if not m:
         raise ValueError(f"Cannot parse GS from {gs_raw!r}")
@@ -428,7 +446,7 @@ def _chars_to_dicts(characters) -> list[dict]:
 def _char_display_description(char: dict) -> str:
     """Return a short spec/class/GS description string for a character dict."""
     spec_or_class = char["spec"] if char["spec"] else (char["char_class"] or "?")
-    return f"{spec_or_class} – GS {char['gearscore']:.0f}"
+    return f"{spec_or_class} – GS {format_gs(char['gearscore'])}"
 
 
 def _char_label(char: dict) -> str:
@@ -1009,7 +1027,7 @@ class SignupCog(commands.Cog):
                 summaries = []
                 for data in char_spec_info.values():
                     spec_parts = [
-                        f"{s['spec']} GS {s['gearscore']:.0f}" for s in data["specs"]
+                        f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
                     ]
                     summaries.append(
                         f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
@@ -1251,7 +1269,7 @@ class SignupCog(commands.Cog):
                     spec_parts = []
                     for s in data["specs"]:
                         star = " ⭐" if s["is_prio"] else ""
-                        spec_parts.append(f"{s['spec']}{star} GS {s['gearscore']:.0f}")
+                        spec_parts.append(f"{s['spec']}{star} GS {format_gs(s['gearscore'])}")
                     specs_str = " / ".join(spec_parts)
                     saved_flag = " ❌" if data["is_saved"] else ""
                     note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
