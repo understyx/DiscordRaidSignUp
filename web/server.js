@@ -169,7 +169,7 @@ app.use(async (req, res, next) => {
             req.subdomainGuild.guild_id
           );
         } catch (_err) {
-          req.session.is_admin = true;
+          req.session.is_admin = false;
         }
       }
     }

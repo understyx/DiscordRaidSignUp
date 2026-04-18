@@ -249,8 +249,15 @@ router.post('/subdomain', express.urlencoded({ extended: false }), async (req, r
 
   // Empty value means clear the subdomain.
   if (!raw) {
-    await pool.query('UPDATE bot_guilds SET subdomain = NULL WHERE guild_id = ?', [guildId]);
-    req.session.flash = '✅ Guild subdomain removed.';
+    const [result] = await pool.query(
+      'UPDATE bot_guilds SET subdomain = NULL WHERE guild_id = ?',
+      [guildId]
+    );
+    if (result.affectedRows === 0) {
+      req.session.flash = '❌ Guild not found.';
+    } else {
+      req.session.flash = '✅ Guild subdomain removed.';
+    }
     return res.redirect('/guild-settings');
   }
 
@@ -267,8 +274,15 @@ router.post('/subdomain', express.urlencoded({ extended: false }), async (req, r
   }
 
   try {
-    await pool.query('UPDATE bot_guilds SET subdomain = ? WHERE guild_id = ?', [raw, guildId]);
-    req.session.flash = `✅ Guild subdomain set to "${raw}".`;
+    const [result] = await pool.query(
+      'UPDATE bot_guilds SET subdomain = ? WHERE guild_id = ?',
+      [raw, guildId]
+    );
+    if (result.affectedRows === 0) {
+      req.session.flash = '❌ Guild not found.';
+    } else {
+      req.session.flash = `✅ Guild subdomain set to "${raw}".`;
+    }
   } catch (err) {
     // MySQL duplicate entry error code
     if (err.code === 'ER_DUP_ENTRY' || (err.errno && (err.errno === 1062 || err.errno === 1169))) {

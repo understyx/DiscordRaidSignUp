@@ -247,7 +247,7 @@ function toggleRolePicker() {
       <div class="input-group">
         <input type="text" class="form-control" name="subdomain"
                placeholder="e.g. my-guild"
-               pattern="^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$"
+               pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
                value="{{ guild_subdomain or '' }}"
                maxlength="63"
                autocomplete="off">
