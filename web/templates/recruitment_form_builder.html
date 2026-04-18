@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}{% if form %}Edit Form{% else %}New Recruitment Form{% endif %} – RaidBot{% endblock %}
+{% block extra_head %}
+<style>
+  .question-row { background: var(--bg-card-2); border: 1px solid var(--border-dim); border-radius: 6px; padding: 1rem; }
+  .question-row + .question-row { margin-top: 0.75rem; }
+  .options-group { display: none; }
+  .options-group.visible { display: block; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+  <h2>{% if form %}✏️ Edit Form{% else %}📋 New Recruitment Form{% endif %}</h2>
+  <a href="/recruitment" class="btn btn-sm btn-outline-secondary">← Back to Forms</a>
+</div>
+
+<form method="post"
+      action="{% if form %}/recruitment/{{ form.id }}/edit-form{% else %}/recruitment/new{% endif %}">
+
+  {# ── Form metadata ── #}
+  <div class="card mb-4">
+    <div class="card-header fw-bold">Form Details</div>
+    <div class="card-body">
+
+      <div class="mb-3">
+        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" id="title" name="title"
+               value="{{ form.title if form else '' }}" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <textarea class="form-control" id="description" name="description" rows="3">{{ form.description if form else '' }}</textarea>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="recruit_role_id" class="form-label">
+            Recruit Role
+            <span class="text-muted small">(assigned on guild join / accept)</span>
+          </label>
+          {% if guild_roles | length > 0 %}
+          <select class="form-select" id="recruit_role_id" name="recruit_role_id">
+            <option value="">— None —</option>
+            {% for r in guild_roles %}
+            <option value="{{ r.id }}"
+              {% if form and form.recruit_role_id and form.recruit_role_id | string == r.id %}selected{% endif %}>
+              @{{ r.name }}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="text" class="form-control" id="recruit_role_id" name="recruit_role_id"
+                 placeholder="Role ID (e.g. 123456789012345678)" pattern="\d*"
+                 value="{{ form.recruit_role_id if form and form.recruit_role_id else '' }}">
+          <div class="form-text">Could not load roles — enter the role ID manually.</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="invite_channel_id" class="form-label">
+            Invite Channel
+            <span class="text-muted small">(used to create guild invite link)</span>
+          </label>
+          {% if guild_channels | length > 0 %}
+          <select class="form-select" id="invite_channel_id" name="invite_channel_id">
+            <option value="">— None —</option>
+            {% for c in guild_channels %}
+            <option value="{{ c.id }}"
+              {% if form and form.invite_channel_id and form.invite_channel_id | string == c.id %}selected{% endif %}>
+              #{{ c.name }}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="text" class="form-control" id="invite_channel_id" name="invite_channel_id"
+                 placeholder="Channel ID (e.g. 123456789012345678)" pattern="\d*"
+                 value="{{ form.invite_channel_id if form and form.invite_channel_id else '' }}">
+          <div class="form-text">Could not load channels — enter the channel ID manually.</div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  {# ── Questions ── #}
+  <div class="card mb-4">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+      <span>Questions</span>
+      <button type="button" class="btn btn-sm btn-outline-light" onclick="addQuestion()">
+        + Add Question
+      </button>
+    </div>
+    <div class="card-body">
+      <div id="questionsContainer">
+        {% if questions | length == 0 %}
+        {# Start with one blank row #}
+        <div class="question-row" id="q_row_0">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="fw-semibold text-muted small">Question 1</span>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-8">
+              <input type="text" class="form-control" name="q_text[]" placeholder="Question text" required>
+            </div>
+            <div class="col-md-4">
+              <select class="form-select q-type-select" name="q_type[]" onchange="toggleOptions(this)">
+                <option value="text">Short text</option>
+                <option value="textarea">Long text</option>
+                <option value="select">Dropdown (select)</option>
+                <option value="radio">Multiple choice (radio)</option>
+              </select>
+            </div>
+          </div>
+          <div class="options-group mb-2">
+            <label class="form-label small text-muted">Options (one per line)</label>
+            <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
+                      placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="q_required[]" value="on" id="req_0">
+            <label class="form-check-label small" for="req_0">Required</label>
+          </div>
+        </div>
+        {% else %}
+        {% for q in questions %}
+        <div class="question-row" id="q_row_{{ loop.index0 }}">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="fw-semibold text-muted small">Question {{ loop.index }}</span>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-8">
+              <input type="text" class="form-control" name="q_text[]"
+                     value="{{ q.question_text }}" placeholder="Question text" required>
+            </div>
+            <div class="col-md-4">
+              <select class="form-select q-type-select" name="q_type[]"
+                      onchange="toggleOptions(this)">
+                <option value="text" {% if q.question_type == 'text' %}selected{% endif %}>Short text</option>
+                <option value="textarea" {% if q.question_type == 'textarea' %}selected{% endif %}>Long text</option>
+                <option value="select" {% if q.question_type == 'select' %}selected{% endif %}>Dropdown (select)</option>
+                <option value="radio" {% if q.question_type == 'radio' %}selected{% endif %}>Multiple choice (radio)</option>
+              </select>
+            </div>
+          </div>
+          <div class="options-group mb-2 {% if q.question_type == 'select' or q.question_type == 'radio' %}visible{% endif %}">
+            <label class="form-label small text-muted">Options (one per line)</label>
+            <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
+                      placeholder="Option 1&#10;Option 2&#10;Option 3">{% if q.options_parsed %}{{ q.options_parsed | join('\n') }}{% endif %}</textarea>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="q_required[]" value="on"
+                   id="req_{{ loop.index0 }}" {% if q.is_required %}checked{% endif %}>
+            <label class="form-check-label small" for="req_{{ loop.index0 }}">Required</label>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+
+      <div class="mt-3 text-center">
+        <button type="button" class="btn btn-outline-secondary" onclick="addQuestion()">
+          + Add Another Question
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-wow px-4">
+      {% if form %}Save Changes{% else %}Create Form{% endif %}
+    </button>
+    <a href="/recruitment" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let qCount = {{ questions | length if questions else 1 }};
+
+function addQuestion() {
+  const container = document.getElementById('questionsContainer');
+  const idx = qCount++;
+  const row = document.createElement('div');
+  row.className = 'question-row mt-3';
+  row.id = 'q_row_' + idx;
+  row.innerHTML = `
+    <div class="d-flex justify-content-between align-items-start mb-2">
+      <span class="fw-semibold text-muted small">Question ${container.querySelectorAll('.question-row').length + 1}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
+    </div>
+    <div class="row g-2 mb-2">
+      <div class="col-md-8">
+        <input type="text" class="form-control" name="q_text[]" placeholder="Question text" required>
+      </div>
+      <div class="col-md-4">
+        <select class="form-select q-type-select" name="q_type[]" onchange="toggleOptions(this)">
+          <option value="text">Short text</option>
+          <option value="textarea">Long text</option>
+          <option value="select">Dropdown (select)</option>
+          <option value="radio">Multiple choice (radio)</option>
+        </select>
+      </div>
+    </div>
+    <div class="options-group mb-2">
+      <label class="form-label small text-muted">Options (one per line)</label>
+      <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
+                placeholder="Option 1\nOption 2\nOption 3"></textarea>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="q_required[]" value="on" id="req_${idx}">
+      <label class="form-check-label small" for="req_${idx}">Required</label>
+    </div>
+  `;
+  container.appendChild(row);
+  renumberQuestions();
+}
+
+function removeQuestion(btn) {
+  const row = btn.closest('.question-row');
+  if (document.querySelectorAll('.question-row').length <= 1) {
+    alert('A form must have at least one question.');
+    return;
+  }
+  row.remove();
+  renumberQuestions();
+}
+
+function renumberQuestions() {
+  const rows = document.querySelectorAll('.question-row');
+  rows.forEach((row, i) => {
+    const label = row.querySelector('.fw-semibold');
+    if (label) label.textContent = 'Question ' + (i + 1);
+  });
+}
+
+function toggleOptions(select) {
+  const row = select.closest('.question-row');
+  const optGroup = row.querySelector('.options-group');
+  if (select.value === 'select' || select.value === 'radio') {
+    optGroup.classList.add('visible');
+  } else {
+    optGroup.classList.remove('visible');
+  }
+}
+</script>
+{% endblock %}

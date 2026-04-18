@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Application from {{ application.applicant_display_name }} – RaidBot{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <h2 class="mb-0">Application Review</h2>
+    <p class="text-muted mb-0">{{ form.title }}</p>
+  </div>
+  <a href="/recruitment/{{ form.id }}/applications" class="btn btn-sm btn-outline-secondary">
+    ← Back to Applications
+  </a>
+</div>
+
+{# ── Applicant info ── #}
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-sm-6">
+        <p class="text-muted small mb-1">Applicant</p>
+        <p class="fw-semibold mb-0">
+          {{ application.applicant_display_name }}
+          <span class="text-muted small">({{ application.applicant_username }})</span>
+        </p>
+      </div>
+      <div class="col-sm-3">
+        <p class="text-muted small mb-1">Status</p>
+        {% if application.status == 'pending' %}
+        <span class="badge bg-warning text-dark fs-6">Pending</span>
+        {% elif application.status == 'accepted' %}
+        <span class="badge bg-success fs-6">Accepted</span>
+        {% elif application.status == 'rejected' %}
+        <span class="badge bg-danger fs-6">Rejected</span>
+        {% endif %}
+      </div>
+      <div class="col-sm-3">
+        <p class="text-muted small mb-1">Submitted</p>
+        <p class="mb-0">{{ application.submitted_at | dateformat('%Y-%m-%d %H:%M') }}</p>
+      </div>
+      <div class="col-sm-3">
+        <p class="text-muted small mb-1">Discord Notify</p>
+        <p class="mb-0">{% if application.wants_discord_notify %}Yes{% else %}No{% endif %}</p>
+      </div>
+      <div class="col-sm-3">
+        <p class="text-muted small mb-1">Guild Invited</p>
+        <p class="mb-0">{% if application.discord_invited %}✅ Yes{% else %}—{% endif %}</p>
+      </div>
+      {% if application.reviewed_at %}
+      <div class="col-sm-6">
+        <p class="text-muted small mb-1">Reviewed</p>
+        <p class="mb-0">{{ application.reviewed_at | dateformat('%Y-%m-%d %H:%M') }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── Q&A ── #}
+<div class="card mb-4">
+  <div class="card-header fw-bold">Answers</div>
+  <div class="card-body">
+    {% if qa | length == 0 %}
+    <p class="text-muted mb-0">No answers recorded.</p>
+    {% else %}
+    {% for item in qa %}
+    <div class="{% if not loop.last %}mb-4 pb-4 border-bottom border-secondary{% endif %}">
+      <p class="fw-semibold mb-1">{{ item.question }}</p>
+      <p class="mb-0">{{ item.answer or '(no answer)' }}</p>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+{# ── Actions ── #}
+{% if application.status == 'pending' %}
+<div class="d-flex gap-3">
+  <form method="post"
+        action="/recruitment/{{ form.id }}/applications/{{ application.id }}/accept"
+        onsubmit="return confirm('Accept this application and notify the applicant?');">
+    <button type="submit" class="btn btn-success px-4">✅ Accept</button>
+  </form>
+
+  <form method="post"
+        action="/recruitment/{{ form.id }}/applications/{{ application.id }}/reject"
+        onsubmit="return confirm('Reject this application and notify the applicant?');">
+    <button type="submit" class="btn btn-danger px-4">✕ Reject</button>
+  </form>
+</div>
+{% elif application.status == 'accepted' %}
+<div class="alert alert-success">
+  ✅ This application was accepted.
+</div>
+{% elif application.status == 'rejected' %}
+<div class="alert alert-danger">
+  This application was rejected.
+</div>
+{% endif %}
+{% endblock %}
