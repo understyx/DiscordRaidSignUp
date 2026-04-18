@@ -76,7 +76,24 @@ router.get('/login', async (req, res) => {
     state,
   });
 
-  res.redirect(`${DISCORD_OAUTH_URL}?${params.toString()}`);
+  // Explicitly save the session so oauth_state is persisted before we leave
+  // the site.  Then clear any stale host-only connect.sid cookie (one that was
+  // set before COOKIE_DOMAIN was configured, without a Domain attribute).
+  // Without this, the browser sends both the old host-only cookie AND the new
+  // Domain=.raiding.site cookie.  express-session picks the first (more
+  // specific) one, which points to a session that has no oauth_state, causing
+  // the state-mismatch check to fail and creating an infinite OAuth loop.
+  req.session.save((saveErr) => {
+    if (saveErr) {
+      console.error('[auth/login] Session save error:', saveErr);
+      // Cannot proceed without a persisted oauth_state — would loop on callback.
+      return res.redirect('/auth/login');
+    }
+    // Clear the old host-only cookie (no Domain attribute, Path=/) so only
+    // the domain-based session cookie survives into the OAuth callback.
+    res.clearCookie('connect.sid', { path: '/' });
+    res.redirect(`${DISCORD_OAUTH_URL}?${params.toString()}`);
+  });
 });
 
 router.get('/callback', async (req, res) => {
