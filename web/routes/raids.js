@@ -319,7 +319,6 @@ router.get('/', async (req, res) => {
   const raidData = raids.map(r => ({
     raid: r,
     signup_count: r.signup_count,
-    guild_name: activeGuildName,
     can_manage: isAdmin,
   }));
 
