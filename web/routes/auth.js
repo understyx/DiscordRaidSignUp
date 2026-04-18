@@ -19,6 +19,11 @@ router.get('/login', (req, res) => {
   const state = crypto.randomBytes(32).toString('hex');
   req.session.oauth_state = state;
 
+  // Remember the subdomain so we can redirect back to it after OAuth.
+  if (req.subdomainGuild) {
+    req.session.return_subdomain = req.subdomainGuild.slug;
+  }
+
   const params = new URLSearchParams({
     client_id: DISCORD_CLIENT_ID,
     redirect_uri: DISCORD_REDIRECT_URI,
@@ -155,6 +160,17 @@ router.get('/callback', async (req, res) => {
         // decodeURIComponent failed — fall back to /raids
       }
     }
+
+    // If the login was initiated from a guild subdomain, redirect back there.
+    const returnSubdomain = req.session.return_subdomain;
+    delete req.session.return_subdomain;
+    const baseDomain = process.env.BASE_DOMAIN;
+    if (returnSubdomain && baseDomain) {
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+      const subdomainUrl = `${protocol}://${returnSubdomain}.${baseDomain}${redirectTo}`;
+      return res.redirect(subdomainUrl);
+    }
+
     res.redirect(redirectTo);
   } catch (_err) {
     res.redirect('/auth/login');

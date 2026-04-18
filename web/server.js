@@ -17,16 +17,20 @@ const recruitmentRouter = require('./routes/recruitment');
 const app = express();
 
 // Session
+const _sessionCookieOpts = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+};
+if (process.env.COOKIE_DOMAIN) {
+  _sessionCookieOpts.domain = process.env.COOKIE_DOMAIN;
+}
 app.use(
   session({
     secret: process.env.WEB_SECRET_KEY || 'change_this_to_a_random_string',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    },
+    cookie: _sessionCookieOpts,
   })
 );
 
@@ -122,6 +126,58 @@ njkEnv.addFilter('discordId', val => {
   const s = String(val || '');
   if (!s || s === '0') return '?';
   return s.length > 6 ? '\u2026' + s.slice(-6) : s;
+});
+
+// Subdomain middleware — resolves guild from <slug>.BASE_DOMAIN hostnames.
+// Runs before routes so every handler can read req.subdomainGuild.
+app.use(async (req, res, next) => {
+  req.subdomainGuild = null;
+
+  const baseDomain = process.env.BASE_DOMAIN;
+  if (!baseDomain) return next();
+
+  const host = req.hostname; // e.g. "my-guild.example.com"
+  const suffix = '.' + baseDomain; // e.g. ".example.com"
+
+  if (!host.endsWith(suffix)) return next();
+
+  const slug = host.slice(0, host.length - suffix.length);
+  // Reject empty slugs or slugs that look like the root domain itself
+  if (!slug || slug.includes('.')) return next();
+
+  try {
+    const [[row]] = await pool.query(
+      'SELECT guild_id, guild_name FROM bot_guilds WHERE subdomain = ?',
+      [slug]
+    );
+    if (!row) return next();
+
+    req.subdomainGuild = { guild_id: String(row.guild_id), guild_name: row.guild_name, slug };
+
+    // Override the active guild in the session when the subdomain guild differs
+    // from what the session currently holds (or when the session has none).
+    if (req.session.active_guild_id !== req.subdomainGuild.guild_id) {
+      req.session.active_guild_id = req.subdomainGuild.guild_id;
+      req.session.active_guild_name = req.subdomainGuild.guild_name;
+
+      // Refresh admin status for the new guild if a user is logged in.
+      if (req.session.user_id) {
+        const { resolveIsAdmin } = require('./routes/adminCheck');
+        try {
+          req.session.is_admin = await resolveIsAdmin(
+            req.session.user_id,
+            req.subdomainGuild.guild_id
+          );
+        } catch (_err) {
+          req.session.is_admin = true;
+        }
+      }
+    }
+  } catch (_err) {
+    // DB error — continue without subdomain guild
+  }
+
+  next();
 });
 
 // Expose dev_mode flag and active guild info to all templates

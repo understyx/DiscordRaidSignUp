@@ -90,12 +90,20 @@ router.get('/', async (req, res) => {
 
   // Fetch configured admin roles
   let configuredAdminRoles = [];
+  let guildSubdomain = null;
   if (guildId) {
     const [rows] = await pool.query(
       'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
       [guildId]
     );
     configuredAdminRoles = rows.map(r => String(r.role_id));
+
+    // Fetch subdomain for this guild
+    const [[bgRow]] = await pool.query(
+      'SELECT subdomain FROM bot_guilds WHERE guild_id = ?',
+      [guildId]
+    );
+    if (bgRow) guildSubdomain = bgRow.subdomain || null;
   }
 
   // Fetch current guild settings (signup restriction)
@@ -122,6 +130,8 @@ router.get('/', async (req, res) => {
     guild_roles: guildRoles,
     guild_roles_map: guildRolesMap,
     settings,
+    guild_subdomain: guildSubdomain,
+    base_domain: process.env.BASE_DOMAIN || null,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -215,6 +225,59 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), asyn
   );
 
   req.session.flash = '✅ Role removed from admin roles.';
+  res.redirect('/guild-settings');
+});
+
+// ── POST /guild-settings/subdomain ────────────────────────────────────────────
+
+const RESERVED_SLUGS = new Set([
+  'www', 'api', 'admin', 'mail', 'auth', 'login', 'app', 'static', 'assets',
+  'cdn', 'ftp', 'smtp', 'pop', 'imap', 'dev', 'staging', 'test', 'beta',
+  'help', 'support', 'status', 'blog', 'shop', 'store',
+]);
+
+router.post('/subdomain', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/guild-settings');
+  }
+
+  const raw = String(req.body.subdomain || '').trim().toLowerCase();
+
+  // Empty value means clear the subdomain.
+  if (!raw) {
+    await pool.query('UPDATE bot_guilds SET subdomain = NULL WHERE guild_id = ?', [guildId]);
+    req.session.flash = '✅ Guild subdomain removed.';
+    return res.redirect('/guild-settings');
+  }
+
+  // Validate slug format: 1–63 chars, a-z0-9 and hyphens, no leading/trailing hyphens.
+  if (!/^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$/.test(raw)) {
+    req.session.flash =
+      '❌ Invalid subdomain format. Use 1–63 lowercase letters, digits, or hyphens (no leading/trailing hyphens).';
+    return res.redirect('/guild-settings');
+  }
+
+  if (RESERVED_SLUGS.has(raw)) {
+    req.session.flash = `❌ "${raw}" is a reserved subdomain and cannot be used.`;
+    return res.redirect('/guild-settings');
+  }
+
+  try {
+    await pool.query('UPDATE bot_guilds SET subdomain = ? WHERE guild_id = ?', [raw, guildId]);
+    req.session.flash = `✅ Guild subdomain set to "${raw}".`;
+  } catch (err) {
+    // MySQL duplicate entry error code
+    if (err.code === 'ER_DUP_ENTRY' || (err.errno && (err.errno === 1062 || err.errno === 1169))) {
+      req.session.flash = `❌ The subdomain "${raw}" is already in use by another guild.`;
+    } else {
+      throw err;
+    }
+  }
+
   res.redirect('/guild-settings');
 });
 
