@@ -146,10 +146,17 @@ app.use(async (req, res, next) => {
   if (!slug || slug.includes('.')) return next();
 
   try {
-    const [[row]] = await pool.query(
+    let [[row]] = await pool.query(
       'SELECT guild_id, guild_name FROM bot_guilds WHERE subdomain = ?',
       [slug]
     );
+    // Fallback: if no named subdomain matches, treat a purely numeric slug as a guild snowflake ID.
+    if (!row && /^\d+$/.test(slug)) {
+      [[row]] = await pool.query(
+        'SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id = ?',
+        [slug]
+      );
+    }
     if (!row) return next();
 
     req.subdomainGuild = { guild_id: String(row.guild_id), guild_name: row.guild_name, slug };

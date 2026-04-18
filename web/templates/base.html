@@ -136,9 +136,9 @@
           {% endif %}
         </ul>
         <ul class="navbar-nav ms-auto">
-          {% if active_guild_name %}
+          {% if active_guild_name or active_guild_id %}
           <li class="nav-item">
-            <span class="nav-link">🏰 {{ active_guild_name }}</span>
+            <span class="nav-link">🏰 {{ active_guild_name or active_guild_id }}</span>
           </li>
           {% if has_multiple_guilds %}
           <li class="nav-item">

@@ -239,6 +239,17 @@ function toggleRolePicker() {
       Current subdomain: <span class="fw-semibold" style="color: var(--wow-gold);">{{ guild_subdomain }}</span>
       <span class="text-muted small ms-1">(set BASE_DOMAIN in your environment to generate the full link)</span>
     </p>
+    {% elif guild_id and base_domain %}
+    <p class="mb-3">
+      No custom subdomain set. Accessible via fallback URL:
+      <a href="https://{{ guild_id }}.{{ base_domain }}/raids"
+         target="_blank" rel="noopener noreferrer"
+         class="fw-semibold text-decoration-none"
+         style="color: var(--wow-gold);">
+        {{ guild_id }}.{{ base_domain }}
+      </a>
+      <span class="text-muted small ms-1">— set a custom slug below to replace the numeric ID</span>
+    </p>
     {% else %}
     <p class="text-muted mb-3">No subdomain configured for this guild.</p>
     {% endif %}
