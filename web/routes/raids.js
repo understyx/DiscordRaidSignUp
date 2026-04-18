@@ -303,7 +303,6 @@ router.get('/', async (req, res) => {
   }
 
   const activeGuildId = req.session.active_guild_id;
-  const activeGuildName = req.session.active_guild_name || '';
   const isAdmin = await resolveIsAdmin(userId, activeGuildId);
 
   const [raids] = await pool.query(
