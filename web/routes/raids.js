@@ -141,19 +141,35 @@ function requireLogin(req, res) {
   return true;
 }
 
-function requireAdmin(req, res) {
+async function requireAdmin(req, res, urlGuildId) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
     res.redirect('/auth/login');
     return false;
   }
-  // is_admin defaults to true when undefined (e.g. old sessions before feature was added)
-  if (req.session.is_admin === false) {
+  // Resolve the guild to check against: prefer the URL's guild_id over the session's active guild.
+  // This prevents a user who is admin in Guild A from editing Guild B's raids.
+  const isAdmin = await resolveIsAdmin(req.session.user_id, normalizeGuildId(urlGuildId, req.session.active_guild_id));
+  if (!isAdmin) {
     req.session.flash = '❌ You do not have permission to perform this action.';
     res.redirect('/raids');
     return false;
   }
   return true;
+}
+
+/**
+ * Normalize a URL :guild_id param to a usable guild ID string or null.
+ * '0' and 'null' are sentinel values for "no guild" (legacy global raids).
+ *
+ * @param {string|undefined} urlParam    The raw :guild_id from req.params
+ * @param {string|null}      fallback    Fallback (e.g. req.session.active_guild_id)
+ * @returns {string|null}
+ */
+function normalizeGuildId(urlParam, fallback) {
+  return (urlParam && urlParam !== '0' && urlParam !== 'null')
+    ? urlParam
+    : (fallback || null);
 }
 
 function popFlash(req) {
@@ -593,11 +609,14 @@ router.post('/:guild_id/:raid_number/withdraw', async (req, res) => {
 // GET /raids/:guild_id/:raid_number/manage
 router.get('/:guild_id/:raid_number/manage', async (req, res) => {
   if (!requireLogin(req, res)) return;
-  const canEdit = req.session.is_admin !== false;
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
   if (!raid) return res.redirect('/raids');
+
+  // Determine edit permission against the raid's own guild, not the session's active guild.
+  const raidGuildId = raid.guild_id ? String(raid.guild_id) : null;
+  const canEdit = await resolveIsAdmin(req.session.user_id, raidGuildId);
 
   const raidId = raid.id;
 
@@ -844,7 +863,7 @@ router.get('/:guild_id/:raid_number/manage', async (req, res) => {
 
 // POST /raids/:guild_id/:raid_number/manage (JSON body) — full-state save used by manual "Save & Reload"
 router.post('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!await requireAdmin(req, res, req.params.guild_id)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
@@ -921,7 +940,8 @@ router.post('/:guild_id/:raid_number/manage', express.json(), async (req, res) =
 // Only the slots present in the payload are touched; all other slots are left as-is.
 router.patch('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
-  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
+  const patchGuildId = normalizeGuildId(req.params.guild_id, req.session.active_guild_id);
+  if (!await resolveIsAdmin(req.session.user_id, patchGuildId)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
@@ -1088,7 +1108,8 @@ router.get('/:guild_id/:raid_number/manage/json', async (req, res) => {
 // PUT /raids/:guild_id/:raid_number/comp_label — set or clear a custom label for a comp tab
 router.put('/:guild_id/:raid_number/comp_label', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
-  if (req.session.is_admin === false) return res.status(403).json({ ok: false, error: 'Forbidden' });
+  const putGuildId = normalizeGuildId(req.params.guild_id, req.session.active_guild_id);
+  if (!await resolveIsAdmin(req.session.user_id, putGuildId)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
@@ -1184,7 +1205,7 @@ router.get('/:guild_id/:raid_number/comp', async (req, res) => {
 
 // POST /raids/:guild_id/:raid_number/lock
 router.post('/:guild_id/:raid_number/lock', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!await requireAdmin(req, res, req.params.guild_id)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
@@ -1199,7 +1220,7 @@ router.post('/:guild_id/:raid_number/lock', async (req, res) => {
 
 // POST /raids/:guild_id/:raid_number/post_comp
 router.post('/:guild_id/:raid_number/post_comp', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!await requireAdmin(req, res, req.params.guild_id)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const compNumber = req.query.comp ? parseInt(req.query.comp) : null;
@@ -1278,7 +1299,7 @@ router.post('/:guild_id/:raid_number/post_comp', async (req, res) => {
 
 // POST /raids/:guild_id/:raid_number/unlock
 router.post('/:guild_id/:raid_number/unlock', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!await requireAdmin(req, res, req.params.guild_id)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
