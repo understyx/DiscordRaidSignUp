@@ -9,10 +9,10 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
-from bot.config import WEB_BASE_URL
+from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
 from bot.class_utils import normalize_class, KNOWN_CLASSES
-from db.models import Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from db.models import BotGuild, Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
 
@@ -815,14 +815,21 @@ class SignupView(discord.ui.View):
             try:
                 raid = session.get(Raid, raid_id)
                 if raid is None:
-                    return None, None
-                return raid.guild_id, raid.guild_raid_number
+                    return None, None, None
+                guild = session.get(BotGuild, raid.guild_id) if raid.guild_id else None
+                subdomain = guild.subdomain if guild else None
+                return raid.guild_id, raid.guild_raid_number, subdomain
             finally:
                 session.close()
 
-        guild_id, guild_raid_number = await loop.run_in_executor(None, _fetch_raid)
+        guild_id, guild_raid_number, subdomain = await loop.run_in_executor(None, _fetch_raid)
 
-        if guild_id is not None and guild_raid_number:
+        if BASE_DOMAIN and guild_raid_number:
+            # Use subdomain URL: {subdomain or guild_id}.{BASE_DOMAIN}/raids/{guild_raid_number}
+            slug = subdomain if subdomain else str(guild_id)
+            protocol = "https" if "https" in WEB_BASE_URL else "http"
+            url = f"{protocol}://{slug}.{BASE_DOMAIN}/raids/{guild_raid_number}"
+        elif guild_id is not None and guild_raid_number:
             url = f"{WEB_BASE_URL.rstrip('/')}/raids/{guild_id}/{guild_raid_number}"
         else:
             url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"

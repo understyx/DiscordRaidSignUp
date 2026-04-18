@@ -140,11 +140,11 @@
           <li class="nav-item">
             <span class="nav-link">🏰 {{ active_guild_name or active_guild_id }}</span>
           </li>
+          {% endif %}
           {% if has_multiple_guilds %}
           <li class="nav-item">
             <a class="nav-link" href="/select-guild">Switch Guild</a>
           </li>
-          {% endif %}
           {% endif %}
           {% if user and user.id %}
           <li class="nav-item">

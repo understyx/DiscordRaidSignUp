@@ -141,35 +141,20 @@ function requireLogin(req, res) {
   return true;
 }
 
-async function requireAdmin(req, res, urlGuildId) {
+async function requireAdmin(req, res) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
     res.redirect('/auth/login');
     return false;
   }
-  // Resolve the guild to check against: prefer the URL's guild_id over the session's active guild.
-  // This prevents a user who is admin in Guild A from editing Guild B's raids.
-  const isAdmin = await resolveIsAdmin(req.session.user_id, normalizeGuildId(urlGuildId, req.session.active_guild_id));
+  const guildId = req.session.active_guild_id || null;
+  const isAdmin = await resolveIsAdmin(req.session.user_id, guildId);
   if (!isAdmin) {
     req.session.flash = '❌ You do not have permission to perform this action.';
     res.redirect('/raids');
     return false;
   }
   return true;
-}
-
-/**
- * Normalize a URL :guild_id param to a usable guild ID string or null.
- * '0' and 'null' are sentinel values for "no guild" (legacy global raids).
- *
- * @param {string|undefined} urlParam    The raw :guild_id from req.params
- * @param {string|null}      fallback    Fallback (e.g. req.session.active_guild_id)
- * @returns {string|null}
- */
-function normalizeGuildId(urlParam, fallback) {
-  return (urlParam && urlParam !== '0' && urlParam !== 'null')
-    ? urlParam
-    : (fallback || null);
 }
 
 function popFlash(req) {
@@ -187,11 +172,11 @@ function currentUser(req) {
 }
 
 /**
- * Look up a raid by the guild_id and guild_raid_number from the URL.
- * guild_id '0' is treated as NULL (legacy global raids).
+ * Look up a raid by guild_raid_number, scoped to the active guild from the
+ * session (set by the subdomain middleware or guild picker).
  */
-async function getRaidByUrlParams(urlGuildId, raidNumber) {
-  const guildIdParam = (urlGuildId === '0' || urlGuildId === 'null') ? null : urlGuildId;
+async function getRaidByUrlParams(guildId, raidNumber) {
+  const guildIdParam = (guildId === '0' || guildId === 'null' || !guildId) ? null : guildId;
   let query, params;
   if (guildIdParam === null) {
     query = 'SELECT * FROM raids WHERE guild_id IS NULL AND guild_raid_number = ?';
@@ -204,10 +189,9 @@ async function getRaidByUrlParams(urlGuildId, raidNumber) {
   return raid || null;
 }
 
-/** Build the base URL for a raid: /raids/{guild_id}/{guild_raid_number} */
+/** Build the base URL for a raid: /raids/{guild_raid_number} */
 function raidBaseUrl(raid) {
-  const g = raid.guild_id || '0';
-  return `/raids/${g}/${raid.guild_raid_number}`;
+  return `/raids/${raid.guild_raid_number}`;
 }
 
 // GET /raids
@@ -343,14 +327,98 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), (req
   res.redirect(307, '/guild-settings/admin-roles/remove');
 });
 
-// GET /raids/:guild_id/:raid_number
-router.get('/:guild_id/:raid_number', async (req, res) => {
+// Backward-compat redirects: /raids/:guild_id/:raid_number[/…] → /raids/:raid_number[/…]
+// These handle old-style URLs (e.g. from Discord bot messages before the schema change).
+// Only triggered when the first segment looks like a numeric guild snowflake, to avoid
+// shadowing the named sub-routes above (admin-roles, create, etc.).
+const GUILD_ID_RE = /^\d{17,19}$/; // Discord guild snowflakes are 17–19 digits
+router.get('/:guild_id/:raid_number', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(301, `/raids/${raidNumber}`);
+});
+router.post('/:guild_id/:raid_number/signup', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(308, `/raids/${raidNumber}/signup`);
+});
+router.post('/:guild_id/:raid_number/withdraw', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(308, `/raids/${raidNumber}/withdraw`);
+});
+router.get('/:guild_id/:raid_number/manage', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(301, `/raids/${raidNumber}/manage${qs}`);
+});
+router.post('/:guild_id/:raid_number/manage', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(308, `/raids/${raidNumber}/manage${qs}`);
+});
+router.patch('/:guild_id/:raid_number/manage', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(308, `/raids/${raidNumber}/manage${qs}`);
+});
+router.get('/:guild_id/:raid_number/manage/json', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(301, `/raids/${raidNumber}/manage/json${qs}`);
+});
+router.get('/:guild_id/:raid_number/comp', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(301, `/raids/${raidNumber}/comp${qs}`);
+});
+router.post('/:guild_id/:raid_number/lock', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(308, `/raids/${raidNumber}/lock`);
+});
+router.post('/:guild_id/:raid_number/unlock', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(308, `/raids/${raidNumber}/unlock`);
+});
+router.post('/:guild_id/:raid_number/post_comp', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
+  res.redirect(308, `/raids/${raidNumber}/post_comp${qs}`);
+});
+router.put('/:guild_id/:raid_number/comp_label', (req, res, next) => {
+  if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+  const raidNumber = parseInt(req.params.raid_number);
+  if (isNaN(raidNumber)) return next();
+  res.redirect(308, `/raids/${raidNumber}/comp_label`);
+});
+
+// GET /raids/:raid_number
+router.get('/:raid_number', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
 
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.redirect('/raids');
 
   const raidId = raid.id;
@@ -468,15 +536,15 @@ router.get('/:guild_id/:raid_number', async (req, res) => {
   });
 });
 
-// POST /raids/:guild_id/:raid_number/signup
-router.post('/:guild_id/:raid_number/signup', express.urlencoded({ extended: false }), async (req, res) => {
+// POST /raids/:raid_number/signup
+router.post('/:raid_number/signup', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
   const guildId = req.session.active_guild_id || null;
 
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(guildId, raidNumber);
   if (!raid || raid.status !== 'open') {
     req.session.flash = '❌ Raid is not open for sign-ups.';
     return res.redirect(raid ? raidBaseUrl(raid) : '/raids');
@@ -575,14 +643,14 @@ router.post('/:guild_id/:raid_number/signup', express.urlencoded({ extended: fal
   res.redirect(raidUrl);
 });
 
-// POST /raids/:guild_id/:raid_number/withdraw
-router.post('/:guild_id/:raid_number/withdraw', async (req, res) => {
+// POST /raids/:raid_number/withdraw
+router.post('/:raid_number/withdraw', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const userId = req.session.user_id;
 
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.redirect('/raids');
 
   const [result] = await pool.query(
@@ -599,15 +667,15 @@ router.post('/:guild_id/:raid_number/withdraw', async (req, res) => {
   res.redirect(raidBaseUrl(raid));
 });
 
-// GET /raids/:guild_id/:raid_number/manage
-router.get('/:guild_id/:raid_number/manage', async (req, res) => {
+// GET /raids/:raid_number/manage
+router.get('/:raid_number/manage', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.redirect('/raids');
 
-  // Determine edit permission against the raid's own guild, not the session's active guild.
+  // Determine edit permission against the raid's own guild.
   const raidGuildId = raid.guild_id ? String(raid.guild_id) : null;
   const canEdit = await resolveIsAdmin(req.session.user_id, raidGuildId);
 
@@ -854,12 +922,12 @@ router.get('/:guild_id/:raid_number/manage', async (req, res) => {
   });
 });
 
-// POST /raids/:guild_id/:raid_number/manage (JSON body) — full-state save used by manual "Save & Reload"
-router.post('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
-  if (!await requireAdmin(req, res, req.params.guild_id)) return;
+// POST /raids/:raid_number/manage (JSON body) — full-state save used by manual "Save & Reload"
+router.post('/:raid_number/manage', express.json(), async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
   const raidId = raid.id;
@@ -928,16 +996,16 @@ router.post('/:guild_id/:raid_number/manage', express.json(), async (req, res) =
   res.json({ ok: true });
 });
 
-// PATCH /raids/:guild_id/:raid_number/manage — granular per-slot auto-save (last-write-wins per slot)
+// PATCH /raids/:raid_number/manage — granular per-slot auto-save (last-write-wins per slot)
 // Body: array of { role_slot, slot_role?, character_id? | placeholder_text? | clear: true }
 // Only the slots present in the payload are touched; all other slots are left as-is.
-router.patch('/:guild_id/:raid_number/manage', express.json(), async (req, res) => {
+router.patch('/:raid_number/manage', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
-  const patchGuildId = normalizeGuildId(req.params.guild_id, req.session.active_guild_id);
+  const patchGuildId = req.session.active_guild_id || null;
   if (!await resolveIsAdmin(req.session.user_id, patchGuildId)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(patchGuildId, raidNumber);
   if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
   const raidId = raid.id;
@@ -1055,12 +1123,12 @@ router.patch('/:guild_id/:raid_number/manage', express.json(), async (req, res) 
   res.json({ ok: true, saved: savedSlots, entries });
 });
 
-// GET /raids/:guild_id/:raid_number/manage/json  — polling endpoint for collaborative auto-load
-router.get('/:guild_id/:raid_number/manage/json', async (req, res) => {
+// GET /raids/:raid_number/manage/json  — polling endpoint for collaborative auto-load
+router.get('/:raid_number/manage/json', async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
   const raidId = raid.id;
@@ -1098,14 +1166,14 @@ router.get('/:guild_id/:raid_number/manage/json', async (req, res) => {
   res.json({ ok: true, version: version || '', entries });
 });
 
-// PUT /raids/:guild_id/:raid_number/comp_label — set or clear a custom label for a comp tab
-router.put('/:guild_id/:raid_number/comp_label', express.json(), async (req, res) => {
+// PUT /raids/:raid_number/comp_label — set or clear a custom label for a comp tab
+router.put('/:raid_number/comp_label', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ ok: false });
-  const putGuildId = normalizeGuildId(req.params.guild_id, req.session.active_guild_id);
+  const putGuildId = req.session.active_guild_id || null;
   if (!await resolveIsAdmin(req.session.user_id, putGuildId)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(putGuildId, raidNumber);
   if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
   const raidId = raid.id;
@@ -1128,12 +1196,12 @@ router.put('/:guild_id/:raid_number/comp_label', express.json(), async (req, res
   res.json({ ok: true, label: trimmed || null });
 });
 
-// GET /raids/:guild_id/:raid_number/comp
-router.get('/:guild_id/:raid_number/comp', async (req, res) => {
+// GET /raids/:raid_number/comp
+router.get('/:raid_number/comp', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
   if (!raid) return res.redirect('/raids');
 
   const raidId = raid.id;
@@ -1196,12 +1264,12 @@ router.get('/:guild_id/:raid_number/comp', async (req, res) => {
   });
 });
 
-// POST /raids/:guild_id/:raid_number/lock
-router.post('/:guild_id/:raid_number/lock', async (req, res) => {
-  if (!await requireAdmin(req, res, req.params.guild_id)) return;
+// POST /raids/:raid_number/lock
+router.post('/:raid_number/lock', async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
 
   if (raid) {
     await pool.query("UPDATE raids SET status = 'locked' WHERE id = ?", [raid.id]);
@@ -1211,13 +1279,13 @@ router.post('/:guild_id/:raid_number/lock', async (req, res) => {
   res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
 });
 
-// POST /raids/:guild_id/:raid_number/post_comp
-router.post('/:guild_id/:raid_number/post_comp', async (req, res) => {
-  if (!await requireAdmin(req, res, req.params.guild_id)) return;
+// POST /raids/:raid_number/post_comp
+router.post('/:raid_number/post_comp', async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
   const compNumber = req.query.comp ? parseInt(req.query.comp) : null;
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
 
   if (raid) {
     const raidId = raid.id;
@@ -1290,12 +1358,12 @@ router.post('/:guild_id/:raid_number/post_comp', async (req, res) => {
   res.redirect(raid ? `${raidBaseUrl(raid)}/comp${compParam}` : '/raids');
 });
 
-// POST /raids/:guild_id/:raid_number/unlock
-router.post('/:guild_id/:raid_number/unlock', async (req, res) => {
-  if (!await requireAdmin(req, res, req.params.guild_id)) return;
+// POST /raids/:raid_number/unlock
+router.post('/:raid_number/unlock', async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
 
   const raidNumber = parseInt(req.params.raid_number);
-  const raid = await getRaidByUrlParams(req.params.guild_id, raidNumber);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
 
   if (raid && raid.status === 'locked') {
     await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raid.id]);

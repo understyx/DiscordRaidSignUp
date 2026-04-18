@@ -264,6 +264,25 @@ app.post('/select-guild', express.urlencoded({ extended: false }), async (req, r
   } catch (_) {
     // fall back
   }
+
+  // If BASE_DOMAIN and COOKIE_DOMAIN are configured, redirect to the guild's
+  // subdomain so the session cookie is shared and the subdomain middleware sets
+  // the correct active guild automatically.
+  const baseDomain = process.env.BASE_DOMAIN;
+  if (baseDomain && process.env.COOKIE_DOMAIN) {
+    try {
+      const [[guildRow]] = await pool.query(
+        'SELECT subdomain FROM bot_guilds WHERE guild_id = ?',
+        [chosenId]
+      );
+      const slug = (guildRow && guildRow.subdomain) ? guildRow.subdomain : chosenId;
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+      return res.redirect(`${protocol}://${slug}.${baseDomain}${redirectTo}`);
+    } catch (_dbErr) {
+      // Fall through to same-host redirect on DB error
+    }
+  }
+
   res.redirect(redirectTo);
 });
 
