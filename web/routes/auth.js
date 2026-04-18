@@ -15,13 +15,57 @@ const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
 const DISCORD_USER_GUILDS_URL = 'https://discord.com/api/users/@me/guilds';
 
-router.get('/login', (req, res) => {
+router.get('/login', async (req, res) => {
+  const baseDomain = process.env.BASE_DOMAIN;
+
+  // When on a subdomain, DISCORD_REDIRECT_URI always points to the main domain.
+  // If we start OAuth here the oauth_state would be in the subdomain session,
+  // but the callback runs on the main domain (a different session without
+  // COOKIE_DOMAIN), causing the state check to fail every time and creating an
+  // infinite OAuth loop.  Fix: redirect to the main-domain /auth/login first so
+  // that oauth_state is created in the same session the callback will use.
+  if (baseDomain && req.subdomainGuild) {
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const qs = new URLSearchParams({ return_subdomain: req.subdomainGuild.slug });
+    if (req.session.next_url) qs.set('next_url', req.session.next_url);
+    return res.redirect(`${protocol}://${baseDomain}/auth/login?${qs.toString()}`);
+  }
+
   const state = crypto.randomBytes(32).toString('hex');
   req.session.oauth_state = state;
 
   // Remember the subdomain so we can redirect back to it after OAuth.
   if (req.subdomainGuild) {
     req.session.return_subdomain = req.subdomainGuild.slug;
+  } else if (req.query.return_subdomain) {
+    // Arrived here via a redirect from a subdomain's /auth/login (see above).
+    // Validate the slug format, then confirm it belongs to a real guild before
+    // storing it — this prevents redirecting to an unintended subdomain.
+    const slug = String(req.query.return_subdomain);
+    if (/^[a-z0-9-]+$/i.test(slug)) {
+      try {
+        const [[guildRow]] = await pool.query(
+          'SELECT 1 FROM bot_guilds WHERE subdomain = ? LIMIT 1',
+          [slug]
+        );
+        if (guildRow) {
+          req.session.return_subdomain = slug;
+          // Restore next_url when sessions aren't shared (no COOKIE_DOMAIN).
+          if (!req.session.next_url && req.query.next_url) {
+            try {
+              const decoded = decodeURIComponent(String(req.query.next_url));
+              if (decoded.startsWith('/') && !decoded.startsWith('//') && !/[\r\n]/.test(decoded)) {
+                req.session.next_url = decoded;
+              }
+            } catch (_) {
+              // ignore malformed value
+            }
+          }
+        }
+      } catch (_dbErr) {
+        // Non-fatal: if the DB check fails, skip the subdomain redirect
+      }
+    }
   }
 
   const params = new URLSearchParams({
@@ -162,10 +206,13 @@ router.get('/callback', async (req, res) => {
     }
 
     // If the login was initiated from a guild subdomain, redirect back there.
+    // Only do this when COOKIE_DOMAIN is set so that the session cookie is
+    // shared with the subdomain.  Without a shared cookie the user would arrive
+    // at the subdomain unauthenticated and the login loop would repeat.
     const returnSubdomain = req.session.return_subdomain;
     delete req.session.return_subdomain;
     const baseDomain = process.env.BASE_DOMAIN;
-    if (returnSubdomain && baseDomain) {
+    if (returnSubdomain && baseDomain && process.env.COOKIE_DOMAIN) {
       const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
       const subdomainUrl = `${protocol}://${returnSubdomain}.${baseDomain}${redirectTo}`;
       return res.redirect(subdomainUrl);
