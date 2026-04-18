@@ -208,7 +208,9 @@ function parseQuestions(body) {
   const reqs = [].concat(body.q_required || []);
 
   const questions = [];
-  for (let i = 0; i < texts.length; i++) {
+  const MAX_QUESTIONS = 50;
+  const limit = Math.min(texts.length, MAX_QUESTIONS);
+  for (let i = 0; i < limit; i++) {
     const text = String(texts[i] || '').trim();
     if (!text) continue;
 
