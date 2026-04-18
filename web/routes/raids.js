@@ -331,7 +331,7 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), (req
 // These handle old-style URLs (e.g. from Discord bot messages before the schema change).
 // Only triggered when the first segment looks like a numeric guild snowflake, to avoid
 // shadowing the named sub-routes above (admin-roles, create, etc.).
-const GUILD_ID_RE = /^\d{10,}$/; // Discord guild snowflakes are 17–19 digits
+const GUILD_ID_RE = /^\d{17,19}$/; // Discord guild snowflakes are 17–19 digits
 router.get('/:guild_id/:raid_number', (req, res, next) => {
   if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
   const raidNumber = parseInt(req.params.raid_number);
