@@ -200,6 +200,54 @@ async function sendDiscordDM(userId, content) {
   }
 }
 
+// Slugs that would collide with existing admin route segments
+const RESERVED_SLUGS = ['new', 'oauth-callback'];
+
+/**
+ * Validate and normalise a user-supplied slug value.
+ * Returns the lowercase slug string, null (if blank), or throws a string error message.
+ */
+function normaliseSlug(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  // Must start and end with a letter or digit; allow hyphens in between
+  if (!/^[a-z0-9][a-z0-9-]{0,98}[a-z0-9]$/.test(s) && !/^[a-z0-9]$/.test(s)) {
+    throw '❌ Slug must start and end with a letter or digit and may only contain lowercase letters, numbers, and hyphens (max 100 characters).';
+  }
+  if (s.length > 100) {
+    throw '❌ Slug may be at most 100 characters.';
+  }
+  if (RESERVED_SLUGS.includes(s)) {
+    throw `❌ "${s}" is a reserved slug and cannot be used.`;
+  }
+  return s;
+}
+
+/**
+ * Resolve a URL parameter (numeric ID or slug) to a recruitment_forms row.
+ * Returns the form row or null.
+ */
+async function resolveFormParam(param, requireActive = false) {
+  const numericId = parseInt(param, 10);
+  const activeClause = requireActive ? ' AND is_active = 1' : '';
+  if (numericId && String(numericId) === String(param)) {
+    const [[form]] = await pool.query(
+      `SELECT * FROM recruitment_forms WHERE id = ?${activeClause}`,
+      [numericId]
+    );
+    return form || null;
+  }
+  // Treat as slug
+  if (/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(param) || /^[a-z0-9]$/.test(param)) {
+    const [[form]] = await pool.query(
+      `SELECT * FROM recruitment_forms WHERE slug = ?${activeClause}`,
+      [param]
+    );
+    return form || null;
+  }
+  return null;
+}
+
 /** Parse questions from a form builder POST body. Returns array of question objects. */
 function parseQuestions(body) {
   const texts = [].concat(body.q_text || []);
@@ -398,6 +446,14 @@ router.post('/new', requireAdmin, async (req, res) => {
   const recruitRoleId = String(req.body.recruit_role_id || '').trim() || null;
   const inviteChannelId = String(req.body.invite_channel_id || '').trim() || null;
 
+  let slug;
+  try {
+    slug = normaliseSlug(req.body.slug);
+  } catch (msg) {
+    req.session.flash = msg;
+    return res.redirect('/recruitment/new');
+  }
+
   if (recruitRoleId && !/^\d+$/.test(recruitRoleId)) {
     req.session.flash = '❌ Invalid recruit role ID.';
     return res.redirect('/recruitment/new');
@@ -407,12 +463,21 @@ router.post('/new', requireAdmin, async (req, res) => {
     return res.redirect('/recruitment/new');
   }
 
-  const [result] = await pool.query(
-    `INSERT INTO recruitment_forms
-       (guild_id, title, description, is_active, created_by, recruit_role_id, invite_channel_id)
-     VALUES (?, ?, ?, 1, ?, ?, ?)`,
-    [guildId, title, description, req.session.user_id, recruitRoleId, inviteChannelId]
-  );
+  let result;
+  try {
+    [result] = await pool.query(
+      `INSERT INTO recruitment_forms
+         (guild_id, title, description, is_active, created_by, recruit_role_id, invite_channel_id, slug)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+      [guildId, title, description, req.session.user_id, recruitRoleId, inviteChannelId, slug]
+    );
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      req.session.flash = '❌ That slug is already in use. Please choose a different one.';
+      return res.redirect('/recruitment/new');
+    }
+    throw err;
+  }
   const formId = result.insertId;
 
   const questions = parseQuestions(req.body);
@@ -489,6 +554,14 @@ router.post('/:form_id/edit-form', requireAdmin, async (req, res) => {
   const recruitRoleId = String(req.body.recruit_role_id || '').trim() || null;
   const inviteChannelId = String(req.body.invite_channel_id || '').trim() || null;
 
+  let slug;
+  try {
+    slug = normaliseSlug(req.body.slug);
+  } catch (msg) {
+    req.session.flash = msg;
+    return res.redirect(`/recruitment/${formId}/edit-form`);
+  }
+
   if (recruitRoleId && !/^\d+$/.test(recruitRoleId)) {
     req.session.flash = '❌ Invalid recruit role ID.';
     return res.redirect(`/recruitment/${formId}/edit-form`);
@@ -498,12 +571,20 @@ router.post('/:form_id/edit-form', requireAdmin, async (req, res) => {
     return res.redirect(`/recruitment/${formId}/edit-form`);
   }
 
-  await pool.query(
-    `UPDATE recruitment_forms
-        SET title = ?, description = ?, recruit_role_id = ?, invite_channel_id = ?
-      WHERE id = ?`,
-    [title, description, recruitRoleId, inviteChannelId, formId]
-  );
+  try {
+    await pool.query(
+      `UPDATE recruitment_forms
+          SET title = ?, description = ?, recruit_role_id = ?, invite_channel_id = ?, slug = ?
+        WHERE id = ?`,
+      [title, description, recruitRoleId, inviteChannelId, slug, formId]
+    );
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      req.session.flash = '❌ That slug is already in use. Please choose a different one.';
+      return res.redirect(`/recruitment/${formId}/edit-form`);
+    }
+    throw err;
+  }
 
   // Replace questions
   await pool.query('DELETE FROM recruitment_questions WHERE form_id = ?', [formId]);
@@ -747,17 +828,12 @@ router.post('/:form_id/applications/:app_id/reject', requireAdmin, async (req, r
 // This must come AFTER all more specific GET routes above.
 
 router.get('/:form_id', async (req, res) => {
-  const formId = parseInt(req.params.form_id, 10);
-  if (!formId) return res.redirect('/');
-
-  const [[form]] = await pool.query(
-    'SELECT * FROM recruitment_forms WHERE id = ? AND is_active = 1',
-    [formId]
-  );
+  const form = await resolveFormParam(req.params.form_id, true);
   if (!form) {
     req.session.flash = '❌ This recruitment form is not available.';
     return res.redirect('/');
   }
+  const formId = form.id;
 
   // Require Discord recruitment auth
   if (!req.session.recruit_discord_id) {
@@ -804,21 +880,16 @@ router.get('/:form_id', async (req, res) => {
 // ── Public: submit application ────────────────────────────────────────────────
 
 router.post('/:form_id/submit', async (req, res) => {
-  const formId = parseInt(req.params.form_id, 10);
-  if (!formId) return res.redirect('/');
+  const form = await resolveFormParam(req.params.form_id, true);
+  if (!form) {
+    req.session.flash = '❌ This recruitment form is not available.';
+    return res.redirect('/');
+  }
+  const formId = form.id;
 
   if (!req.session.recruit_discord_id) {
     req.session.recruit_return_form_id = formId;
     return redirectToRecruitmentOAuth(req, res, formId);
-  }
-
-  const [[form]] = await pool.query(
-    'SELECT * FROM recruitment_forms WHERE id = ? AND is_active = 1',
-    [formId]
-  );
-  if (!form) {
-    req.session.flash = '❌ This recruitment form is not available.';
-    return res.redirect('/');
   }
 
   // Duplicate guard
@@ -922,21 +993,16 @@ router.post('/:form_id/submit', async (req, res) => {
 // ── Public: edit / view own application ───────────────────────────────────────
 
 router.get('/:form_id/edit', async (req, res) => {
-  const formId = parseInt(req.params.form_id, 10);
-  if (!formId) return res.redirect('/');
+  const form = await resolveFormParam(req.params.form_id);
+  if (!form) {
+    req.session.flash = '❌ Form not found.';
+    return res.redirect('/');
+  }
+  const formId = form.id;
 
   if (!req.session.recruit_discord_id) {
     req.session.recruit_return_form_id = formId;
     return redirectToRecruitmentOAuth(req, res, formId);
-  }
-
-  const [[form]] = await pool.query(
-    'SELECT * FROM recruitment_forms WHERE id = ?',
-    [formId]
-  );
-  if (!form) {
-    req.session.flash = '❌ Form not found.';
-    return res.redirect('/');
   }
 
   const [[application]] = await pool.query(
@@ -982,8 +1048,9 @@ router.get('/:form_id/edit', async (req, res) => {
 });
 
 router.post('/:form_id/edit', async (req, res) => {
-  const formId = parseInt(req.params.form_id, 10);
-  if (!formId) return res.redirect('/');
+  const form = await resolveFormParam(req.params.form_id);
+  if (!form) return res.redirect('/');
+  const formId = form.id;
 
   if (!req.session.recruit_discord_id) {
     req.session.recruit_return_form_id = formId;
