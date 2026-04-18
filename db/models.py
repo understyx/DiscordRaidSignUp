@@ -36,6 +36,7 @@ class BotGuild(Base):
     guild_id = Column(BigInteger, primary_key=True)
     guild_name = Column(String(200), nullable=False)
     icon = Column(String(200), nullable=True)
+    subdomain = Column(String(63), nullable=True)
 
 
 class Raid(Base):

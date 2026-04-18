@@ -41,11 +41,11 @@
         </td>
         <td>{{ item.signup_count }} / {{ r.max_size }}</td>
         <td>
-          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
+          <a href="/raids/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
           {% if item.can_manage %}
-          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
+          <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
           {% else %}
-          <a href="/raids/{{ r.guild_id or '0' }}/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
+          <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
           {% endif %}
         </td>
       </tr>
