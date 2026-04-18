@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }} – Apply{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    {# ── Header ── #}
+    <div class="card mb-4">
+      <div class="card-body text-center py-4">
+        <h2 class="mb-1">{{ form.title }}</h2>
+        {% if form.description %}
+        <p class="text-muted mb-0">{{ form.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Applicant identity strip ── #}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+      <span>🎮</span>
+      <span>
+        Applying as <strong>{{ recruit_display_name }}</strong>
+        <span class="text-muted small">({{ recruit_username }})</span>
+      </span>
+    </div>
+
+    {# ── Status banner (if editing a non-pending application) ── #}
+    {% if is_editing and application %}
+      {% if application.status == 'accepted' %}
+      <div class="alert alert-success">
+        🎉 Your application has been <strong>accepted</strong>!
+        {% if application.reviewed_at %}Reviewed {{ application.reviewed_at | dateformat('%Y-%m-%d') }}.{% endif %}
+      </div>
+      {% elif application.status == 'rejected' %}
+      <div class="alert alert-danger">
+        Your application was not accepted this time.
+        {% if application.reviewed_at %}Reviewed {{ application.reviewed_at | dateformat('%Y-%m-%d') }}.{% endif %}
+      </div>
+      {% else %}
+      <div class="alert alert-warning">
+        ⏳ Your application is <strong>pending review</strong>. You can still edit your answers below.
+      </div>
+      {% endif %}
+    {% endif %}
+
+    {# ── Application form ── #}
+    {% if (not is_editing) or (is_editing and application and application.status == 'pending') %}
+    <form method="post"
+          action="{% if is_editing %}/recruitment/{{ form.id }}/edit{% else %}/recruitment/{{ form.id }}/submit{% endif %}">
+
+      {% for q in questions %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <label class="form-label fw-semibold">
+            {{ q.question_text }}
+            {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
+          </label>
+
+          {% if q.question_type == 'textarea' %}
+          <textarea class="form-control" name="answer_{{ q.id }}" rows="4"
+                    {% if q.is_required %}required{% endif %}>{{ existing_answers[q.id | string] if existing_answers[q.id | string] else '' }}</textarea>
+
+          {% elif q.question_type == 'select' %}
+          <select class="form-select" name="answer_{{ q.id }}"
+                  {% if q.is_required %}required{% endif %}>
+            <option value="" disabled {% if not existing_answers[q.id | string] %}selected{% endif %}>— choose one —</option>
+            {% for opt in q.options_parsed %}
+            <option value="{{ opt }}"
+              {% if existing_answers[q.id | string] == opt %}selected{% endif %}>
+              {{ opt }}
+            </option>
+            {% endfor %}
+          </select>
+
+          {% elif q.question_type == 'radio' %}
+          {% for opt in q.options_parsed %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="answer_{{ q.id }}"
+                   id="q{{ q.id }}_opt{{ loop.index0 }}" value="{{ opt }}"
+                   {% if existing_answers[q.id | string] == opt %}checked{% endif %}
+                   {% if q.is_required %}required{% endif %}>
+            <label class="form-check-label" for="q{{ q.id }}_opt{{ loop.index0 }}">
+              {{ opt }}
+            </label>
+          </div>
+          {% endfor %}
+
+          {% else %}
+          {# default: text #}
+          <input type="text" class="form-control" name="answer_{{ q.id }}"
+                 value="{{ existing_answers[q.id | string] if existing_answers[q.id | string] else '' }}"
+                 {% if q.is_required %}required{% endif %}>
+          {% endif %}
+
+        </div>
+      </div>
+      {% endfor %}
+
+      {# ── Discord notification opt-in (only on first submit) ── #}
+      {% if not is_editing %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="wants_discord_notify"
+                   id="wantsNotify" value="on">
+            <label class="form-check-label" for="wantsNotify">
+              <strong>Notify me on Discord</strong>
+              <span class="text-muted d-block small mt-1">
+                We'll send you a Discord DM when your application is reviewed.
+                If opted in, you may be added to the guild Discord server.
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-wow px-5">
+          {% if is_editing %}Save Changes{% else %}Submit Application{% endif %}
+        </button>
+      </div>
+
+    </form>
+
+    {% elif is_editing and application and application.status != 'pending' %}
+    {# Read-only view of submitted answers #}
+    {% for q in questions %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <p class="fw-semibold mb-1">{{ q.question_text }}</p>
+        <p class="mb-0 text-muted">
+          {{ existing_answers[q.id | string] or '(no answer)' }}
+        </p>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

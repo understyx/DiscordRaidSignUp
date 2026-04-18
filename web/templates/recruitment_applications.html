@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Applications – {{ form.title }} – RaidBot{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <h2 class="mb-0">👥 Applications</h2>
+    <p class="text-muted mb-0">{{ form.title }}</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/recruitment/{{ form.id }}/edit-form" class="btn btn-sm btn-outline-secondary">
+      ✏️ Edit Form
+    </a>
+    <a href="/recruitment" class="btn btn-sm btn-outline-secondary">← Back to Forms</a>
+  </div>
+</div>
+
+{# ── Status filter tabs ── #}
+<ul class="nav nav-pills mb-4">
+  <li class="nav-item">
+    <a class="nav-link {% if status_filter == 'all' %}active{% endif %}"
+       href="?status=all">All ({{ applications | length }})</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if status_filter == 'pending' %}active{% endif %}"
+       href="?status=pending">Pending</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if status_filter == 'accepted' %}active{% endif %}"
+       href="?status=accepted">Accepted</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if status_filter == 'rejected' %}active{% endif %}"
+       href="?status=rejected">Rejected</a>
+  </li>
+</ul>
+
+{% if applications | length == 0 %}
+<div class="alert alert-info">No applications found for this filter.</div>
+{% else %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Applicant</th>
+        <th>Status</th>
+        <th>Notify?</th>
+        <th>Invited?</th>
+        <th>Submitted</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for app in applications %}
+      <tr>
+        <td>
+          <div class="fw-semibold">{{ app.applicant_display_name }}</div>
+          <div class="text-muted small">{{ app.applicant_username }}</div>
+        </td>
+        <td>
+          {% if app.status == 'pending' %}
+          <span class="badge bg-warning text-dark">Pending</span>
+          {% elif app.status == 'accepted' %}
+          <span class="badge bg-success">Accepted</span>
+          {% elif app.status == 'rejected' %}
+          <span class="badge bg-danger">Rejected</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if app.wants_discord_notify %}
+          <span class="badge bg-primary">Yes</span>
+          {% else %}
+          <span class="text-muted small">No</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if app.discord_invited %}
+          <span class="badge bg-success">✓</span>
+          {% else %}
+          <span class="text-muted small">—</span>
+          {% endif %}
+        </td>
+        <td class="text-muted small">{{ app.submitted_at | dateformat('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          <a href="/recruitment/{{ form.id }}/applications/{{ app.id }}"
+             class="btn btn-sm btn-outline-light">
+            Review →
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
