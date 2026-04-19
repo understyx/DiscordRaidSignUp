@@ -122,8 +122,11 @@
           </div>
           <div id="hiddenInputs"></div>
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-wow" id="signupBtn">
+            <button type="submit" class="btn btn-wow" id="signupBtn" name="signup_mode" value="signed">
               {% if my_signup_count > 0 %}Update Sign-up{% else %}Sign Up{% endif %}
+            </button>
+            <button type="submit" class="btn btn-outline-secondary" id="tentativeBtn" name="signup_mode" value="tentative">
+              ❓ {% if my_signup_count > 0 %}Update as Tentative{% else %}Sign Up as Tentative{% endif %}
             </button>
           </div>
         </form>
@@ -303,6 +306,11 @@
     if (btn) {
       const count = document.querySelectorAll('.signup-row.row-selected').length;
       btn.textContent = count > 0 ? 'Update Sign-up' : 'Sign Up';
+    }
+    const tentativeBtn = document.getElementById('tentativeBtn');
+    if (tentativeBtn) {
+      const count = document.querySelectorAll('.signup-row.row-selected').length;
+      tentativeBtn.textContent = count > 0 ? '❓ Update as Tentative' : '❓ Sign Up as Tentative';
     }
   }
 
