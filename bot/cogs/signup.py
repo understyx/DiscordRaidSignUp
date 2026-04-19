@@ -559,7 +559,7 @@ class SignupPrioritySelectView(discord.ui.View):
         await interaction.response.defer()
 
     async def confirm(self, interaction: discord.Interaction):
-        priority_ids = {int(v) for v in (self.priority_select.values or [])}
+        priority_ids = {int(v) for v in (self.priority_select.values if self.priority_select else [])}
         discord_user_id = interaction.user.id
         raid_id = self.raid_id
         signup_status = self.signup_status
