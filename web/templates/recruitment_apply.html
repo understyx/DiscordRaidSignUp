@@ -286,6 +286,8 @@
 
 {% block scripts %}
 <script>
+const BIS_GS = 99999;
+
 async function registerChar(qid) {
   const nameEl  = document.getElementById('new_char_name_'  + qid);
   const realmEl = document.getElementById('new_char_realm_' + qid);
@@ -329,7 +331,7 @@ async function registerChar(qid) {
       existingCb.checked = true;
     } else {
       const gs = c.gearscore
-        ? (c.gearscore >= 99999 ? 'BiS' : Math.floor(c.gearscore) + ' GS')
+        ? (c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore) + ' GS')
         : '';
       const detail = [c.char_class, c.spec, gs].filter(Boolean).join('/');
       const div = document.createElement('div');
