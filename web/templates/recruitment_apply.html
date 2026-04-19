@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}{{ form.title }} – Apply{% endblock %}
 
+{% block extra_head %}
+<style>
+  .btn-outline-wow {
+    color: var(--wow-gold);
+    border: 1px solid var(--wow-gold);
+    background: transparent;
+    font-weight: 600;
+  }
+  .btn-outline-wow:hover, .btn-outline-wow:focus {
+    background-color: var(--wow-gold);
+    color: #0e1117;
+  }
+</style>
+{% endblock %}
+
 {# ── Macro: render a single question field ── #}
 {% macro renderField(q, fieldName, curVal) %}
   {% if q.question_type == 'textarea' %}
@@ -49,7 +64,12 @@
           <td colspan="6" class="text-muted small">No characters registered yet. Add one below.</td>
         </tr>
         {% endif %}
-        {% for c in chars %}
+
+        {% for char_name, group_chars in chars | groupby('char_name') %}
+        {% set charKey = char_name | lower | replace(' ', '-') %}
+        {% set firstChar = group_chars | first %}
+
+        {% for c in group_chars %}
         {% set cls_key = (c.char_class or '') | lower | replace(' ', '-') %}
         {% set isChecked = c.id in preselected %}
         <tr>
@@ -109,6 +129,40 @@
           </td>
         </tr>
         {% endfor %}
+
+        <!-- Add Spec trigger row for {{ char_name }} -->
+        <tr id="addSpecTrigger-{{ q.id }}_{{ charKey }}">
+          <td colspan="6" class="py-2 text-center border-bottom border-secondary">
+            <button type="button" class="btn btn-sm btn-outline-wow"
+                    onclick="showAddSpec('{{ q.id }}', '{{ charKey }}')">Add Spec</button>
+          </td>
+        </tr>
+
+        <!-- Add Spec inline form row for {{ char_name }} (hidden) -->
+        <tr id="addSpecRow-{{ q.id }}_{{ charKey }}" class="d-none">
+          <td colspan="6" class="p-2 border-bottom border-secondary">
+            <input type="hidden" id="add_spec_name_{{ q.id }}_{{ charKey }}"
+                   value="{{ char_name }}" />
+            <input type="hidden" id="add_spec_realm_{{ q.id }}_{{ charKey }}"
+                   value="{{ firstChar.realm or 'Icecrown' }}" />
+            <input type="hidden" id="add_spec_class_{{ q.id }}_{{ charKey }}"
+                   value="{{ firstChar.char_class or '' }}" />
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+              <span class="text-muted small fw-semibold">{{ char_name }}</span>
+              <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                     id="new_spec_spec_{{ q.id }}_{{ charKey }}" style="width:110px" placeholder="Spec" maxlength="50" />
+              <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                     id="new_spec_gs_{{ q.id }}_{{ charKey }}" style="width:80px" placeholder="GS" maxlength="10" />
+              <button type="button" class="btn btn-sm btn-wow"
+                      onclick="registerSpec('{{ q.id }}', '{{ charKey }}')">Add</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      onclick="hideAddSpec('{{ q.id }}', '{{ charKey }}')">✕</button>
+            </div>
+            <div id="spec-add-error-{{ q.id }}_{{ charKey }}" class="text-danger small mt-2"></div>
+          </td>
+        </tr>
+
+        {% endfor %}{# end char groups #}
 
         <!-- Inline Add Character form row (hidden until triggered) -->
         <tr id="addCharRow-{{ q.id }}" class="d-none">
@@ -344,6 +398,95 @@
 <script>
 const BIS_GS = 99999;
 
+// ── Add Spec per-character helpers ────────────────────────────────────────────
+
+function showAddSpec(qid, charKey) {
+  document.getElementById('addSpecRow-'     + qid + '_' + charKey).classList.remove('d-none');
+  document.getElementById('addSpecTrigger-' + qid + '_' + charKey).classList.add('d-none');
+  document.getElementById('new_spec_spec_'  + qid + '_' + charKey).focus();
+}
+
+function hideAddSpec(qid, charKey) {
+  document.getElementById('addSpecRow-'     + qid + '_' + charKey).classList.add('d-none');
+  document.getElementById('addSpecTrigger-' + qid + '_' + charKey).classList.remove('d-none');
+}
+
+async function registerSpec(qid, charKey) {
+  const nameEl  = document.getElementById('add_spec_name_'  + qid + '_' + charKey);
+  const realmEl = document.getElementById('add_spec_realm_' + qid + '_' + charKey);
+  const classEl = document.getElementById('add_spec_class_' + qid + '_' + charKey);
+  const specEl  = document.getElementById('new_spec_spec_'  + qid + '_' + charKey);
+  const gsEl    = document.getElementById('new_spec_gs_'    + qid + '_' + charKey);
+  const errEl   = document.getElementById('spec-add-error-' + qid + '_' + charKey);
+
+  errEl.textContent = '';
+
+  try {
+    const resp = await fetch('/recruitment/characters/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        char_name:  nameEl.value,
+        realm:      realmEl.value,
+        char_class: classEl.value,
+        spec:       specEl.value.trim(),
+        gearscore:  gsEl.value.trim(),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      errEl.textContent = data.error || 'Failed to add spec.';
+      return;
+    }
+
+    const c = data.character;
+    const list = document.getElementById('char-list-' + qid);
+    const trigger = document.getElementById('addSpecTrigger-' + qid + '_' + charKey);
+    const clsKey = (c.char_class || '').toLowerCase().replace(/ /g, '-');
+    const gs = c.gearscore
+      ? (c.gearscore >= BIS_GS ? 'BiS GS' : Math.floor(c.gearscore) + ' GS')
+      : '—';
+
+    // Check if the spec already exists in the table
+    const existingCb = list.querySelector(`input[value="${c.id}"]`);
+    if (existingCb) {
+      existingCb.checked = true;
+    } else {
+      const row = document.createElement('tr');
+      row.innerHTML =
+        `<td><input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
+        `value="${c.id}" id="char_${qid}_${c.id}" checked></td>` +
+        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
+        `<input type="text" id="char_name_${c.id}" value="${c.char_name}" ` +
+        `class="form-control form-control-sm bg-dark text-light border-secondary cls-${clsKey}" ` +
+        `style="width:110px" maxlength="50" />` +
+        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+        `onclick="saveCharField(${c.id}, 'name', this)" title="Save Name">💾</button></div></td>` +
+        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
+        `<input type="text" id="char_realm_${c.id}" value="${c.realm || 'Icecrown'}" ` +
+        `class="form-control form-control-sm bg-dark text-light border-secondary" ` +
+        `style="width:100px" maxlength="50" />` +
+        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+        `onclick="saveCharField(${c.id}, 'realm', this)" title="Save Realm">💾</button></div></td>` +
+        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
+        buildClassSelect(c.id, c.char_class, clsKey) +
+        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+        `onclick="saveCharField(${c.id}, 'class', this)" title="Save Class">💾</button></div></td>` +
+        `<td class="text-muted small">${c.spec || '—'}</td>` +
+        `<td class="text-muted small">${gs}</td>`;
+      list.insertBefore(row, trigger);
+    }
+
+    specEl.value = '';
+    gsEl.value   = '';
+    hideAddSpec(qid, charKey);
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+  }
+}
+
+// ── Register a brand-new character ───────────────────────────────────────────
+
 async function registerChar(qid) {
   const nameEl  = document.getElementById('new_char_name_'  + qid);
   const realmEl = document.getElementById('new_char_realm_' + qid);
@@ -381,6 +524,10 @@ async function registerChar(qid) {
     const placeholder = document.getElementById('char-no-chars-' + qid);
     if (placeholder) placeholder.closest('tr').remove();
 
+    const charKey = c.char_name.toLowerCase().replace(/ /g, '-');
+    const addCharRow     = document.getElementById('addCharRow-'     + qid);
+    const addCharTrigger = document.getElementById('addCharTrigger-' + qid);
+
     // If the character is already listed just ensure it is checked
     const existingCb = list.querySelector(`input[value="${c.id}"]`);
     if (existingCb) {
@@ -390,6 +537,8 @@ async function registerChar(qid) {
       const gs = c.gearscore
         ? (c.gearscore >= BIS_GS ? 'BiS GS' : Math.floor(c.gearscore) + ' GS')
         : '—';
+
+      // New character row
       const row = document.createElement('tr');
       row.innerHTML =
         `<td><input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
@@ -412,10 +561,42 @@ async function registerChar(qid) {
         `onclick="saveCharField(${c.id}, 'class', this)" title="Save Class">💾</button></div></td>` +
         `<td class="text-muted small">${c.spec || '—'}</td>` +
         `<td class="text-muted small">${gs}</td>`;
+      list.insertBefore(row, addCharRow);
 
-      // Insert before the addCharRow trigger rows
-      const trigger = document.getElementById('addCharRow-' + qid);
-      list.insertBefore(row, trigger);
+      // Inject Add Spec rows only if they don't exist yet for this charKey
+      if (!document.getElementById('addSpecTrigger-' + qid + '_' + charKey)) {
+        const addSpecTriggerRow = document.createElement('tr');
+        addSpecTriggerRow.id = 'addSpecTrigger-' + qid + '_' + charKey;
+        addSpecTriggerRow.innerHTML =
+          `<td colspan="6" class="py-2 text-center border-bottom border-secondary">` +
+          `<button type="button" class="btn btn-sm btn-outline-wow" ` +
+          `onclick="showAddSpec('${qid}', '${charKey}')">Add Spec</button></td>`;
+
+        const addSpecFormRow = document.createElement('tr');
+        addSpecFormRow.id = 'addSpecRow-' + qid + '_' + charKey;
+        addSpecFormRow.className = 'd-none';
+        addSpecFormRow.innerHTML =
+          `<td colspan="6" class="p-2 border-bottom border-secondary">` +
+          `<input type="hidden" id="add_spec_name_${qid}_${charKey}" value="${c.char_name}" />` +
+          `<input type="hidden" id="add_spec_realm_${qid}_${charKey}" value="${c.realm || 'Icecrown'}" />` +
+          `<input type="hidden" id="add_spec_class_${qid}_${charKey}" value="${c.char_class || ''}" />` +
+          `<div class="d-flex gap-2 align-items-center flex-wrap">` +
+          `<span class="text-muted small fw-semibold">${c.char_name}</span>` +
+          `<input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" ` +
+          `id="new_spec_spec_${qid}_${charKey}" style="width:110px" placeholder="Spec" maxlength="50" />` +
+          `<input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" ` +
+          `id="new_spec_gs_${qid}_${charKey}" style="width:80px" placeholder="GS" maxlength="10" />` +
+          `<button type="button" class="btn btn-sm btn-wow" ` +
+          `onclick="registerSpec('${qid}', '${charKey}')">Add</button>` +
+          `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+          `onclick="hideAddSpec('${qid}', '${charKey}')">✕</button>` +
+          `</div>` +
+          `<div id="spec-add-error-${qid}_${charKey}" class="text-danger small mt-2"></div>` +
+          `</td>`;
+
+        list.insertBefore(addSpecTriggerRow, addCharRow);
+        list.insertBefore(addSpecFormRow, addCharRow);
+      }
     }
 
     // Clear add-form inputs
