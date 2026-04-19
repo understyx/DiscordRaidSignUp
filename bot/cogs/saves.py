@@ -7,8 +7,9 @@ from typing import Literal, Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
+from sqlalchemy import text
 
-from bot.db import get_session
+from bot.db import get_session, engine
 from bot.cogs.raid import is_officer
 from db.models import Character
 
@@ -79,9 +80,7 @@ def _fetch_user_chars(discord_user_id: int, name_filter: Optional[str] = None) -
 
 def _get_save_state(character_id: int, instance_name: str) -> int:
     """Return current is_saved value (0 or 1) for the given character/instance."""
-    from bot.db import engine
     with engine.connect() as conn:
-        from sqlalchemy import text
         row = conn.execute(
             text(
                 "SELECT is_saved FROM char_raid_saves"
@@ -94,8 +93,6 @@ def _get_save_state(character_id: int, instance_name: str) -> int:
 
 def _set_save_state(character_id: int, instance_name: str, is_saved: int) -> None:
     """Upsert save state for the given character/instance (canonical lockout key)."""
-    from bot.db import engine
-    from sqlalchemy import text
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -112,8 +109,6 @@ def _fetch_all_saves_for_user(discord_user_id: int) -> list[dict]:
     Return a list of dicts {char_name, realm, instance_name, is_saved} for all
     non-deleted characters belonging to the given Discord user.
     """
-    from bot.db import engine
-    from sqlalchemy import text
     with engine.connect() as conn:
         rows = conn.execute(
             text(
@@ -133,13 +128,41 @@ def _fetch_all_saves_for_user(discord_user_id: int) -> list[dict]:
 
 def _clear_all_saves() -> int:
     """Delete all is_saved=1 rows.  Returns number of rows deleted."""
-    from bot.db import engine
-    from sqlalchemy import text
     with engine.begin() as conn:
         result = conn.execute(
             text("DELETE FROM char_raid_saves WHERE is_saved = 1")
         )
     return result.rowcount
+
+
+async def _toggle_save(interaction: discord.Interaction, character: str, instance: str) -> None:
+    """Shared logic for toggling a character's save state on an instance."""
+    loop = asyncio.get_event_loop()
+
+    chars = await loop.run_in_executor(
+        None, _fetch_user_chars, interaction.user.id, character
+    )
+
+    if not chars:
+        await interaction.followup.send(
+            f"❌ No character named **{character}** found in your registered list.",
+            ephemeral=True,
+        )
+        return
+
+    char = chars[0]
+    instance_clean = instance.strip()
+
+    current = await loop.run_in_executor(None, _get_save_state, char.id, instance_clean)
+    new_state = 0 if current else 1
+
+    await loop.run_in_executor(None, _set_save_state, char.id, instance_clean, new_state)
+
+    state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
+    await interaction.followup.send(
+        f"{char.char_name}-{char.realm} is now {state_str} for **{instance_clean}**.",
+        ephemeral=True,
+    )
 
 
 # ── cog ──────────────────────────────────────────────────────────────────────
@@ -261,36 +284,7 @@ class SavesCog(commands.Cog):
         instance: str,
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        loop = asyncio.get_event_loop()
-
-        chars = await loop.run_in_executor(
-            None, _fetch_user_chars, interaction.user.id, character
-        )
-
-        if not chars:
-            await interaction.followup.send(
-                f"❌ No character named **{character}** found in your registered list.",
-                ephemeral=True,
-            )
-            return
-
-        char = chars[0]
-        instance_clean = instance.strip()
-
-        current = await loop.run_in_executor(
-            None, _get_save_state, char.id, instance_clean
-        )
-        new_state = 0 if current else 1
-
-        await loop.run_in_executor(
-            None, _set_save_state, char.id, instance_clean, new_state
-        )
-
-        state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
-        await interaction.followup.send(
-            f"{char.char_name}-{char.realm} is now {state_str} for **{instance_clean}**.",
-            ephemeral=True,
-        )
+        await _toggle_save(interaction, character, instance)
 
     # ── /saves clear_all  (officer-only) ──────────────────────────────────
 
@@ -310,7 +304,6 @@ class SavesCog(commands.Cog):
             ephemeral=True,
         )
 
-
     # ── /savecharacter  (top-level shortcut) ──────────────────────────────
 
     @app_commands.command(
@@ -329,36 +322,7 @@ class SavesCog(commands.Cog):
         instance: str,
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        loop = asyncio.get_event_loop()
-
-        chars = await loop.run_in_executor(
-            None, _fetch_user_chars, interaction.user.id, character
-        )
-
-        if not chars:
-            await interaction.followup.send(
-                f"❌ No character named **{character}** found in your registered list.",
-                ephemeral=True,
-            )
-            return
-
-        char = chars[0]
-        instance_clean = instance.strip()
-
-        current = await loop.run_in_executor(
-            None, _get_save_state, char.id, instance_clean
-        )
-        new_state = 0 if current else 1
-
-        await loop.run_in_executor(
-            None, _set_save_state, char.id, instance_clean, new_state
-        )
-
-        state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
-        await interaction.followup.send(
-            f"{char.char_name}-{char.realm} is now {state_str} for **{instance_clean}**.",
-            ephemeral=True,
-        )
+        await _toggle_save(interaction, character, instance)
 
 
 async def setup(bot: commands.Bot):

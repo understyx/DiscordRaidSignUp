@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
-import re
 from typing import Optional
 
 import discord
@@ -11,8 +10,28 @@ from discord.ext import commands
 
 from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
-from bot.class_utils import normalize_class, KNOWN_CLASSES
-from db.models import BotGuild, Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from bot.signup_parser import (
+    BIS_GS,
+    MAX_RANDOM_LINES_IN_ERROR,
+    CHAR_LINE_RE,
+    TENTATIVE_KEYWORDS,
+    format_gs,
+    parse_gs,
+    is_tentative_message,
+    find_random_text_lines,
+    parse_character_lines,
+)
+from bot.signup_embed import (
+    upsert_discord_user,
+    chars_to_dicts,
+    char_display_description,
+    char_label,
+    group_chars_by_name,
+    build_signup_embed,
+    update_raid_embed,
+    post_to_raid_log,
+)
+from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
 
@@ -53,463 +72,6 @@ HOWTO_TEXT = (
 )
 
 
-def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
-    """Upsert Discord username/display_name into discord_users table."""
-    display = getattr(user, "display_name", None)
-    existing = session.get(DiscordUser, user.id)
-    if existing:
-        existing.username = user.name
-        existing.display_name = display
-        existing.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    else:
-        session.add(DiscordUser(
-            discord_user_id=user.id,
-            username=user.name,
-            display_name=display,
-            updated_at=datetime.datetime.now(datetime.timezone.utc),
-        ))
-
-# ---------------------------------------------------------------------------
-# Chat message parser helpers
-# ---------------------------------------------------------------------------
-
-# Matches a potential character sign-up line.
-# Name must be 1–12 letters, optionally preceded and/or followed by
-# whitespace / saved (❌✗) or priority (⭐★) markers, then the first "/".
-# Requires at least 4 slash-separated parts (name, class, spec, gs).
-_CHAR_LINE_RE = re.compile(
-    r"^[⭐★❌✗]?\s*[A-Za-z]{1,12}\s*[⭐★❌✗]?\s*/.+/.+/.+",
-    re.IGNORECASE,
-)
-
-# Validates a bare character name (after stripping markers): letters only, 1–12 chars.
-_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
-
-# Maximum number of random/invalid lines shown in a single rejection error.
-_MAX_RANDOM_LINES_IN_ERROR = 5
-
-# Matches a GS number (with optional k/K suffix) at the start of a segment,
-# followed by optional whitespace and an optional trailing note.
-_GS_NOTE_RE = re.compile(r"^([0-9]+(?:[.,][0-9]+)?[kK]?)\s*(.*)?$", re.DOTALL)
-
-# Sentinel float value representing a "Best in Slot" gearscore.
-BIS_GS = 99999.0
-
-# Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
-_TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
-
-
-def _is_tentative_message(text: str) -> bool:
-    """Return True if the first non-empty line of *text* is a tentative keyword."""
-    for line in text.splitlines():
-        stripped = line.strip().lower()
-        if stripped:
-            return stripped in _TENTATIVE_KEYWORDS
-    return False
-
-
-def format_gs(value: float) -> str:
-    """Format a gearscore for display, returning ``"BiS"`` for the sentinel value."""
-    if value >= BIS_GS:
-        return "BiS"
-    return f"{value:.0f}"
-
-
-def parse_gs(raw: str) -> float:
-    """Parse a gearscore string into a float.
-
-    Accepts full numbers (``"6200"``), decimal shorthand (``"6.2"`` → 6200),
-    the explicit *k* suffix (``"6.2k"`` → 6200), and ``"bis"`` (case-insensitive)
-    for Best-in-Slot.  Values already in the thousands are returned unchanged.
-    Any commas are treated as decimal separators (e.g. ``"6,2"`` → 6200).
-    Values below 1000 are auto-scaled by 1000, so ``"999"`` → 999000 — use the
-    full number for sub-1000 scores.
-    """
-    stripped = raw.strip()
-    if stripped.lower() == "bis":
-        return BIS_GS
-    cleaned = stripped.replace(",", ".")
-    if cleaned.lower().endswith("k"):
-        return float(cleaned[:-1]) * 1000
-    value = float(cleaned)
-    if value < 1000:
-        value *= 1000
-    return value
-
-
-def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
-    """Parse a GS segment, returning ``(gearscore, note)``.
-
-    Star markers (⭐ ★) are stripped before parsing.  ``"bis"`` (case-insensitive)
-    is accepted as a synonym for Best-in-Slot.  Any text that follows the numeric
-    GS value (after stripping stars and whitespace) is returned as the note.
-    Raises ``ValueError`` if no valid GS number is found.
-    """
-    cleaned = gs_raw.replace("⭐", "").replace("★", "").strip()
-    if cleaned.lower() == "bis":
-        return BIS_GS, ""
-    m = _GS_NOTE_RE.match(cleaned)
-    if not m:
-        raise ValueError(f"Cannot parse GS from {gs_raw!r}")
-    gs = parse_gs(m.group(1))
-    note = (m.group(2) or "").strip()
-    return gs, note
-
-
-def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
-    """
-    Parse one or more character lines from a message body.
-
-    Supported format (one per line)::
-
-        CharName / CharClass / Spec1 / GS1 [/ Spec2 / GS2 ...] [⭐ or ❌]
-
-    Priority (⭐ or ★) placement controls which specs are marked as priority:
-      - ⭐ after a spec name (before the GS): only that spec is priority
-        e.g. ``Shadow ⭐ / 6500 / Disc / 6300``  →  only Shadow is priority
-      - ⭐ after the *last* GS (end of line): all specs for that character are priority
-        e.g. ``Survival / 6500 / BM / 6400 ⭐``  →  both Survival and BM are priority
-      - ⭐ after any middle GS: only that spec is priority
-
-    ❌  = saved character (already saved this lockout)
-
-    Returns ``(results, errors)`` where *results* is a list of dicts with keys:
-        char_name, char_class, spec, gearscore, is_prio (bool), is_saved (bool), note (str)
-    and *errors* is a list of human-readable rejection reasons.
-
-    One dict is returned per spec/GS pair. Characters with multiple specs
-    (e.g. Shadow/6500/Disc/6300) produce multiple dicts, one per spec.
-    All dicts for the same character line share the same ``note`` value.
-    """
-    results = []
-    errors = []
-    seen: set[tuple[str, str]] = set()  # (char_name_lower, spec_lower)
-
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or not _CHAR_LINE_RE.match(line):
-            continue
-
-        is_saved = "❌" in line or "✗" in line
-
-        # Strip only saved markers before splitting; keep star markers in place
-        # so we can detect per-spec priority later.
-        clean = line.replace("❌", "").replace("✗", "").strip()
-
-        parts = [p.strip() for p in clean.split("/")]
-        # Need at least: CharName / CharClass / Spec / GS
-        if len(parts) < 4:
-            continue
-
-        char_name = parts[0].replace("⭐", "").replace("★", "").strip()
-        char_class_raw = parts[1].replace("⭐", "").replace("★", "").strip()
-        if not char_name or not char_class_raw:
-            continue
-
-        # Strict name validation: letters only, 1–12 characters.
-        if not _NAME_RE.match(char_name):
-            errors.append(
-                f"**{char_name}**: invalid character name — names must be 1–12 letters only (A–Z)."
-            )
-            continue
-
-        # Class validation: must resolve to a known WoW class.
-        char_class = normalize_class(char_class_raw)
-        if char_class not in KNOWN_CLASSES:
-            errors.append(
-                f"**{char_name}**: unrecognised class `{char_class_raw}` — "
-                f"valid classes are: {', '.join(sorted(KNOWN_CLASSES))}."
-            )
-            continue
-
-        name_lower = char_name.lower()
-
-        # Remaining parts alternate: spec, gs, spec, gs, …
-        spec_gs = parts[2:]
-        if len(spec_gs) < 2:
-            errors.append(f"**{char_name}**: missing spec/GS data.")
-            continue
-
-        # ⭐ in the very last part (trailing star after final GS) means all specs
-        # for this character are priority.
-        last_has_star = "⭐" in spec_gs[-1] or "★" in spec_gs[-1]
-
-        # Note for this line — accumulated from any GS segment that has trailing text.
-        line_note = ""
-
-        i = 0
-        while i + 1 < len(spec_gs):
-            spec_raw = spec_gs[i]
-            gs_raw = spec_gs[i + 1]
-
-            spec_has_star = "⭐" in spec_raw or "★" in spec_raw
-            gs_has_star = "⭐" in gs_raw or "★" in gs_raw
-
-            # This spec is priority if: line-level star (last GS), star in the
-            # spec name segment, or star in this GS segment.
-            spec_is_prio = last_has_star or spec_has_star or gs_has_star
-
-            spec = spec_raw.replace("⭐", "").replace("★", "").strip()
-
-            try:
-                gs, segment_note = _parse_gs_and_note(gs_raw)
-            except ValueError:
-                errors.append(f"**{char_name}**: could not parse GS value from `{gs_raw.strip()}`.")
-                i += 2
-                continue
-
-            if segment_note:
-                line_note = segment_note
-
-            if spec:
-                key = (name_lower, spec.lower())
-                if key not in seen:
-                    seen.add(key)
-                    results.append(
-                        {
-                            "char_name": char_name.capitalize(),
-                            "char_class": char_class,
-                            "spec": spec,
-                            "gearscore": gs,
-                            "is_prio": spec_is_prio,
-                            "is_saved": is_saved,
-                            "note": "",  # filled in after the loop
-                        }
-                    )
-            i += 2
-
-        # Back-fill the note for all entries produced by this line.
-        if line_note:
-            for entry in results:
-                if entry["char_name"].lower() == name_lower and entry["note"] == "":
-                    entry["note"] = line_note
-
-    return results, errors
-
-
-def _find_random_text_lines(text: str) -> list[str]:
-    """
-    Return a list of non-empty lines that are neither a leading tentative
-    keyword nor a valid character sign-up line.
-
-    Only call this when the message already contains at least one character
-    line (detected via ``_CHAR_LINE_RE``); the function is a no-op otherwise
-    because the caller guards on that condition.
-
-    Rules:
-      - The *first* non-empty line may be a tentative keyword ("tentative" /
-        "maybe") — it is allowed and excluded from the results.
-      - Every other non-empty line must match ``_CHAR_LINE_RE``.  Lines that
-        do not match are returned as random-text offenders.
-    """
-    random_lines: list[str] = []
-    first_non_empty_checked = False
-
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        # Allow the very first non-empty line to be a tentative keyword.
-        if not first_non_empty_checked:
-            first_non_empty_checked = True
-            if line.lower() in _TENTATIVE_KEYWORDS:
-                continue
-        if not _CHAR_LINE_RE.match(line):
-            random_lines.append(line)
-
-    return random_lines
-
-
-def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
-    unique_players = len(set(
-        s.get("discord_user_id") for s in signups if s.get("discord_user_id")
-    ))
-
-    status_emoji = {"open": "🟢", "locked": "🔒"}.get(
-        raid.get("status", "open"), "🟢"
-    )
-    is_open = raid.get("status", "open") == "open"
-
-    embed = discord.Embed(
-        title=f"⚔️ {raid['name']}",
-        description=raid.get("description") or "",
-        color=discord.Color.gold() if is_open else discord.Color.red(),
-    )
-    embed.add_field(name="📍 Instance", value=raid["raid_instance"], inline=True)
-    embed.add_field(
-        name="📅 Date",
-        value=f"<t:{int(raid['date'].timestamp())}:F>",
-        inline=True,
-    )
-    embed.add_field(name="Status", value=f"{status_emoji} {raid['status'].capitalize()}", inline=True)
-    embed.add_field(
-        name="👥 Players Signed Up",
-        value=f"{unique_players} / {raid['max_size']}",
-        inline=False,
-    )
-    embed.set_footer(text=f"Raid ID: {raid['id']}")
-    return embed
-
-
-async def update_raid_embed(bot: discord.Client, raid_id: int):
-    """Fetch raid + signups and edit the original Discord message."""
-    loop = asyncio.get_event_loop()
-
-    def _fetch():
-        session = get_session()
-        try:
-            raid = session.get(Raid, raid_id)
-            if raid is None:
-                return None, None
-            sups = session.query(Signup).filter_by(raid_id=raid_id).all()
-            signup_data = []
-            for s in sups:
-                signup_data.append(
-                    {
-                        "discord_user_id": s.discord_user_id,
-                    }
-                )
-            raid_data = {
-                "id": raid.id,
-                "name": raid.name,
-                "date": raid.date,
-                "raid_instance": raid.raid_instance,
-                "description": raid.description,
-                "max_size": raid.max_size,
-                "status": raid.status.value if raid.status else "open",
-                "discord_message_id": raid.discord_message_id,
-                "discord_channel_id": raid.discord_channel_id,
-            }
-            return raid_data, signup_data
-        finally:
-            session.close()
-
-    raid_data, signup_data = await loop.run_in_executor(None, _fetch)
-
-    if not raid_data or not raid_data.get("discord_message_id"):
-        return
-
-    try:
-        channel = bot.get_channel(raid_data["discord_channel_id"])
-        if channel is None:
-            channel = await bot.fetch_channel(raid_data["discord_channel_id"])
-        msg = await channel.fetch_message(raid_data["discord_message_id"])
-        embed = _build_signup_embed(raid_data, signup_data)
-        is_locked = raid_data["status"] != "open"
-        view = None if is_locked else SignupView()
-        await msg.edit(embed=embed, view=view)
-    except discord.Forbidden as e:
-        logger.info(f"Missing access to update raid embed for raid {raid_id}: {e}")
-    except Exception as e:
-        logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
-
-
-async def _post_to_raid_log(bot: discord.Client, raid_id: int, log_message: str):
-    """Post a message to the raid's sign-up log thread, if one exists."""
-    loop = asyncio.get_event_loop()
-
-    def _get_thread_id():
-        session = get_session()
-        try:
-            raid = session.get(Raid, raid_id)
-            return raid.discord_log_thread_id if raid else None
-        finally:
-            session.close()
-
-    thread_id = await loop.run_in_executor(None, _get_thread_id)
-    if not thread_id:
-        return
-    try:
-        thread = bot.get_channel(thread_id)
-        if thread is None:
-            thread = await bot.fetch_channel(thread_id)
-        await thread.send(log_message)
-    except Exception as e:
-        logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
-
-
-def _chars_to_dicts(characters) -> list[dict]:
-    """Serialize Character ORM objects to plain dicts (safe to use after session close)."""
-    return [
-        {
-            "id": c.id,
-            "char_name": c.char_name,
-            "realm": c.realm,
-            "char_class": c.char_class,
-            "spec": c.spec,
-            "gearscore": c.gearscore or 0.0,
-        }
-        for c in characters
-    ]
-
-
-def _char_display_description(char: dict) -> str:
-    """Return a short spec/class/GS description string for a character dict."""
-    spec_or_class = char["spec"] if char["spec"] else (char["char_class"] or "?")
-    return f"{spec_or_class} – GS {format_gs(char['gearscore'])}"
-
-
-def _char_label(char: dict) -> str:
-    """Return 'CharName (Spec)' when a spec is present, otherwise just 'CharName'."""
-    if char.get("spec"):
-        return f"{char['char_name']} ({char['spec']})"
-    return char["char_name"]
-
-
-def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
-    """
-    Group per-spec character rows by character name.
-
-    Each unique char_name becomes one group dict with:
-        id         – primary character ID (row with the highest gearscore)
-        char_name  – character name
-        realm      – realm name
-        char_class – class string
-        spec       – primary spec name (highest GS), or None if no specs
-        gearscore  – highest gearscore across all rows (including spec-less)
-        specs      – list of (spec, gearscore, id) tuples for rows that have a
-                     spec, sorted by GS descending; may be empty
-    """
-    groups: dict[str, dict] = {}
-    # Track all (gs, id) pairs per group regardless of spec, for primary selection
-    all_rows: dict[str, list[tuple[float, int]]] = {}
-
-    for c in char_dicts:
-        key = c["char_name"].lower()
-        gs = c.get("gearscore", 0.0)
-        if key not in groups:
-            groups[key] = {
-                "id": c["id"],
-                "char_name": c["char_name"],
-                "realm": c.get("realm", ""),
-                "char_class": c.get("char_class"),
-                "spec": c.get("spec"),
-                "gearscore": gs,
-                "specs": [],
-            }
-            all_rows[key] = []
-        spec = c.get("spec")
-        if spec:
-            groups[key]["specs"].append((spec, gs, c["id"]))
-        all_rows[key].append((gs, c["id"]))
-
-    result = []
-    for key, group in groups.items():
-        group["specs"].sort(key=lambda x: x[1], reverse=True)
-        if group["specs"]:
-            # Primary is the highest-GS spec row
-            group["id"] = group["specs"][0][2]
-            group["spec"] = group["specs"][0][0]
-            group["gearscore"] = group["specs"][0][1]
-        else:
-            # No spec rows – use the highest-GS row as primary
-            best_gs, best_id = max(all_rows[key], key=lambda x: x[0])
-            group["id"] = best_id
-            group["gearscore"] = best_gs
-        result.append(group)
-    return result
-
-
 class SignupPrioritySelectView(discord.ui.View):
     """
     Step 2 of the sign-up flow.
@@ -528,8 +90,8 @@ class SignupPrioritySelectView(discord.ui.View):
 
         options = [
             discord.SelectOption(
-                label=_char_label(c)[:100],
-                description=_char_display_description(c)[:100],
+                label=char_label(c)[:100],
+                description=char_display_description(c)[:100],
                 value=str(c["id"]),
             )
             for c in selected_chars[:25]
@@ -568,7 +130,7 @@ class SignupPrioritySelectView(discord.ui.View):
         def _upsert_all():
             session = get_session()
             try:
-                _upsert_discord_user(session, interaction.user)
+                upsert_discord_user(session, interaction.user)
                 for char in self.selected_chars:
                     signup_type = (
                         SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
@@ -603,7 +165,7 @@ class SignupPrioritySelectView(discord.ui.View):
 
         is_tentative = signup_status == SignupStatus.tentative
         lines = [
-            f"• **{_char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
+            f"• **{char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
             for c in self.selected_chars
         ]
         if is_tentative:
@@ -622,9 +184,9 @@ class SignupPrioritySelectView(discord.ui.View):
 
         log_message = (
             f"{log_emoji} {interaction.user.mention} {log_action} with: "
-            + ", ".join(f"**{_char_label(c)}**" for c in self.selected_chars)
+            + ", ".join(f"**{char_label(c)}**" for c in self.selected_chars)
         )
-        await _post_to_raid_log(interaction.client, raid_id, log_message)
+        await post_to_raid_log(interaction.client, raid_id, log_message)
         await update_raid_embed(interaction.client, raid_id)
 
 
@@ -646,8 +208,8 @@ class SignupCharacterSelectView(discord.ui.View):
 
         options = []
         for c in char_dicts[:25]:
-            label = _char_label(c)[:100]
-            description = _char_display_description(c)[:100]
+            label = char_label(c)[:100]
+            description = char_display_description(c)[:100]
             options.append(
                 discord.SelectOption(
                     label=label,
@@ -672,7 +234,7 @@ class SignupCharacterSelectView(discord.ui.View):
             self.chars_by_id[sid] for sid in selected_ids if sid in self.chars_by_id
         ]
 
-        names = ", ".join(_char_label(c) for c in selected_chars)
+        names = ", ".join(char_label(c) for c in selected_chars)
         is_tentative = self.signup_status == SignupStatus.tentative
         view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
         next_step_text = (
@@ -731,7 +293,7 @@ class SignupView(discord.ui.View):
                     .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
-                return raid.status, _chars_to_dicts(chars)
+                return raid.status, chars_to_dicts(chars)
             finally:
                 session.close()
 
@@ -818,7 +380,6 @@ class SignupView(discord.ui.View):
         guild_id, guild_raid_number, subdomain = await loop.run_in_executor(None, _fetch_raid)
 
         if BASE_DOMAIN and guild_raid_number:
-            # Use subdomain URL: {subdomain or guild_id}.{BASE_DOMAIN}/raids/{guild_raid_number}
             slug = subdomain if subdomain else str(guild_id)
             protocol = "https" if "https" in WEB_BASE_URL else "http"
             url = f"{protocol}://{slug}.{BASE_DOMAIN}/raids/{guild_raid_number}"
@@ -862,7 +423,7 @@ class SignupView(discord.ui.View):
                     .order_by(Character.char_name, Character.gearscore.desc())
                     .all()
                 )
-                return _chars_to_dicts(chars)
+                return chars_to_dicts(chars)
             finally:
                 session.close()
 
@@ -875,7 +436,7 @@ class SignupView(discord.ui.View):
             )
             return
 
-        char_groups = _group_chars_by_name(char_dicts)
+        char_groups = group_chars_by_name(char_dicts)
         lines = []
         for g in char_groups:
             parts = [g["char_name"], g["char_class"] or "Unknown"]
@@ -923,7 +484,7 @@ class SignupView(discord.ui.View):
         if removed:
             await interaction.response.send_message("✅ Withdrawn from the raid.", ephemeral=True)
             log_message = f"❌ {interaction.user.mention} withdrew from the raid."
-            await _post_to_raid_log(interaction.client, raid_id, log_message)
+            await post_to_raid_log(interaction.client, raid_id, log_message)
             await update_raid_embed(interaction.client, raid_id)
         else:
             await interaction.response.send_message(
@@ -947,18 +508,18 @@ class SignupCog(commands.Cog):
         content = message.content
         # Silently ignore DMs that contain no character sign-up lines
         if not any(
-            _CHAR_LINE_RE.match(line.strip())
+            CHAR_LINE_RE.match(line.strip())
             for line in content.splitlines()
             if line.strip()
         ):
             return
 
-        random_lines = _find_random_text_lines(content)
-        parsed, parse_errors = _parse_character_lines(content)
+        random_lines = find_random_text_lines(content)
+        parsed, parse_errors = parse_character_lines(content)
 
         all_errors: list[str] = []
         if random_lines:
-            quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
+            quoted = "\n".join(f"> {line}" for line in random_lines[:MAX_RANDOM_LINES_IN_ERROR])
             all_errors.append(
                 "Your message contains text that is not a character sign-up line:\n"
                 + quoted
@@ -985,7 +546,7 @@ class SignupCog(commands.Cog):
         def _register():
             session = get_session()
             try:
-                _upsert_discord_user(session, message.author)
+                upsert_discord_user(session, message.author)
                 char_spec_info: dict[str, dict] = {}
                 for entry in parsed:
                     char = (
@@ -1093,7 +654,7 @@ class SignupCog(commands.Cog):
         # character sign-up line?  If not, ignore silently (normal chat).
         content = message.content
         if not any(
-            _CHAR_LINE_RE.match(line.strip())
+            CHAR_LINE_RE.match(line.strip())
             for line in content.splitlines()
             if line.strip()
         ):
@@ -1135,17 +696,17 @@ class SignupCog(commands.Cog):
         # Now that we know this is a raid channel, validate the full message.
 
         # 1. Check for non-signup lines mixed in with character lines.
-        random_lines = _find_random_text_lines(content)
+        random_lines = find_random_text_lines(content)
 
         # 2. Parse character lines with strict name + class validation.
-        parsed, parse_errors = _parse_character_lines(content)
+        parsed, parse_errors = parse_character_lines(content)
 
-        is_tentative_msg = _is_tentative_message(content)
+        is_tentative_msg = is_tentative_message(content)
         signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
 
         all_errors: list[str] = []
         if random_lines:
-            quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
+            quoted = "\n".join(f"> {line}" for line in random_lines[:MAX_RANDOM_LINES_IN_ERROR])
             all_errors.append(
                 "Your message contains text that is not a character sign-up line:\n"
                 + quoted
@@ -1181,7 +742,7 @@ class SignupCog(commands.Cog):
         def _save_and_signup():
             session = get_session()
             try:
-                _upsert_discord_user(session, message.author)
+                upsert_discord_user(session, message.author)
 
                 # Remove ALL existing signups for this user+raid so the new message
                 # fully overwrites the old sign-up instead of merging with it.

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
-from dataclasses import dataclass, field
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,21 +10,10 @@ from sqlalchemy import select, func
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
+from bot.signup_embed import build_signup_embed
 from db.models import Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _RaidEmbed:
-    """Lightweight dataclass used to build a signup embed before the DB object is available."""
-    id: int
-    name: str
-    date: datetime.datetime
-    raid_instance: str
-    description: str
-    max_size: int
-    status: RaidStatus = field(default=RaidStatus.open)
 
 
 def is_officer():
@@ -37,36 +25,6 @@ def is_officer():
         return any(r.name == OFFICER_ROLE_NAME for r in interaction.user.roles)
 
     return app_commands.check(predicate)
-
-
-def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
-    unique_players = len(set(
-        s.discord_user_id for s in signups if s.discord_user_id
-    ))
-
-    status_emoji = {"open": "🟢", "locked": "🔒"}.get(
-        raid.status.value if raid.status else "open", "🟢"
-    )
-
-    embed = discord.Embed(
-        title=f"⚔️ {raid.name}",
-        description=raid.description or "",
-        color=discord.Color.gold() if raid.status == RaidStatus.open else discord.Color.red(),
-    )
-    embed.add_field(name="📍 Instance", value=raid.raid_instance, inline=True)
-    embed.add_field(
-        name="📅 Date",
-        value=f"<t:{int(raid.date.timestamp())}:F>",
-        inline=True,
-    )
-    embed.add_field(name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True)
-    embed.add_field(
-        name="👥 Players Signed Up",
-        value=str(unique_players),
-        inline=False,
-    )
-    embed.set_footer(text=f"Raid ID: {raid.id}")
-    return embed
 
 
 class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
@@ -138,18 +96,19 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             )
             return
 
-        fake = _RaidEmbed(
-            id=raid_id,
-            name=name,
-            date=date,
-            raid_instance=instance,
-            description=desc,
-            max_size=max_size,
-        )
+        raid_data = {
+            "id": raid_id,
+            "name": name,
+            "date": date,
+            "raid_instance": instance,
+            "description": desc,
+            "max_size": max_size,
+            "status": "open",
+        }
 
         from bot.cogs.signup import SignupView, HOWTO_TEXT as _HOWTO_TEXT
 
-        embed = _build_signup_embed(fake, [])  # type: ignore[arg-type]
+        embed = build_signup_embed(raid_data, [])
         view = SignupView()
 
         await interaction.response.send_message(embed=embed, view=view)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import discord
 from discord import app_commands
 from discord.ext import commands
+from sqlalchemy import select
 
 from bot.db import get_session
 from db.models import GuildAdminRole
@@ -48,7 +50,6 @@ class RaidAdminGroup(app_commands.Group):
             await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
             return
 
-        import asyncio
         loop = asyncio.get_running_loop()
 
         def _add():
@@ -81,7 +82,6 @@ class RaidAdminGroup(app_commands.Group):
             await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
             return
 
-        import asyncio
         loop = asyncio.get_running_loop()
 
         def _remove():
@@ -114,13 +114,11 @@ class RaidAdminGroup(app_commands.Group):
             await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
             return
 
-        import asyncio
         loop = asyncio.get_running_loop()
 
         def _list():
             session = get_session()
             try:
-                from sqlalchemy import select
                 rows = session.execute(
                     select(GuildAdminRole).where(GuildAdminRole.guild_id == guild_id)
                 ).scalars().all()

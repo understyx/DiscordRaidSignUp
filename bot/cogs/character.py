@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from bot.db import get_session
 from bot.class_utils import normalize_class
-from bot.cogs.signup import parse_gs, format_gs
+from bot.signup_parser import parse_gs, format_gs
 from db.models import Character, CharacterRole
 
 logger = logging.getLogger(__name__)
