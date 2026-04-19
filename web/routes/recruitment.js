@@ -34,6 +34,11 @@ const DISCORD_OAUTH_URL = 'https://discord.com/api/oauth2/authorize';
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
 
+// Notification Discord server — applicants are directed here to receive status updates
+const NOTIFY_GUILD_ID   = '1495371293183180932';
+const NOTIFY_CHANNEL_ID = '1495371294026366978';
+const NOTIFY_INVITE_URL = 'https://discord.gg/VfgQ4UKSEP';
+
 const router = express.Router();
 router.use(express.urlencoded({ extended: true }));
 
@@ -70,91 +75,28 @@ function currentUser(req) {
   };
 }
 
-/** Fetch guild roles via bot token; returns [] on error. */
-async function fetchGuildRoles(guildId) {
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!guildId || !botToken) return [];
-  try {
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!resp.ok) return [];
-    const roles = await resp.json();
-    return roles
-      .filter(r => r.id !== guildId)
-      .sort((a, b) => b.position - a.position)
-      .map(r => ({
-        id: r.id,
-        name: r.name,
-        color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
-      }));
-  } catch (_) {
-    return [];
-  }
-}
-
-/** Fetch text channels for a guild via bot token; returns [] on error. */
-async function fetchGuildChannels(guildId) {
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!guildId || !botToken) return [];
-  try {
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/channels`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!resp.ok) return [];
-    const channels = await resp.json();
-    return channels
-      .filter(c => c.type === 0) // text channels only
-      .sort((a, b) => (a.position || 0) - (b.position || 0))
-      .map(c => ({ id: c.id, name: c.name }));
-  } catch (_) {
-    return [];
-  }
-}
-
 /**
- * Add a Discord user to a guild using their guilds.join OAuth token.
- * Optionally assigns a role on join. If already a member, assigns role separately.
+ * Post a message to the notification server channel, mentioning the user.
+ * Used to ping applicants when their application status changes.
  */
-async function addUserToGuild(guildId, userId, accessToken, roleId) {
+async function sendNotificationChannelPing(userId, content) {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken || !accessToken) return { ok: false, reason: 'missing tokens' };
+  if (!botToken) return { ok: false, reason: 'no bot token' };
 
   try {
-    const body = { access_token: accessToken };
-    if (roleId) body.roles = [String(roleId)];
-
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
-      method: 'PUT',
+    const msgResp = await fetch(`${DISCORD_API}/channels/${NOTIFY_CHANNEL_ID}/messages`, {
+      method: 'POST',
       headers: {
         Authorization: `Bot ${botToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ content: `<@${userId}> ${content}` }),
     });
-
-    if (resp.status === 201) {
-      // Successfully added to guild
-      return { ok: true, added: true };
+    if (!msgResp.ok) {
+      const text = await msgResp.text().catch(() => '');
+      return { ok: false, reason: `Channel message ${msgResp.status}: ${text}` };
     }
-
-    if (resp.status === 204) {
-      // Already a member — assign role separately if needed
-      if (roleId) {
-        const roleResp = await fetch(
-          `${DISCORD_API}/guilds/${guildId}/members/${userId}/roles/${roleId}`,
-          {
-            method: 'PUT',
-            headers: { Authorization: `Bot ${botToken}` },
-          }
-        );
-        return { ok: roleResp.ok || roleResp.status === 204, added: false };
-      }
-      return { ok: true, added: false };
-    }
-
-    const text = await resp.text().catch(() => '');
-    return { ok: false, reason: `Discord API ${resp.status}: ${text}` };
+    return { ok: true };
   } catch (err) {
     return { ok: false, reason: `Network error: ${err.message}` };
   }
@@ -453,41 +395,6 @@ router.get('/oauth-callback', async (req, res) => {
     req.session.recruit_discord_id = userData.id;
     req.session.recruit_username = userData.username;
     req.session.recruit_display_name = userData.global_name || userData.username;
-    req.session.recruit_access_token = accessToken;
-
-    // Persist token so it survives session restarts
-    const formId = req.session.recruit_return_form_id;
-    if (formId) {
-      try {
-        const [[form]] = await pool.query(
-          'SELECT guild_id FROM recruitment_forms WHERE id = ? AND is_active = 1',
-          [formId]
-        );
-        if (form) {
-          const expiresAt = tokenData.expires_in
-            ? new Date(Date.now() + tokenData.expires_in * 1000)
-            : null;
-          await pool.query(
-            `INSERT INTO recruitment_oauth_tokens
-               (applicant_discord_id, guild_id, access_token, refresh_token, expires_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-               access_token  = VALUES(access_token),
-               refresh_token = VALUES(refresh_token),
-               expires_at    = VALUES(expires_at)`,
-            [
-              userData.id,
-              form.guild_id,
-              accessToken,
-              tokenData.refresh_token || null,
-              expiresAt,
-            ]
-          );
-        }
-      } catch (dbErr) {
-        console.warn('[recruitment] Failed to persist OAuth token:', dbErr.message);
-      }
-    }
 
     const returnFormId = req.session.recruit_return_form_id || null;
     delete req.session.recruit_return_form_id;
@@ -530,17 +437,9 @@ router.get('/', requireAdmin, async (req, res) => {
 // ── Admin: new form ───────────────────────────────────────────────────────────
 
 router.get('/new', requireAdmin, async (req, res) => {
-  const guildId = req.session.active_guild_id;
-  const [guildRoles, guildChannels] = await Promise.all([
-    fetchGuildRoles(guildId),
-    fetchGuildChannels(guildId),
-  ]);
-
   res.render('recruitment_form_builder.html', {
     form: null,
     questions: [],
-    guild_roles: guildRoles,
-    guild_channels: guildChannels,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -555,8 +454,6 @@ router.post('/new', requireAdmin, async (req, res) => {
   }
 
   const description = String(req.body.description || '').trim() || null;
-  const recruitRoleId = String(req.body.recruit_role_id || '').trim() || null;
-  const inviteChannelId = String(req.body.invite_channel_id || '').trim() || null;
 
   let slug;
   try {
@@ -566,22 +463,13 @@ router.post('/new', requireAdmin, async (req, res) => {
     return res.redirect('/recruitment/new');
   }
 
-  if (recruitRoleId && !/^\d+$/.test(recruitRoleId)) {
-    req.session.flash = '❌ Invalid recruit role ID.';
-    return res.redirect('/recruitment/new');
-  }
-  if (inviteChannelId && !/^\d+$/.test(inviteChannelId)) {
-    req.session.flash = '❌ Invalid invite channel ID.';
-    return res.redirect('/recruitment/new');
-  }
-
   let result;
   try {
     [result] = await pool.query(
       `INSERT INTO recruitment_forms
-         (guild_id, title, description, is_active, created_by, recruit_role_id, invite_channel_id, slug)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
-      [guildId, title, description, req.session.user_id, recruitRoleId, inviteChannelId, slug]
+         (guild_id, title, description, is_active, created_by, slug)
+       VALUES (?, ?, ?, 1, ?, ?)`,
+      [guildId, title, description, req.session.user_id, slug]
     );
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
@@ -633,16 +521,9 @@ router.get('/:form_id/edit-form', requireAdmin, async (req, res) => {
     options_parsed: q.options ? JSON.parse(q.options) : [],
   }));
 
-  const [guildRoles, guildChannels] = await Promise.all([
-    fetchGuildRoles(guildId),
-    fetchGuildChannels(guildId),
-  ]);
-
   res.render('recruitment_form_builder.html', {
     form,
     questions: questionsForBuilder,
-    guild_roles: guildRoles,
-    guild_channels: guildChannels,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -669,8 +550,6 @@ router.post('/:form_id/edit-form', requireAdmin, async (req, res) => {
   }
 
   const description = String(req.body.description || '').trim() || null;
-  const recruitRoleId = String(req.body.recruit_role_id || '').trim() || null;
-  const inviteChannelId = String(req.body.invite_channel_id || '').trim() || null;
 
   let slug;
   try {
@@ -680,21 +559,12 @@ router.post('/:form_id/edit-form', requireAdmin, async (req, res) => {
     return res.redirect(`/recruitment/${formId}/edit-form`);
   }
 
-  if (recruitRoleId && !/^\d+$/.test(recruitRoleId)) {
-    req.session.flash = '❌ Invalid recruit role ID.';
-    return res.redirect(`/recruitment/${formId}/edit-form`);
-  }
-  if (inviteChannelId && !/^\d+$/.test(inviteChannelId)) {
-    req.session.flash = '❌ Invalid invite channel ID.';
-    return res.redirect(`/recruitment/${formId}/edit-form`);
-  }
-
   try {
     await pool.query(
       `UPDATE recruitment_forms
-          SET title = ?, description = ?, recruit_role_id = ?, invite_channel_id = ?, slug = ?
+          SET title = ?, description = ?, slug = ?
         WHERE id = ?`,
-      [title, description, recruitRoleId, inviteChannelId, slug, formId]
+      [title, description, slug, formId]
     );
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
@@ -865,43 +735,19 @@ router.post('/:form_id/applications/:app_id/accept', requireAdmin, async (req, r
     [req.session.user_id, appId]
   );
 
-  // Assign recruit role if configured and not already done
-  if (form.recruit_role_id && !application.discord_invited) {
-    // Retrieve stored OAuth token
-    try {
-      const [[tokenRow]] = await pool.query(
-        'SELECT access_token FROM recruitment_oauth_tokens WHERE applicant_discord_id = ? AND guild_id = ?',
-        [application.applicant_discord_id, guildId]
-      );
-      if (tokenRow) {
-        const addResult = await addUserToGuild(
-          guildId,
-          application.applicant_discord_id,
-          tokenRow.access_token,
-          form.recruit_role_id
-        );
-        if (addResult.ok) {
-          await pool.query(
-            'UPDATE recruitment_applications SET discord_invited = 1 WHERE id = ?',
-            [appId]
-          );
-        } else {
-          console.warn('[recruitment] Failed to add user to guild on accept:', addResult.reason);
-        }
-      }
-    } catch (err) {
-      console.warn('[recruitment] Error during guild add on accept:', err.message);
-    }
-  }
-
-  // Send acceptance DM
+  // Send acceptance DM and notification channel ping
   const guildName = req.session.active_guild_name || 'the guild';
-  const dmResult = await sendDiscordDM(
-    application.applicant_discord_id,
-    `🎉 Congratulations, **${application.applicant_display_name}**! Your application to **${guildName}** has been **accepted**. Welcome aboard!`
-  );
+  const acceptMsg = `🎉 Congratulations, **${application.applicant_display_name}**! Your application to **${guildName}** has been **accepted**. Welcome aboard!`;
+  const dmResult = await sendDiscordDM(application.applicant_discord_id, acceptMsg);
   if (!dmResult.ok) {
     console.warn('[recruitment] Failed to send acceptance DM:', dmResult.reason);
+  }
+  const pingResult = await sendNotificationChannelPing(
+    application.applicant_discord_id,
+    acceptMsg
+  );
+  if (!pingResult.ok) {
+    console.warn('[recruitment] Failed to send acceptance channel ping:', pingResult.reason);
   }
 
   req.session.flash = `✅ Application from ${application.applicant_display_name} accepted.`;
@@ -937,14 +783,19 @@ router.post('/:form_id/applications/:app_id/reject', requireAdmin, async (req, r
     [req.session.user_id, appId]
   );
 
-  // Send rejection DM
+  // Send rejection DM and notification channel ping
   const guildName = req.session.active_guild_name || 'the guild';
-  const dmResult = await sendDiscordDM(
-    application.applicant_discord_id,
-    `Thank you for your interest in **${guildName}**. After reviewing your application, we have decided not to proceed at this time. We wish you the best!`
-  );
+  const rejectMsg = `Thank you for your interest in **${guildName}**. After reviewing your application, we have decided not to proceed at this time. We wish you the best!`;
+  const dmResult = await sendDiscordDM(application.applicant_discord_id, rejectMsg);
   if (!dmResult.ok) {
     console.warn('[recruitment] Failed to send rejection DM:', dmResult.reason);
+  }
+  const pingResult = await sendNotificationChannelPing(
+    application.applicant_discord_id,
+    rejectMsg
+  );
+  if (!pingResult.ok) {
+    console.warn('[recruitment] Failed to send rejection channel ping:', pingResult.reason);
   }
 
   req.session.flash = `Application from ${application.applicant_display_name} rejected.`;
@@ -1059,20 +910,17 @@ router.post('/:form_id/submit', async (req, res) => {
     }
   }
 
-  const wantsNotify = req.body.wants_discord_notify === 'on' ? 1 : 0;
-
   const [appResult] = await pool.query(
     `INSERT INTO recruitment_applications
        (form_id, guild_id, applicant_discord_id, applicant_username, applicant_display_name,
-        status, wants_discord_notify)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+        status)
+     VALUES (?, ?, ?, ?, ?, 'pending')`,
     [
       formId,
       form.guild_id,
       req.session.recruit_discord_id,
       req.session.recruit_username,
       req.session.recruit_display_name,
-      wantsNotify,
     ]
   );
   const appId = appResult.insertId;
@@ -1095,46 +943,6 @@ router.post('/:form_id/submit', async (req, res) => {
       'INSERT INTO recruitment_answers (application_id, question_id, answer_text) VALUES (?, ?, ?)',
       [appId, q.id, answerText]
     );
-  }
-
-  // Handle Discord notification opt-in
-  if (wantsNotify) {
-    const accessToken = req.session.recruit_access_token;
-    let addedToGuild = false;
-
-    if (accessToken) {
-      const addResult = await addUserToGuild(
-        String(form.guild_id),
-        req.session.recruit_discord_id,
-        accessToken,
-        form.recruit_role_id || null
-      );
-      if (addResult.ok) {
-        addedToGuild = true;
-        await pool.query(
-          'UPDATE recruitment_applications SET discord_invited = 1 WHERE id = ?',
-          [appId]
-        );
-      } else {
-        console.warn('[recruitment] Failed to add applicant to guild:', addResult.reason);
-      }
-    }
-
-    // Send DM confirming submission
-    try {
-      const [[guildRow]] = await pool.query(
-        'SELECT guild_name FROM bot_guilds WHERE guild_id = ?',
-        [form.guild_id]
-      );
-      const resolvedGuildName = guildRow ? guildRow.guild_name : form.title;
-      await sendDiscordDM(
-        req.session.recruit_discord_id,
-        `📩 Your application to **${resolvedGuildName}** has been submitted! We'll review it and get back to you soon.` +
-          (addedToGuild ? '\n\nYou\'ve been added to the Discord server.' : '')
-      );
-    } catch (dmErr) {
-      console.warn('[recruitment] Failed to send submission DM:', dmErr.message);
-    }
   }
 
   req.session.flash = '✅ Your application has been submitted successfully!';
@@ -1305,7 +1113,7 @@ function redirectToRecruitmentOAuth(req, res) {
     client_id: process.env.DISCORD_CLIENT_ID || '',
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'identify guilds.join',
+    scope: 'identify',
     state,
   });
 
