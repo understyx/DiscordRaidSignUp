@@ -511,6 +511,77 @@ router.post('/characters/:char_id/update-class', express.json(), async (req, res
   return res.json({ ok: true });
 });
 
+// ── Recruitment applicant: update character spec ──────────────────────────────
+router.post('/characters/:char_id/update-spec', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+  const spec = (req.body.spec || '').trim() || null;
+
+  const [[char]] = await pool.query(
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  await pool.query('UPDATE characters SET spec = ?, last_updated = NOW() WHERE id = ?', [spec, charId]);
+
+  return res.json({ ok: true });
+});
+
+// ── Recruitment applicant: update character gearscore ────────────────────────
+router.post('/characters/:char_id/update-gs', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+  const gearscore = parseGS(req.body.gearscore);
+
+  const [[char]] = await pool.query(
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, charId]);
+
+  return res.json({ ok: true });
+});
+
+// ── Recruitment applicant: delete (soft-delete) a character spec ──────────────
+router.post('/characters/:char_id/delete', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+
+  const [[char]] = await pool.query(
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ?', [charId]);
+
+  return res.json({ ok: true });
+});
+
 // ── OAuth callback (must be before /:form_id) ─────────────────────────────────
 
 router.get('/oauth-callback', async (req, res) => {

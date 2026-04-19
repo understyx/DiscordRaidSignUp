@@ -50,12 +50,12 @@
     <table class="table table-hover align-middle mb-0">
       <thead class="table-dark">
         <tr>
-          <th style="width:2rem;"></th>
           <th>Character</th>
           <th>Realm</th>
           <th>Class</th>
           <th>Spec</th>
           <th>GS</th>
+          <th style="width:2rem;"></th>
         </tr>
       </thead>
       <tbody id="char-list-{{ q.id }}">
@@ -68,75 +68,53 @@
         {% for char_name, group_chars in chars | groupby('char_name') %}
         {% set charKey = char_name | lower | replace(' ', '-') %}
         {% set firstChar = group_chars | first %}
+        {% set groupList = group_chars | list %}
+        {% set groupSize = groupList | length %}
 
-        {% for c in group_chars %}
+        {% for c in groupList %}
         {% set cls_key = (c.char_class or '') | lower | replace(' ', '-') %}
         {% set isChecked = c.id in preselected %}
-        <tr>
+        <tr data-char-key="{{ charKey }}" data-spec-row="true">
+          {% if loop.index == 1 %}
+          <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ groupSize }}" data-char-cell="name">
+            {{ char_name }}
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
+                    onclick="showAddSpec('{{ q.id }}', '{{ charKey }}')" title="Add Spec">➕</button>
+          </td>
+          <td class="text-muted" rowspan="{{ groupSize }}" data-char-cell="realm">{{ firstChar.realm or '—' }}</td>
+          <td class="cls-{{ cls_key }}" rowspan="{{ groupSize }}" data-char-cell="class">{{ firstChar.char_class or '—' }}</td>
+          {% endif %}
           <td>
-            <input class="form-check-input" type="checkbox"
-                   name="char_sel_{{ q.id }}" value="{{ c.id }}"
-                   id="char_{{ q.id }}_{{ c.id }}"
-                   {% if isChecked %}checked{% endif %}>
-          </td>
-          <td class="align-top pt-2">
             <div class="d-flex gap-1 align-items-center flex-nowrap">
-              <input type="text" id="char_name_{{ c.id }}"
-                     value="{{ c.char_name }}"
-                     class="form-control form-control-sm bg-dark text-light border-secondary cls-{{ cls_key }}"
-                     style="width:110px" maxlength="50" />
-              <button type="button" class="btn btn-sm btn-outline-secondary"
-                      onclick="saveCharField({{ c.id }}, 'name', this)"
-                      title="Save Name">💾</button>
-            </div>
-          </td>
-          <td class="align-top pt-2">
-            <div class="d-flex gap-1 align-items-center flex-nowrap">
-              <input type="text" id="char_realm_{{ c.id }}"
-                     value="{{ c.realm or 'Icecrown' }}"
+              <input class="form-check-input" type="checkbox"
+                     name="char_sel_{{ q.id }}" value="{{ c.id }}"
+                     id="char_{{ q.id }}_{{ c.id }}"
+                     {% if isChecked %}checked{% endif %}>
+              <input type="text" id="char_spec_{{ c.id }}"
+                     value="{{ c.spec or '' }}"
                      class="form-control form-control-sm bg-dark text-light border-secondary"
-                     style="width:100px" maxlength="50" />
+                     style="width:110px" placeholder="—" maxlength="50" />
               <button type="button" class="btn btn-sm btn-outline-secondary"
-                      onclick="saveCharField({{ c.id }}, 'realm', this)"
-                      title="Save Realm">💾</button>
+                      onclick="saveCharSpec({{ c.id }}, this)" title="Save Spec">💾</button>
             </div>
           </td>
-          <td class="align-top pt-2">
+          <td>
             <div class="d-flex gap-1 align-items-center flex-nowrap">
-              <select id="char_class_{{ c.id }}"
-                      class="form-select form-select-sm bg-dark text-light border-secondary cls-{{ cls_key }}"
-                      style="width:130px">
-                <option value="">— Class —</option>
-                <option {% if c.char_class == 'Death Knight' %}selected{% endif %}>Death Knight</option>
-                <option {% if c.char_class == 'Druid' %}selected{% endif %}>Druid</option>
-                <option {% if c.char_class == 'Hunter' %}selected{% endif %}>Hunter</option>
-                <option {% if c.char_class == 'Mage' %}selected{% endif %}>Mage</option>
-                <option {% if c.char_class == 'Paladin' %}selected{% endif %}>Paladin</option>
-                <option {% if c.char_class == 'Priest' %}selected{% endif %}>Priest</option>
-                <option {% if c.char_class == 'Rogue' %}selected{% endif %}>Rogue</option>
-                <option {% if c.char_class == 'Shaman' %}selected{% endif %}>Shaman</option>
-                <option {% if c.char_class == 'Warlock' %}selected{% endif %}>Warlock</option>
-                <option {% if c.char_class == 'Warrior' %}selected{% endif %}>Warrior</option>
-              </select>
+              <input type="text" id="char_gs_{{ c.id }}"
+                     value="{{ c.gearscore | gsformat if c.gearscore else '' }}"
+                     class="form-control form-control-sm bg-dark text-light border-secondary"
+                     style="width:80px" placeholder="—" maxlength="10" />
               <button type="button" class="btn btn-sm btn-outline-secondary"
-                      onclick="saveCharField({{ c.id }}, 'class', this)"
-                      title="Save Class">💾</button>
+                      onclick="saveCharGS({{ c.id }}, this)" title="Save GS">💾</button>
             </div>
           </td>
-          <td class="text-muted small">{{ c.spec or '—' }}</td>
-          <td class="text-muted small">
-            {%- if c.gearscore %}{{ c.gearscore | gsformat }} GS{% else %}—{% endif -%}
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    onclick="deleteSpec({{ c.id }}, '{{ q.id }}', '{{ charKey }}', this)"
+                    title="Remove">✕</button>
           </td>
         </tr>
         {% endfor %}
-
-        <!-- Add Spec trigger row for {{ char_name }} -->
-        <tr id="addSpecTrigger-{{ q.id }}_{{ charKey }}">
-          <td colspan="6" class="py-2 text-center border-bottom border-secondary">
-            <button type="button" class="btn btn-sm btn-outline-wow"
-                    onclick="showAddSpec('{{ q.id }}', '{{ charKey }}')">Add Spec</button>
-          </td>
-        </tr>
 
         <!-- Add Spec inline form row for {{ char_name }} (hidden) -->
         <tr id="addSpecRow-{{ q.id }}_{{ charKey }}" class="d-none">
@@ -401,14 +379,12 @@ const BIS_GS = 99999;
 // ── Add Spec per-character helpers ────────────────────────────────────────────
 
 function showAddSpec(qid, charKey) {
-  document.getElementById('addSpecRow-'     + qid + '_' + charKey).classList.remove('d-none');
-  document.getElementById('addSpecTrigger-' + qid + '_' + charKey).classList.add('d-none');
-  document.getElementById('new_spec_spec_'  + qid + '_' + charKey).focus();
+  document.getElementById('addSpecRow-' + qid + '_' + charKey).classList.remove('d-none');
+  document.getElementById('new_spec_spec_' + qid + '_' + charKey).focus();
 }
 
 function hideAddSpec(qid, charKey) {
-  document.getElementById('addSpecRow-'     + qid + '_' + charKey).classList.add('d-none');
-  document.getElementById('addSpecTrigger-' + qid + '_' + charKey).classList.remove('d-none');
+  document.getElementById('addSpecRow-' + qid + '_' + charKey).classList.add('d-none');
 }
 
 async function registerSpec(qid, charKey) {
@@ -441,40 +417,28 @@ async function registerSpec(qid, charKey) {
 
     const c = data.character;
     const list = document.getElementById('char-list-' + qid);
-    const trigger = document.getElementById('addSpecTrigger-' + qid + '_' + charKey);
-    const clsKey = (c.char_class || '').toLowerCase().replace(/ /g, '-');
-    const gs = c.gearscore
-      ? (c.gearscore >= BIS_GS ? 'BiS GS' : Math.floor(c.gearscore) + ' GS')
-      : '—';
+    const addSpecRow = document.getElementById('addSpecRow-' + qid + '_' + charKey);
 
     // Check if the spec already exists in the table
     const existingCb = list.querySelector(`input[value="${c.id}"]`);
     if (existingCb) {
       existingCb.checked = true;
     } else {
+      // Increment rowspan of the first spec row's name/realm/class cells
+      const specRows = [...list.querySelectorAll(`tr[data-char-key="${charKey}"][data-spec-row]`)];
+      if (specRows.length > 0) {
+        const firstRow = specRows[0];
+        ['name', 'realm', 'class'].forEach(cell => {
+          const td = firstRow.querySelector(`td[data-char-cell="${cell}"]`);
+          if (td) td.setAttribute('rowspan', parseInt(td.getAttribute('rowspan') || 1) + 1);
+        });
+      }
+
       const row = document.createElement('tr');
-      row.innerHTML =
-        `<td><input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
-        `value="${c.id}" id="char_${qid}_${c.id}" checked></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        `<input type="text" id="char_name_${c.id}" value="${c.char_name}" ` +
-        `class="form-control form-control-sm bg-dark text-light border-secondary cls-${clsKey}" ` +
-        `style="width:110px" maxlength="50" />` +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'name', this)" title="Save Name">💾</button></div></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        `<input type="text" id="char_realm_${c.id}" value="${c.realm || 'Icecrown'}" ` +
-        `class="form-control form-control-sm bg-dark text-light border-secondary" ` +
-        `style="width:100px" maxlength="50" />` +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'realm', this)" title="Save Realm">💾</button></div></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        buildClassSelect(c.id, c.char_class, clsKey) +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'class', this)" title="Save Class">💾</button></div></td>` +
-        `<td class="text-muted small">${c.spec || '—'}</td>` +
-        `<td class="text-muted small">${gs}</td>`;
-      list.insertBefore(row, trigger);
+      row.dataset.charKey = charKey;
+      row.dataset.specRow = 'true';
+      row.innerHTML = buildSpecCells(c, qid, charKey);
+      list.insertBefore(row, addSpecRow);
     }
 
     specEl.value = '';
@@ -534,54 +498,32 @@ async function registerChar(qid) {
       existingCb.checked = true;
     } else {
       const clsKey = (c.char_class || '').toLowerCase().replace(/ /g, '-');
-      const gs = c.gearscore
-        ? (c.gearscore >= BIS_GS ? 'BiS GS' : Math.floor(c.gearscore) + ' GS')
-        : '—';
 
-      // New character row
+      // New character row (first row of group — includes name/realm/class cells with rowspan=1)
       const row = document.createElement('tr');
+      row.dataset.charKey = charKey;
+      row.dataset.specRow = 'true';
       row.innerHTML =
-        `<td><input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
-        `value="${c.id}" id="char_${qid}_${c.id}" checked></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        `<input type="text" id="char_name_${c.id}" value="${c.char_name}" ` +
-        `class="form-control form-control-sm bg-dark text-light border-secondary cls-${clsKey}" ` +
-        `style="width:110px" maxlength="50" />` +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'name', this)" title="Save Name">💾</button></div></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        `<input type="text" id="char_realm_${c.id}" value="${c.realm || 'Icecrown'}" ` +
-        `class="form-control form-control-sm bg-dark text-light border-secondary" ` +
-        `style="width:100px" maxlength="50" />` +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'realm', this)" title="Save Realm">💾</button></div></td>` +
-        `<td class="align-top pt-2"><div class="d-flex gap-1 align-items-center flex-nowrap">` +
-        buildClassSelect(c.id, c.char_class, clsKey) +
-        `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
-        `onclick="saveCharField(${c.id}, 'class', this)" title="Save Class">💾</button></div></td>` +
-        `<td class="text-muted small">${c.spec || '—'}</td>` +
-        `<td class="text-muted small">${gs}</td>`;
+        `<td class="fw-bold cls-${clsKey}" rowspan="1" data-char-cell="name">` +
+        `${escapeHtml(c.char_name)}<button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1" ` +
+        `onclick="showAddSpec('${qid}', '${charKey}')" title="Add Spec">➕</button></td>` +
+        `<td class="text-muted" rowspan="1" data-char-cell="realm">${escapeHtml(c.realm || '—')}</td>` +
+        `<td class="cls-${clsKey}" rowspan="1" data-char-cell="class">${escapeHtml(c.char_class || '—')}</td>` +
+        buildSpecCells(c, qid, charKey);
       list.insertBefore(row, addCharRow);
 
-      // Inject Add Spec rows only if they don't exist yet for this charKey
-      if (!document.getElementById('addSpecTrigger-' + qid + '_' + charKey)) {
-        const addSpecTriggerRow = document.createElement('tr');
-        addSpecTriggerRow.id = 'addSpecTrigger-' + qid + '_' + charKey;
-        addSpecTriggerRow.innerHTML =
-          `<td colspan="6" class="py-2 text-center border-bottom border-secondary">` +
-          `<button type="button" class="btn btn-sm btn-outline-wow" ` +
-          `onclick="showAddSpec('${qid}', '${charKey}')">Add Spec</button></td>`;
-
+      // Inject addSpecRow only if it doesn't exist yet for this charKey
+      if (!document.getElementById('addSpecRow-' + qid + '_' + charKey)) {
         const addSpecFormRow = document.createElement('tr');
         addSpecFormRow.id = 'addSpecRow-' + qid + '_' + charKey;
         addSpecFormRow.className = 'd-none';
         addSpecFormRow.innerHTML =
           `<td colspan="6" class="p-2 border-bottom border-secondary">` +
-          `<input type="hidden" id="add_spec_name_${qid}_${charKey}" value="${c.char_name}" />` +
-          `<input type="hidden" id="add_spec_realm_${qid}_${charKey}" value="${c.realm || 'Icecrown'}" />` +
-          `<input type="hidden" id="add_spec_class_${qid}_${charKey}" value="${c.char_class || ''}" />` +
+          `<input type="hidden" id="add_spec_name_${qid}_${charKey}" value="${escapeHtml(c.char_name)}" />` +
+          `<input type="hidden" id="add_spec_realm_${qid}_${charKey}" value="${escapeHtml(c.realm || 'Icecrown')}" />` +
+          `<input type="hidden" id="add_spec_class_${qid}_${charKey}" value="${escapeHtml(c.char_class || '')}" />` +
           `<div class="d-flex gap-2 align-items-center flex-wrap">` +
-          `<span class="text-muted small fw-semibold">${c.char_name}</span>` +
+          `<span class="text-muted small fw-semibold">${escapeHtml(c.char_name)}</span>` +
           `<input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" ` +
           `id="new_spec_spec_${qid}_${charKey}" style="width:110px" placeholder="Spec" maxlength="50" />` +
           `<input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" ` +
@@ -594,7 +536,6 @@ async function registerChar(qid) {
           `<div id="spec-add-error-${qid}_${charKey}" class="text-danger small mt-2"></div>` +
           `</td>`;
 
-        list.insertBefore(addSpecTriggerRow, addCharRow);
         list.insertBefore(addSpecFormRow, addCharRow);
       }
     }
@@ -610,41 +551,65 @@ async function registerChar(qid) {
   }
 }
 
-const WOW_CLASSES = ['Death Knight','Druid','Hunter','Mage','Paladin','Priest','Rogue','Shaman','Warlock','Warrior'];
+// ── Row builder helpers ───────────────────────────────────────────────────────
 
-function buildClassSelect(charId, selectedClass, clsKey) {
-  const options = WOW_CLASSES.map(cls =>
-    `<option${cls === selectedClass ? ' selected' : ''}>${cls}</option>`
-  ).join('');
-  return `<select id="char_class_${charId}" ` +
-    `class="form-select form-select-sm bg-dark text-light border-secondary cls-${clsKey}" ` +
-    `style="width:130px"><option value="">— Class —</option>${options}</select>`;
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-async function saveCharField(charId, field, btn) {
-  let value;
-  if (field === 'name') {
-    value = document.getElementById('char_name_' + charId).value.trim();
-    if (!value) return;
-  } else if (field === 'realm') {
-    value = document.getElementById('char_realm_' + charId).value.trim() || 'Icecrown';
-  } else {
-    value = document.getElementById('char_class_' + charId).value;
-  }
+function buildSpecCells(c, qid, charKey) {
+  const gs = c.gearscore
+    ? (c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore).toString())
+    : '';
+  return (
+    `<td><div class="d-flex gap-1 align-items-center flex-nowrap">` +
+    `<input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
+    `value="${c.id}" id="char_${qid}_${c.id}" checked>` +
+    `<input type="text" id="char_spec_${c.id}" value="${escapeHtml(c.spec || '')}" ` +
+    `class="form-control form-control-sm bg-dark text-light border-secondary" ` +
+    `style="width:110px" placeholder="—" maxlength="50" />` +
+    `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+    `onclick="saveCharSpec(${c.id}, this)" title="Save Spec">💾</button>` +
+    `</div></td>` +
+    `<td><div class="d-flex gap-1 align-items-center flex-nowrap">` +
+    `<input type="text" id="char_gs_${c.id}" value="${escapeHtml(gs)}" ` +
+    `class="form-control form-control-sm bg-dark text-light border-secondary" ` +
+    `style="width:80px" placeholder="—" maxlength="10" />` +
+    `<button type="button" class="btn btn-sm btn-outline-secondary" ` +
+    `onclick="saveCharGS(${c.id}, this)" title="Save GS">💾</button>` +
+    `</div></td>` +
+    `<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" ` +
+    `onclick="deleteSpec(${c.id}, '${qid}', '${charKey}', this)" title="Remove">✕</button></td>`
+  );
+}
 
+// ── Save spec / GS ────────────────────────────────────────────────────────────
+
+async function saveCharSpec(charId, btn) {
+  const value = document.getElementById('char_spec_' + charId).value.trim();
+  await saveCharFieldGeneric(`/recruitment/characters/${charId}/update-spec`, { spec: value }, btn);
+}
+
+async function saveCharGS(charId, btn) {
+  const value = document.getElementById('char_gs_' + charId).value.trim();
+  await saveCharFieldGeneric(`/recruitment/characters/${charId}/update-gs`, { gearscore: value }, btn);
+}
+
+async function saveCharFieldGeneric(url, body, btn) {
   const origText = btn.textContent;
   btn.disabled = true;
   btn.textContent = '⏳';
 
   try {
-    const resp = await fetch(`/recruitment/characters/${charId}/update-${field}`, {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(
-        field === 'name'  ? { char_name: value }  :
-        field === 'realm' ? { realm: value }       :
-                            { char_class: value }
-      ),
+      body: JSON.stringify(body),
     });
     const data = await resp.json();
     if (!resp.ok || !data.ok) {
@@ -657,6 +622,66 @@ async function saveCharField(charId, field, btn) {
   } catch (e) {
     btn.textContent = '❌';
     setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 1500);
+  }
+}
+
+// ── Delete a spec row ─────────────────────────────────────────────────────────
+
+async function deleteSpec(charId, qid, charKey, btn) {
+  if (!confirm('Remove this spec?')) return;
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`/recruitment/characters/${charId}/delete`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { btn.disabled = false; return; }
+
+    const list = document.getElementById('char-list-' + qid);
+    const specRows = [...list.querySelectorAll(`tr[data-char-key="${charKey}"][data-spec-row]`)];
+    const deletedRow = btn.closest('tr');
+
+    if (specRows.length === 1) {
+      // Last spec for this character — remove row and its addSpecRow
+      deletedRow.remove();
+      const addSpecRow = document.getElementById('addSpecRow-' + qid + '_' + charKey);
+      if (addSpecRow) addSpecRow.remove();
+
+      // Show placeholder if no characters remain
+      if (!list.querySelector('tr[data-spec-row]')) {
+        const placeholder = document.createElement('tr');
+        placeholder.id = 'char-no-chars-' + qid;
+        placeholder.innerHTML = `<td colspan="6" class="text-muted small">No characters registered yet. Add one below.</td>`;
+        list.insertBefore(placeholder, document.getElementById('addCharRow-' + qid));
+      }
+    } else {
+      // Multiple specs exist — manage rowspan
+      const newRowspan = specRows.length - 1;
+      const isFirstRow = specRows[0] === deletedRow;
+
+      if (isFirstRow) {
+        // Move name/realm/class cells to the next spec row (insert in reverse to preserve order)
+        const nextRow = specRows[1];
+        ['class', 'realm', 'name'].forEach(cell => {
+          const td = deletedRow.querySelector(`td[data-char-cell="${cell}"]`);
+          if (td) {
+            td.setAttribute('rowspan', newRowspan);
+            nextRow.insertBefore(td, nextRow.firstChild);
+          }
+        });
+      } else {
+        // Decrement rowspan on the first row's group cells
+        const firstRow = specRows[0];
+        ['name', 'realm', 'class'].forEach(cell => {
+          const td = firstRow.querySelector(`td[data-char-cell="${cell}"]`);
+          if (td) td.setAttribute('rowspan', newRowspan);
+        });
+      }
+
+      deletedRow.remove();
+    }
+  } catch (e) {
+    btn.disabled = false;
+    console.error('Delete failed', e);
   }
 }
 
