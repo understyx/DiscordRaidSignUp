@@ -49,54 +49,6 @@
         <div class="form-text">Leave blank to use the numeric form ID in the URL. Automatically converted to lowercase.</div>
       </div>
 
-      <div class="row g-3">
-        <div class="col-md-6">
-          <label for="recruit_role_id" class="form-label">
-            Recruit Role
-            <span class="text-muted small">(assigned on guild join / accept)</span>
-          </label>
-          {% if guild_roles | length > 0 %}
-          <select class="form-select" id="recruit_role_id" name="recruit_role_id">
-            <option value="">— None —</option>
-            {% for r in guild_roles %}
-            <option value="{{ r.id }}"
-              {% if form and form.recruit_role_id and form.recruit_role_id | string == r.id %}selected{% endif %}>
-              @{{ r.name }}
-            </option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <input type="text" class="form-control" id="recruit_role_id" name="recruit_role_id"
-                 placeholder="Role ID (e.g. 123456789012345678)" pattern="\d*"
-                 value="{{ form.recruit_role_id if form and form.recruit_role_id else '' }}">
-          <div class="form-text">Could not load roles — enter the role ID manually.</div>
-          {% endif %}
-        </div>
-
-        <div class="col-md-6">
-          <label for="invite_channel_id" class="form-label">
-            Invite Channel
-            <span class="text-muted small">(used to create guild invite link)</span>
-          </label>
-          {% if guild_channels | length > 0 %}
-          <select class="form-select" id="invite_channel_id" name="invite_channel_id">
-            <option value="">— None —</option>
-            {% for c in guild_channels %}
-            <option value="{{ c.id }}"
-              {% if form and form.invite_channel_id and form.invite_channel_id | string == c.id %}selected{% endif %}>
-              #{{ c.name }}
-            </option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <input type="text" class="form-control" id="invite_channel_id" name="invite_channel_id"
-                 placeholder="Channel ID (e.g. 123456789012345678)" pattern="\d*"
-                 value="{{ form.invite_channel_id if form and form.invite_channel_id else '' }}">
-          <div class="form-text">Could not load channels — enter the channel ID manually.</div>
-          {% endif %}
-        </div>
-      </div>
-
     </div>
   </div>
 
