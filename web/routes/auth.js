@@ -15,6 +15,9 @@ const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
 const DISCORD_USER_GUILDS_URL = 'https://discord.com/api/users/@me/guilds';
 
+// Notification-only server — must never appear in the guild switcher
+const NOTIFY_GUILD_ID = '1495371293183180932';
+
 router.get('/login', async (req, res) => {
   const baseDomain = process.env.BASE_DOMAIN;
 
@@ -168,10 +171,11 @@ router.get('/callback', async (req, res) => {
     if (userGuildIds.length > 0) {
       const placeholders = userGuildIds.map(() => '?').join(', ');
       try {
-        const [botGuildRows] = await pool.query(
+        const [allBotGuildRows] = await pool.query(
           `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
           userGuildIds
         );
+        const botGuildRows = allBotGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID);
         if (botGuildRows.length === 1) {
           activeGuildId = String(botGuildRows[0].guild_id);
           activeGuildName = botGuildRows[0].guild_name;
