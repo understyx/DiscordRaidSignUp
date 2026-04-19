@@ -33,6 +33,22 @@
         <textarea class="form-control" id="description" name="description" rows="3">{{ form.description if form else '' }}</textarea>
       </div>
 
+      <div class="mb-3">
+        <label for="slug" class="form-label">
+          Custom URL Slug
+          <span class="text-muted small">(optional — letters, numbers, and hyphens only)</span>
+        </label>
+        <div class="input-group">
+          <span class="input-group-text text-muted small">/recruitment/</span>
+          <input type="text" class="form-control" id="slug" name="slug"
+                 pattern="[a-zA-Z0-9][a-zA-Z0-9\-]{0,98}[a-zA-Z0-9]|[a-zA-Z0-9]" maxlength="100"
+                 placeholder="e.g. apply-now"
+                 value="{{ form.slug if form and form.slug else '' }}"
+                 oninput="this.value = this.value.toLowerCase()">
+        </div>
+        <div class="form-text">Leave blank to use the numeric form ID in the URL. Automatically converted to lowercase.</div>
+      </div>
+
       <div class="row g-3">
         <div class="col-md-6">
           <label for="recruit_role_id" class="form-label">
