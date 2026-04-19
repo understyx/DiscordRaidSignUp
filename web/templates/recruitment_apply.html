@@ -1,5 +1,34 @@
 {% extends "base.html" %}
 {% block title %}{{ form.title }} – Apply{% endblock %}
+
+{# ── Macro: render a single question field ── #}
+{% macro renderField(q, fieldName, curVal) %}
+  {% if q.question_type == 'textarea' %}
+  <textarea class="form-control" name="{{ fieldName }}" rows="4"
+            {% if q.is_required %}required{% endif %}>{{ curVal }}</textarea>
+  {% elif q.question_type == 'select' %}
+  <select class="form-select" name="{{ fieldName }}"
+          {% if q.is_required %}required{% endif %}>
+    <option value="" disabled {% if not curVal %}selected{% endif %}>— choose one —</option>
+    {% for opt in q.options_parsed %}
+    <option value="{{ opt }}" {% if curVal == opt %}selected{% endif %}>{{ opt }}</option>
+    {% endfor %}
+  </select>
+  {% elif q.question_type == 'radio' %}
+  {% for opt in q.options_parsed %}
+  <div class="form-check">
+    <input class="form-check-input" type="radio" name="{{ fieldName }}"
+           value="{{ opt }}" {% if curVal == opt %}checked{% endif %}
+           {% if q.is_required %}required{% endif %}>
+    <label class="form-check-label">{{ opt }}</label>
+  </div>
+  {% endfor %}
+  {% else %}
+  <input type="text" class="form-control" name="{{ fieldName }}"
+         value="{{ curVal }}" {% if q.is_required %}required{% endif %}>
+  {% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
@@ -42,57 +71,94 @@
       {% endif %}
     {% endif %}
 
-    {# ── Application form ── #}
+    {# ── Application form (editable) ── #}
     {% if (not is_editing) or (is_editing and application and application.status == 'pending') %}
     <form method="post"
           action="{% if is_editing %}/recruitment/{{ form.id }}/edit{% else %}/recruitment/{{ form.id }}/submit{% endif %}">
 
-      {% for q in questions %}
-      <div class="card mb-3">
-        <div class="card-body">
-          <label class="form-label fw-semibold">
-            {{ q.question_text }}
-            {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
-          </label>
+      {% for block in blocks %}
 
-          {% if q.question_type == 'textarea' %}
-          <textarea class="form-control" name="answer_{{ q.id }}" rows="4"
-                    {% if q.is_required %}required{% endif %}>{{ existing_answers[q.id | string] if existing_answers[q.id | string] else '' }}</textarea>
-
-          {% elif q.question_type == 'select' %}
-          <select class="form-select" name="answer_{{ q.id }}"
-                  {% if q.is_required %}required{% endif %}>
-            <option value="" disabled {% if not existing_answers[q.id | string] %}selected{% endif %}>— choose one —</option>
-            {% for opt in q.options_parsed %}
-            <option value="{{ opt }}"
-              {% if existing_answers[q.id | string] == opt %}selected{% endif %}>
-              {{ opt }}
-            </option>
-            {% endfor %}
-          </select>
-
-          {% elif q.question_type == 'radio' %}
-          {% for opt in q.options_parsed %}
-          <div class="form-check">
-            <input class="form-check-input" type="radio" name="answer_{{ q.id }}"
-                   id="q{{ q.id }}_opt{{ loop.index0 }}" value="{{ opt }}"
-                   {% if existing_answers[q.id | string] == opt %}checked{% endif %}
-                   {% if q.is_required %}required{% endif %}>
-            <label class="form-check-label" for="q{{ q.id }}_opt{{ loop.index0 }}">
-              {{ opt }}
-            </label>
+        {# ── Single ungrouped question ── #}
+        {% if block.type == 'question' %}
+          {% set q = block.question %}
+          {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
+          <div class="card mb-3">
+            <div class="card-body">
+              <label class="form-label fw-semibold">
+                {{ q.question_text }}
+                {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
+              </label>
+              {{ renderField(q, 'answer_' ~ (q.id | string), curVal) }}
+            </div>
           </div>
-          {% endfor %}
 
-          {% else %}
-          {# default: text #}
-          <input type="text" class="form-control" name="answer_{{ q.id }}"
-                 value="{{ existing_answers[q.id | string] if existing_answers[q.id | string] else '' }}"
-                 {% if q.is_required %}required{% endif %}>
-          {% endif %}
+        {# ── Grouped questions (multi-column / repeatable) ── #}
+        {% elif block.type == 'group' %}
+          <div class="card mb-3">
+            <div class="card-header fw-semibold">{{ block.label }}</div>
+            <div class="card-body p-0">
+              <div class="group-container px-3 pt-3"
+                   {% if block.is_repeatable %}data-repeatable="true" data-group-label="{{ block.label }}"{% endif %}>
 
-        </div>
-      </div>
+                {# Render each instance (1 blank for new, N existing for edit) #}
+                {% for inst in block.instances %}
+                  {% set instIdx = loop.index0 %}
+                  <div class="group-instance{% if not loop.first %} border-top border-secondary pt-3 mt-3{% endif %}"
+                       data-instance-idx="{{ instIdx }}">
+
+                    {% if not loop.first %}
+                    <div class="d-flex justify-content-end mb-2">
+                      <button type="button" class="btn btn-sm btn-outline-danger"
+                              onclick="removeGroupInstance(this)">✕ Remove</button>
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-3">
+                      {% for q in block.questions %}
+                        {% if q.col_width == 'half' %}
+                          {% set colClass = 'col-md-6' %}
+                        {% elif q.col_width == 'third' %}
+                          {% set colClass = 'col-md-4' %}
+                        {% else %}
+                          {% set colClass = 'col-12' %}
+                        {% endif %}
+
+                        {% if block.is_repeatable %}
+                          {% set fieldName = 'answer_' ~ (q.id | string) ~ '_' ~ (instIdx | string) %}
+                          {% set curVal = inst[q.id | string] if inst[q.id | string] else (q.default_value if (instIdx == 0 and q.default_value) else '') %}
+                        {% else %}
+                          {% set fieldName = 'answer_' ~ (q.id | string) %}
+                          {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
+                        {% endif %}
+
+                        <div class="{{ colClass }}">
+                          <label class="form-label small fw-semibold">
+                            {{ q.question_text }}
+                            {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
+                          </label>
+                          {{ renderField(q, fieldName, curVal) }}
+                        </div>
+                      {% endfor %}
+                    </div>
+
+                  </div>
+                {% endfor %}
+
+              </div>
+
+              {% if block.is_repeatable %}
+              <div class="px-3 pb-3 mt-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="addGroupInstance(this.closest('.card').querySelector('.group-container'))">
+                  + Add another {{ block.label }}
+                </button>
+              </div>
+              {% endif %}
+
+            </div>
+          </div>
+        {% endif %}
+
       {% endfor %}
 
       {# ── Discord notification opt-in (only on first submit) ── #}
@@ -122,15 +188,13 @@
 
     </form>
 
+    {# ── Read-only view (accepted / rejected) ── #}
     {% elif is_editing and application and application.status != 'pending' %}
-    {# Read-only view of submitted answers #}
     {% for q in questions %}
     <div class="card mb-3">
       <div class="card-body">
         <p class="fw-semibold mb-1">{{ q.question_text }}</p>
-        <p class="mb-0 text-muted">
-          {{ existing_answers[q.id | string] or '(no answer)' }}
-        </p>
+        <p class="mb-0 text-muted">{{ display_answers[q.id | string] or '(no answer)' }}</p>
       </div>
     </div>
     {% endfor %}
@@ -138,4 +202,49 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addGroupInstance(container) {
+  const instances = container.querySelectorAll('.group-instance');
+  if (!instances.length) return;
+  const lastInstance = instances[instances.length - 1];
+  const newIdx = parseInt(lastInstance.dataset.instanceIdx, 10) + 1;
+
+  const clone = lastInstance.cloneNode(true);
+  clone.dataset.instanceIdx = newIdx;
+  clone.classList.add('border-top', 'border-secondary', 'pt-3', 'mt-3');
+
+  // Update field names and clear values
+  clone.querySelectorAll('[name]').forEach(el => {
+    const m = el.name.match(/^(answer_\d+)_(\d+)$/);
+    if (m) el.name = m[1] + '_' + newIdx;
+    if (el.tagName === 'TEXTAREA') {
+      el.value = '';
+    } else if (el.tagName === 'SELECT') {
+      el.selectedIndex = 0;
+    } else if (el.type === 'radio' || el.type === 'checkbox') {
+      el.checked = false;
+    } else if (el.tagName === 'INPUT') {
+      el.value = '';
+    }
+  });
+
+  // Ensure remove button exists in the clone
+  let removeDiv = clone.querySelector('.d-flex.justify-content-end');
+  if (!removeDiv) {
+    removeDiv = document.createElement('div');
+    removeDiv.className = 'd-flex justify-content-end mb-2';
+    removeDiv.innerHTML = '<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeGroupInstance(this)">✕ Remove</button>';
+    clone.insertBefore(removeDiv, clone.querySelector('.row'));
+  }
+
+  container.appendChild(clone);
+}
+
+function removeGroupInstance(btn) {
+  btn.closest('.group-instance').remove();
+}
+</script>
 {% endblock %}

@@ -36,12 +36,17 @@
 
         <div class="d-flex flex-wrap gap-2 align-items-center">
           {# Copy public link #}
+          {% if form.slug %}
           <button class="btn btn-sm btn-outline-secondary"
-                  onclick="copyLink('{{ base_url }}/recruitment/{{ form.slug if form.slug else form.id }}', this)">
+                  onclick="copyLink('{{ base_url }}/{{ form.slug }}', this)">
             🔗 Copy Link
           </button>
-          {% if form.slug %}
-          <span class="text-muted small">/recruitment/{{ form.slug }}</span>
+          <span class="text-muted small">/{{ form.slug }}</span>
+          {% else %}
+          <button class="btn btn-sm btn-outline-secondary"
+                  onclick="copyLink('{{ base_url }}/recruitment/{{ form.id }}', this)">
+            🔗 Copy Link
+          </button>
           {% endif %}
 
           <a href="/recruitment/{{ form.id }}/applications" class="btn btn-sm btn-outline-light">

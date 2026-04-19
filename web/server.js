@@ -210,6 +210,24 @@ app.use('/admin', adminRouter);
 app.use('/guild-settings', guildSettingsRouter);
 app.use('/recruitment', recruitmentRouter);
 
+// Bare-slug shortcut: /<slug> serves a recruitment form directly.
+// This must come after all other specific routes to avoid collisions.
+app.get('/:slug([a-z0-9][a-z0-9-]*)', async (req, res, next) => {
+  const slug = req.params.slug;
+  try {
+    const [[form]] = await pool.query(
+      'SELECT id FROM recruitment_forms WHERE slug = ? AND is_active = 1',
+      [slug]
+    );
+    if (!form) return next();
+    // Forward to the recruitment router, which handles /:form_id
+    req.url = '/' + slug;
+    recruitmentRouter(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /select-guild — guild picker page
 app.get('/select-guild', (req, res) => {
   if (!req.session.user_id) return res.redirect('/auth/login');
