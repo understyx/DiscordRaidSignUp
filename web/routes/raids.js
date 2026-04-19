@@ -610,6 +610,8 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   }
   const prioritySet = new Set(priorityIds.map(id => parseInt(id)));
 
+  const isTentative = req.body.signup_mode === 'tentative';
+
   if (characterIds.length === 0) {
     req.session.flash = '❌ Please select at least one character.';
     return res.redirect(raidUrl);
@@ -633,13 +635,14 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
 
   for (const charId of characterIds) {
     const stype = prioritySet.has(charId) ? 'prio_character' : 'fill';
+    const sstatus = isTentative ? 'tentative' : 'signed';
     await pool.query(
-      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status) VALUES (?, ?, ?, ?, 'signed')",
-      [raidId, userId, charId, stype]
+      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status) VALUES (?, ?, ?, ?, ?)",
+      [raidId, userId, charId, stype, sstatus]
     );
   }
 
-  req.session.flash = '✅ Signed up!';
+  req.session.flash = isTentative ? '❓ Signed up as tentative!' : '✅ Signed up!';
   res.redirect(raidUrl);
 });
 

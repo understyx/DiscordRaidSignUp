@@ -514,8 +514,9 @@ class SignupPrioritySelectView(discord.ui.View):
     """
     Step 2 of the sign-up flow.
 
-    For normal sign-ups: lets players optionally mark characters as priority, then confirms.
-    For tentative sign-ups: skips priority and just shows a confirm button.
+    Lets players optionally mark characters as preferred, then confirms.
+    For tentative sign-ups the signup is saved with tentative status but
+    preferred character selection is still available.
     """
 
     def __init__(self, selected_chars: list[dict], raid_id: int, signup_status: SignupStatus = SignupStatus.signed):
@@ -525,24 +526,23 @@ class SignupPrioritySelectView(discord.ui.View):
         self.signup_status = signup_status
         self.priority_select: discord.ui.Select | None = None
 
-        if signup_status == SignupStatus.signed:
-            options = [
-                discord.SelectOption(
-                    label=_char_label(c)[:100],
-                    description=_char_display_description(c)[:100],
-                    value=str(c["id"]),
-                )
-                for c in selected_chars[:25]
-            ]
-            self.priority_select = discord.ui.Select(
-                placeholder="Mark preferred characters (optional)…",
-                options=options,
-                min_values=0,
-                max_values=len(options),
-                row=0,
+        options = [
+            discord.SelectOption(
+                label=_char_label(c)[:100],
+                description=_char_display_description(c)[:100],
+                value=str(c["id"]),
             )
-            self.priority_select.callback = self._on_priority_select
-            self.add_item(self.priority_select)
+            for c in selected_chars[:25]
+        ]
+        self.priority_select = discord.ui.Select(
+            placeholder="Mark preferred characters (optional)…",
+            options=options,
+            min_values=0,
+            max_values=len(options),
+            row=0,
+        )
+        self.priority_select.callback = self._on_priority_select
+        self.add_item(self.priority_select)
 
         is_tentative = signup_status == SignupStatus.tentative
         confirm_btn = discord.ui.Button(
@@ -602,19 +602,15 @@ class SignupPrioritySelectView(discord.ui.View):
         await loop.run_in_executor(None, _upsert_all)
 
         is_tentative = signup_status == SignupStatus.tentative
+        lines = [
+            f"• **{_char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
+            for c in self.selected_chars
+        ]
         if is_tentative:
-            lines = [
-                f"• **{_char_label(c)}**"
-                for c in self.selected_chars
-            ]
             reply_prefix = "❓ Tentatively signed up for the raid:"
             log_emoji = "❓"
             log_action = "tentatively signed up"
         else:
-            lines = [
-                f"• **{_char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
-                for c in self.selected_chars
-            ]
             reply_prefix = "✅ Signed up for the raid:"
             log_emoji = "✅"
             log_action = "signed up"
@@ -679,13 +675,10 @@ class SignupCharacterSelectView(discord.ui.View):
         names = ", ".join(_char_label(c) for c in selected_chars)
         is_tentative = self.signup_status == SignupStatus.tentative
         view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
-        if is_tentative:
-            next_step_text = f"Selected: {names}\n\nClick **Confirm Tentative Sign Up** to sign up tentatively."
-        else:
-            next_step_text = (
-                f"Selected: {names}\n\n"
-                "Optionally mark any as **preferred** below, then click **Confirm Sign Up**."
-            )
+        next_step_text = (
+            f"Selected: {names}\n\n"
+            f"Optionally mark any as **preferred** below, then click **{'Confirm Tentative Sign Up' if is_tentative else 'Confirm Sign Up'}**."
+        )
         await interaction.response.edit_message(
             content=next_step_text,
             embed=None,
