@@ -31,27 +31,46 @@
 
 {# ── Macro: render a Characters question ── #}
 {% macro renderCharactersField(q, chars, preselected) %}
-  <div id="char-list-{{ q.id }}" class="mb-3">
-    {% for c in chars %}
-    {% set isChecked = c.id in preselected %}
-    <div class="form-check mb-2">
-      <input class="form-check-input" type="checkbox"
-             name="char_sel_{{ q.id }}" value="{{ c.id }}"
-             id="char_{{ q.id }}_{{ c.id }}"
-             {% if isChecked %}checked{% endif %}>
-      <label class="form-check-label d-flex flex-wrap gap-2 align-items-center"
-             for="char_{{ q.id }}_{{ c.id }}">
-        <strong>{{ c.char_name }}</strong>
-        <span class="text-muted small">
-          {%- if c.char_class %}{{ c.char_class }}{% if c.spec %}/{{ c.spec }}{% endif %}{% elif c.spec %}{{ c.spec }}{% endif %}
-          {%- if c.gearscore %} – {{ c.gearscore | gsformat }} GS{% endif -%}
-        </span>
-      </label>
-    </div>
-    {% endfor %}
-    {% if not chars %}
-    <p class="text-muted small mb-2" id="char-no-chars-{{ q.id }}">No characters registered yet. Add one below.</p>
-    {% endif %}
+  <div class="table-responsive mb-3">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th style="width:2rem;"></th>
+          <th>Character</th>
+          <th>Class</th>
+          <th>Spec</th>
+          <th>GS</th>
+        </tr>
+      </thead>
+      <tbody id="char-list-{{ q.id }}">
+        {% if not chars %}
+        <tr id="char-no-chars-{{ q.id }}">
+          <td colspan="5" class="text-muted small">No characters registered yet. Add one below.</td>
+        </tr>
+        {% endif %}
+        {% for c in chars %}
+        {% set cls_key = (c.char_class or '') | lower | replace(' ', '-') %}
+        {% set isChecked = c.id in preselected %}
+        <tr>
+          <td>
+            <input class="form-check-input" type="checkbox"
+                   name="char_sel_{{ q.id }}" value="{{ c.id }}"
+                   id="char_{{ q.id }}_{{ c.id }}"
+                   {% if isChecked %}checked{% endif %}>
+          </td>
+          <td>
+            <label class="form-label mb-0 fw-bold cls-{{ cls_key }}"
+                   for="char_{{ q.id }}_{{ c.id }}">{{ c.char_name }}</label>
+          </td>
+          <td class="text-muted small">{{ c.char_class or '—' }}</td>
+          <td class="text-muted small">{{ c.spec or '—' }}</td>
+          <td class="text-muted small">
+            {%- if c.gearscore %}{{ c.gearscore | gsformat }} GS{% else %}—{% endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
   <details id="char-add-details-{{ q.id }}">
@@ -323,28 +342,27 @@ async function registerChar(qid) {
 
     // Remove the "no characters" placeholder if present
     const placeholder = document.getElementById('char-no-chars-' + qid);
-    if (placeholder) placeholder.remove();
+    if (placeholder) placeholder.closest('tr').remove();
 
     // If the character is already listed just ensure it is checked
     const existingCb = list.querySelector(`input[value="${c.id}"]`);
     if (existingCb) {
       existingCb.checked = true;
     } else {
+      const clsKey = (c.char_class || '').toLowerCase().replace(/ /g, '-');
       const gs = c.gearscore
-        ? (c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore) + ' GS')
-        : '';
-      const detail = [c.char_class, c.spec, gs].filter(Boolean).join('/');
-      const div = document.createElement('div');
-      div.className = 'form-check mb-2';
-      div.innerHTML =
-        `<input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
-        `value="${c.id}" id="char_${qid}_${c.id}" checked>` +
-        `<label class="form-check-label d-flex flex-wrap gap-2 align-items-center" ` +
-        `for="char_${qid}_${c.id}">` +
-        `<strong>${c.char_name}</strong>` +
-        `<span class="text-muted small">${detail}</span>` +
-        `</label>`;
-      list.appendChild(div);
+        ? (c.gearscore >= BIS_GS ? 'BiS GS' : Math.floor(c.gearscore) + ' GS')
+        : '—';
+      const row = document.createElement('tr');
+      row.innerHTML =
+        `<td><input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
+        `value="${c.id}" id="char_${qid}_${c.id}" checked></td>` +
+        `<td><label class="form-label mb-0 fw-bold cls-${clsKey}" ` +
+        `for="char_${qid}_${c.id}">${c.char_name}</label></td>` +
+        `<td class="text-muted small">${c.char_class || '—'}</td>` +
+        `<td class="text-muted small">${c.spec || '—'}</td>` +
+        `<td class="text-muted small">${gs}</td>`;
+      list.appendChild(row);
     }
 
     // Clear add-form inputs
