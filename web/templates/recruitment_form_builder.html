@@ -39,7 +39,7 @@
           <span class="text-muted small">(optional — letters, numbers, and hyphens only)</span>
         </label>
         <div class="input-group">
-          <span class="input-group-text text-muted small">/recruitment/</span>
+          <span class="input-group-text text-muted small">/</span>
           <input type="text" class="form-control" id="slug" name="slug"
                  pattern="[a-zA-Z0-9][a-zA-Z0-9\-]{0,98}[a-zA-Z0-9]|[a-zA-Z0-9]" maxlength="100"
                  placeholder="e.g. apply-now"
@@ -118,15 +118,22 @@
             <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
           </div>
           <div class="row g-2 mb-2">
-            <div class="col-md-8">
+            <div class="col-md-6">
               <input type="text" class="form-control" name="q_text[]" placeholder="Question text" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <select class="form-select q-type-select" name="q_type[]" onchange="toggleOptions(this)">
                 <option value="text">Short text</option>
                 <option value="textarea">Long text</option>
                 <option value="select">Dropdown (select)</option>
                 <option value="radio">Multiple choice (radio)</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
+                <option value="full">Full width</option>
+                <option value="half">Half (2-col)</option>
+                <option value="third">Third (3-col)</option>
               </select>
             </div>
           </div>
@@ -135,9 +142,40 @@
             <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                       placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
           </div>
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="q_required[]" value="on" id="req_0">
-            <label class="form-check-label small" for="req_0">Required</label>
+          <div class="mb-2">
+            <input type="text" class="form-control form-control-sm" name="q_default[]"
+                   placeholder="Default / prefill value for applicants (optional)">
+          </div>
+          <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+            <div class="form-check mb-0">
+              <input type="hidden" name="q_required[]" value="off">
+              <input class="form-check-input" type="checkbox" id="req_0" value="on"
+                     onchange="syncHidden(this)">
+              <label class="form-check-label small" for="req_0">Required</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+                    onclick="toggleGroupSettings(this)">⚙ Group settings</button>
+          </div>
+          <div class="group-settings d-none mt-2 p-2 border border-secondary rounded">
+            <div class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Group key</label>
+                <input type="text" class="form-control form-control-sm" name="q_group_key[]"
+                       placeholder="e.g. alts" pattern="[a-z0-9-]*">
+              </div>
+              <div class="col-md-5">
+                <label class="form-label small text-muted mb-1">Group label</label>
+                <input type="text" class="form-control form-control-sm" name="q_group_label[]"
+                       placeholder="e.g. Alt characters">
+              </div>
+              <div class="col-md-4 d-flex align-items-center gap-2 pb-1">
+                <input type="hidden" name="q_group_repeatable[]" value="off">
+                <input class="form-check-input mt-0" type="checkbox" id="grp_rep_0" value="on"
+                       onchange="syncHidden(this)">
+                <label class="form-check-label small" for="grp_rep_0">Repeatable</label>
+              </div>
+            </div>
+            <div class="form-text">Questions with the same key are laid out together. "Repeatable" lets applicants add multiple entries.</div>
           </div>
         </div>
         {% else %}
@@ -148,11 +186,11 @@
             <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
           </div>
           <div class="row g-2 mb-2">
-            <div class="col-md-8">
+            <div class="col-md-6">
               <input type="text" class="form-control" name="q_text[]"
                      value="{{ q.question_text }}" placeholder="Question text" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <select class="form-select q-type-select" name="q_type[]"
                       onchange="toggleOptions(this)">
                 <option value="text" {% if q.question_type == 'text' %}selected{% endif %}>Short text</option>
@@ -161,16 +199,56 @@
                 <option value="radio" {% if q.question_type == 'radio' %}selected{% endif %}>Multiple choice (radio)</option>
               </select>
             </div>
+            <div class="col-md-3">
+              <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
+                <option value="full" {% if not q.col_width or q.col_width == 'full' %}selected{% endif %}>Full width</option>
+                <option value="half" {% if q.col_width == 'half' %}selected{% endif %}>Half (2-col)</option>
+                <option value="third" {% if q.col_width == 'third' %}selected{% endif %}>Third (3-col)</option>
+              </select>
+            </div>
           </div>
           <div class="options-group mb-2 {% if q.question_type == 'select' or q.question_type == 'radio' %}visible{% endif %}">
             <label class="form-label small text-muted">Options (one per line)</label>
             <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                       placeholder="Option 1&#10;Option 2&#10;Option 3">{% if q.options_parsed %}{{ q.options_parsed | join('\n') }}{% endif %}</textarea>
           </div>
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="q_required[]" value="on"
-                   id="req_{{ loop.index0 }}" {% if q.is_required %}checked{% endif %}>
-            <label class="form-check-label small" for="req_{{ loop.index0 }}">Required</label>
+          <div class="mb-2">
+            <input type="text" class="form-control form-control-sm" name="q_default[]"
+                   value="{{ q.default_value if q.default_value else '' }}"
+                   placeholder="Default / prefill value for applicants (optional)">
+          </div>
+          <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+            <div class="form-check mb-0">
+              <input type="hidden" name="q_required[]" value="{{ 'on' if q.is_required else 'off' }}">
+              <input class="form-check-input" type="checkbox" id="req_{{ loop.index0 }}" value="on"
+                     {% if q.is_required %}checked{% endif %} onchange="syncHidden(this)">
+              <label class="form-check-label small" for="req_{{ loop.index0 }}">Required</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+                    onclick="toggleGroupSettings(this)">⚙ {% if q.group_key %}Edit group{% else %}Group settings{% endif %}</button>
+          </div>
+          <div class="group-settings {% if not q.group_key %}d-none {% endif %}mt-2 p-2 border border-secondary rounded">
+            <div class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Group key</label>
+                <input type="text" class="form-control form-control-sm" name="q_group_key[]"
+                       value="{{ q.group_key if q.group_key else '' }}"
+                       placeholder="e.g. alts" pattern="[a-z0-9-]*">
+              </div>
+              <div class="col-md-5">
+                <label class="form-label small text-muted mb-1">Group label</label>
+                <input type="text" class="form-control form-control-sm" name="q_group_label[]"
+                       value="{{ q.group_label if q.group_label else '' }}"
+                       placeholder="e.g. Alt characters">
+              </div>
+              <div class="col-md-4 d-flex align-items-center gap-2 pb-1">
+                <input type="hidden" name="q_group_repeatable[]" value="{{ 'on' if q.is_group_repeatable else 'off' }}">
+                <input class="form-check-input mt-0" type="checkbox" id="grp_rep_{{ loop.index0 }}" value="on"
+                       {% if q.is_group_repeatable %}checked{% endif %} onchange="syncHidden(this)">
+                <label class="form-check-label small" for="grp_rep_{{ loop.index0 }}">Repeatable</label>
+              </div>
+            </div>
+            <div class="form-text">Questions with the same key are laid out together. "Repeatable" lets applicants add multiple entries.</div>
           </div>
         </div>
         {% endfor %}
@@ -199,6 +277,17 @@
 <script>
 let qCount = {{ questions | length if questions else 1 }};
 
+function syncHidden(checkbox) {
+  checkbox.previousElementSibling.value = checkbox.checked ? 'on' : 'off';
+}
+
+function toggleGroupSettings(btn) {
+  const row = btn.closest('.question-row');
+  const gs  = row.querySelector('.group-settings');
+  gs.classList.toggle('d-none');
+  btn.textContent = gs.classList.contains('d-none') ? '⚙ Group settings' : '⚙ Hide group';
+}
+
 function addQuestion() {
   const container = document.getElementById('questionsContainer');
   const idx = qCount++;
@@ -211,15 +300,22 @@ function addQuestion() {
       <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(this)">✕</button>
     </div>
     <div class="row g-2 mb-2">
-      <div class="col-md-8">
+      <div class="col-md-6">
         <input type="text" class="form-control" name="q_text[]" placeholder="Question text" required>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <select class="form-select q-type-select" name="q_type[]" onchange="toggleOptions(this)">
           <option value="text">Short text</option>
           <option value="textarea">Long text</option>
           <option value="select">Dropdown (select)</option>
           <option value="radio">Multiple choice (radio)</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
+          <option value="full">Full width</option>
+          <option value="half">Half (2-col)</option>
+          <option value="third">Third (3-col)</option>
         </select>
       </div>
     </div>
@@ -228,9 +324,40 @@ function addQuestion() {
       <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                 placeholder="Option 1\nOption 2\nOption 3"></textarea>
     </div>
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" name="q_required[]" value="on" id="req_${idx}">
-      <label class="form-check-label small" for="req_${idx}">Required</label>
+    <div class="mb-2">
+      <input type="text" class="form-control form-control-sm" name="q_default[]"
+             placeholder="Default / prefill value for applicants (optional)">
+    </div>
+    <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+      <div class="form-check mb-0">
+        <input type="hidden" name="q_required[]" value="off">
+        <input class="form-check-input" type="checkbox" id="req_${idx}" value="on"
+               onchange="syncHidden(this)">
+        <label class="form-check-label small" for="req_${idx}">Required</label>
+      </div>
+      <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+              onclick="toggleGroupSettings(this)">⚙ Group settings</button>
+    </div>
+    <div class="group-settings d-none mt-2 p-2 border border-secondary rounded">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small text-muted mb-1">Group key</label>
+          <input type="text" class="form-control form-control-sm" name="q_group_key[]"
+                 placeholder="e.g. alts" pattern="[a-z0-9-]*">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small text-muted mb-1">Group label</label>
+          <input type="text" class="form-control form-control-sm" name="q_group_label[]"
+                 placeholder="e.g. Alt characters">
+        </div>
+        <div class="col-md-4 d-flex align-items-center gap-2 pb-1">
+          <input type="hidden" name="q_group_repeatable[]" value="off">
+          <input class="form-check-input mt-0" type="checkbox" id="grp_rep_${idx}" value="on"
+                 onchange="syncHidden(this)">
+          <label class="form-check-label small" for="grp_rep_${idx}">Repeatable</label>
+        </div>
+      </div>
+      <div class="form-text">Questions with the same key are laid out together. "Repeatable" lets applicants add multiple entries.</div>
     </div>
   `;
   container.appendChild(row);

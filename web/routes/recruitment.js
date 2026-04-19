@@ -200,8 +200,11 @@ async function sendDiscordDM(userId, content) {
   }
 }
 
-// Slugs that would collide with existing admin route segments
-const RESERVED_SLUGS = ['new', 'oauth-callback'];
+// Slugs that must not collide with top-level or recruitment-router path segments
+const RESERVED_SLUGS = [
+  'new', 'oauth-callback',
+  'auth', 'raids', 'admin', 'guild-settings', 'select-guild', 'recruitment',
+];
 
 /**
  * Validate and normalise a user-supplied slug value.
@@ -250,10 +253,15 @@ async function resolveFormParam(param, requireActive = false) {
 
 /** Parse questions from a form builder POST body. Returns array of question objects. */
 function parseQuestions(body) {
-  const texts = [].concat(body.q_text || []);
-  const types = [].concat(body.q_type || []);
-  const opts = [].concat(body.q_options || []);
-  const reqs = [].concat(body.q_required || []);
+  const texts     = [].concat(body.q_text     || []);
+  const types     = [].concat(body.q_type     || []);
+  const opts      = [].concat(body.q_options  || []);
+  const reqs      = [].concat(body.q_required || []);
+  const defaults  = [].concat(body.q_default  || []);
+  const groupKeys = [].concat(body.q_group_key        || []);
+  const groupLabels = [].concat(body.q_group_label    || []);
+  const groupReps = [].concat(body.q_group_repeatable || []);
+  const colWidths = [].concat(body.q_col_width        || []);
 
   const questions = [];
   const MAX_QUESTIONS = 50;
@@ -274,15 +282,119 @@ function parseQuestions(body) {
       }
     }
 
+    const defaultValue = String(defaults[i] || '').trim() || null;
+    const rawGroupKey  = String(groupKeys[i] || '').trim().toLowerCase();
+    const groupKey     = rawGroupKey.replace(/[^a-z0-9-]/g, '') || null;
+    const groupLabel   = groupKey ? (String(groupLabels[i] || '').trim() || null) : null;
+    const isGroupRepeatable = (groupKey && groupReps[i] === 'on') ? 1 : 0;
+    const colWidth = ['full', 'half', 'third'].includes(colWidths[i]) ? colWidths[i] : 'full';
+
     questions.push({
-      question_text: text,
-      question_type: type,
+      question_text:       text,
+      question_type:       type,
       options,
-      is_required: reqs[i] === 'on' ? 1 : 0,
-      sort_order: i,
+      is_required:         reqs[i] === 'on' ? 1 : 0,
+      sort_order:          i,
+      default_value:       defaultValue,
+      group_key:           groupKey,
+      group_label:         groupLabel,
+      is_group_repeatable: isGroupRepeatable,
+      col_width:           colWidth,
     });
   }
   return questions;
+}
+
+/**
+ * Organise a flat list of questions into rendering blocks.
+ * Questions without a group_key become individual 'question' blocks.
+ * Questions sharing a group_key are merged into a 'group' block.
+ */
+function buildQuestionBlocks(questions) {
+  const blocks   = [];
+  const groupMap = new Map();
+
+  for (const q of questions) {
+    if (!q.group_key) {
+      blocks.push({ type: 'question', question: q });
+    } else {
+      if (groupMap.has(q.group_key)) {
+        const grp = groupMap.get(q.group_key);
+        grp.questions.push(q);
+        if (q.is_group_repeatable) grp.is_repeatable = true;
+        if (q.group_label && !grp._has_label) {
+          grp.label       = q.group_label;
+          grp._has_label  = true;
+        }
+      } else {
+        const grp = {
+          type:          'group',
+          key:           q.group_key,
+          label:         q.group_label || q.group_key,
+          _has_label:    !!q.group_label,
+          is_repeatable: !!q.is_group_repeatable,
+          questions:     [q],
+          instances:     [{}], // default: one blank instance
+        };
+        groupMap.set(q.group_key, grp);
+        blocks.push(grp);
+      }
+    }
+  }
+
+  // Remove internal flag
+  for (const b of blocks) {
+    if (b.type === 'group') delete b._has_label;
+  }
+
+  return blocks;
+}
+
+/**
+ * For repeatable groups, build a per-group array of per-instance answer maps.
+ * Answers for repeatable questions are stored as a JSON array in answer_text.
+ * Returns { group_key: [ { question_id: value, … }, … ] }
+ */
+function buildExistingGroupInstances(blocks, existingAnswers) {
+  const result = {};
+
+  for (const block of blocks) {
+    if (block.type !== 'group' || !block.is_repeatable) continue;
+
+    // Determine how many instances exist
+    let maxInstances = 1;
+    for (const q of block.questions) {
+      const raw = existingAnswers[String(q.id)] || '';
+      if (raw.startsWith('[')) {
+        try {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) maxInstances = Math.max(maxInstances, arr.length);
+        } catch { /* ignore */ }
+      }
+    }
+
+    const instances = [];
+    for (let i = 0; i < maxInstances; i++) {
+      const inst = {};
+      for (const q of block.questions) {
+        const raw = existingAnswers[String(q.id)] || '';
+        if (raw.startsWith('[')) {
+          try {
+            const arr = JSON.parse(raw);
+            inst[String(q.id)] = Array.isArray(arr) ? (arr[i] !== undefined ? arr[i] : '') : '';
+          } catch {
+            inst[String(q.id)] = i === 0 ? raw : '';
+          }
+        } else {
+          inst[String(q.id)] = i === 0 ? raw : '';
+        }
+      }
+      instances.push(inst);
+    }
+    result[block.key] = instances;
+  }
+
+  return result;
 }
 
 // ── OAuth callback (must be before /:form_id) ─────────────────────────────────
@@ -484,13 +596,13 @@ router.post('/new', requireAdmin, async (req, res) => {
   for (const q of questions) {
     await pool.query(
       `INSERT INTO recruitment_questions
-         (form_id, question_text, question_type, options, is_required, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [formId, q.question_text, q.question_type, q.options, q.is_required, q.sort_order]
+         (form_id, question_text, question_type, options, is_required, sort_order,
+          default_value, group_key, group_label, is_group_repeatable, col_width)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [formId, q.question_text, q.question_type, q.options, q.is_required, q.sort_order,
+       q.default_value, q.group_key, q.group_label, q.is_group_repeatable, q.col_width]
     );
   }
-
-  req.session.flash = '✅ Recruitment form created.';
   res.redirect(`/recruitment/${formId}/applications`);
 });
 
@@ -515,6 +627,12 @@ router.get('/:form_id/edit-form', requireAdmin, async (req, res) => {
     [formId]
   );
 
+  // Pre-process options_parsed so the builder template can render existing option lists
+  const questionsForBuilder = questions.map(q => ({
+    ...q,
+    options_parsed: q.options ? JSON.parse(q.options) : [],
+  }));
+
   const [guildRoles, guildChannels] = await Promise.all([
     fetchGuildRoles(guildId),
     fetchGuildChannels(guildId),
@@ -522,7 +640,7 @@ router.get('/:form_id/edit-form', requireAdmin, async (req, res) => {
 
   res.render('recruitment_form_builder.html', {
     form,
-    questions,
+    questions: questionsForBuilder,
     guild_roles: guildRoles,
     guild_channels: guildChannels,
     flash: popFlash(req),
@@ -592,9 +710,11 @@ router.post('/:form_id/edit-form', requireAdmin, async (req, res) => {
   for (const q of questions) {
     await pool.query(
       `INSERT INTO recruitment_questions
-         (form_id, question_text, question_type, options, is_required, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [formId, q.question_text, q.question_type, q.options, q.is_required, q.sort_order]
+         (form_id, question_text, question_type, options, is_required, sort_order,
+          default_value, group_key, group_label, is_group_repeatable, col_width)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [formId, q.question_text, q.question_type, q.options, q.is_required, q.sort_order,
+       q.default_value, q.group_key, q.group_label, q.is_group_repeatable, q.col_width]
     );
   }
 
@@ -692,13 +812,20 @@ router.get('/:form_id/applications/:app_id', requireAdmin, async (req, res) => {
     [appId]
   );
 
-  // Build Q&A pairs
+  // Build Q&A pairs; format JSON-array answers (repeatable groups) as readable lists
   const answerMap = {};
   for (const a of answers) answerMap[String(a.question_id)] = a.answer_text;
-  const qa = questions.map(q => ({
-    question: q.question_text,
-    answer: answerMap[String(q.id)] || '',
-  }));
+  const qa = questions.map(q => {
+    const raw = answerMap[String(q.id)] || '';
+    let answer = raw;
+    if (raw.startsWith('[')) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) answer = arr.join(' | ');
+      } catch { /* keep raw */ }
+    }
+    return { question: q.question_text, answer };
+  });
 
   res.render('recruitment_application_detail.html', {
     form,
@@ -864,14 +991,22 @@ router.get('/:form_id', async (req, res) => {
     options_parsed: q.options ? JSON.parse(q.options) : [],
   }));
 
+  const blocks = buildQuestionBlocks(questionsForTemplate);
+  // For a new application, all group blocks start with one blank instance
+  for (const b of blocks) {
+    if (b.type === 'group') b.instances = [{}];
+  }
+
   res.render('recruitment_apply.html', {
     form,
     questions: questionsForTemplate,
+    blocks,
     recruit_username: req.session.recruit_username,
     recruit_display_name: req.session.recruit_display_name,
     is_editing: false,
     application: null,
     existing_answers: {},
+    display_answers: {},
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -912,7 +1047,11 @@ router.post('/:form_id/submit', async (req, res) => {
   // Validate required fields
   for (const q of questions) {
     if (q.is_required) {
-      const answer = String(req.body[`answer_${q.id}`] || '').trim();
+      // Repeatable-group questions are indexed; check index 0
+      const key = (q.is_group_repeatable && q.group_key)
+        ? `answer_${q.id}_0`
+        : `answer_${q.id}`;
+      const answer = String(req.body[key] || '').trim();
       if (!answer) {
         req.session.flash = `❌ Please answer: "${q.question_text}"`;
         return res.redirect(`/recruitment/${formId}`);
@@ -939,10 +1078,22 @@ router.post('/:form_id/submit', async (req, res) => {
   const appId = appResult.insertId;
 
   for (const q of questions) {
-    const answer = String(req.body[`answer_${q.id}`] || '').trim();
+    let answerText;
+    if (q.is_group_repeatable && q.group_key) {
+      // Collect all indexed values and store as JSON array
+      const values = [];
+      let idx = 0;
+      while (req.body[`answer_${q.id}_${idx}`] !== undefined) {
+        values.push(String(req.body[`answer_${q.id}_${idx}`] || '').trim());
+        idx++;
+      }
+      answerText = values.length > 0 ? JSON.stringify(values) : '';
+    } else {
+      answerText = String(req.body[`answer_${q.id}`] || '').trim();
+    }
     await pool.query(
       'INSERT INTO recruitment_answers (application_id, question_id, answer_text) VALUES (?, ?, ?)',
-      [appId, q.id, answer]
+      [appId, q.id, answerText]
     );
   }
 
@@ -1034,14 +1185,41 @@ router.get('/:form_id/edit', async (req, res) => {
     options_parsed: q.options ? JSON.parse(q.options) : [],
   }));
 
+  const blocks = buildQuestionBlocks(questionsForTemplate);
+  const groupInstances = buildExistingGroupInstances(blocks, existingAnswers);
+  // Attach instances to group blocks
+  for (const b of blocks) {
+    if (b.type === 'group') {
+      const inst = groupInstances[b.key];
+      b.instances = (inst && inst.length > 0) ? inst : [{}];
+    }
+  }
+
+  // Build display-friendly answers (format JSON arrays for read-only view)
+  const displayAnswers = {};
+  for (const [qid, raw] of Object.entries(existingAnswers)) {
+    if (raw && raw.startsWith('[')) {
+      try {
+        const arr = JSON.parse(raw);
+        displayAnswers[qid] = Array.isArray(arr) ? arr.join(' | ') : raw;
+      } catch {
+        displayAnswers[qid] = raw;
+      }
+    } else {
+      displayAnswers[qid] = raw;
+    }
+  }
+
   res.render('recruitment_apply.html', {
     form,
     questions: questionsForTemplate,
+    blocks,
     recruit_username: req.session.recruit_username,
     recruit_display_name: req.session.recruit_display_name,
     is_editing: true,
     application,
     existing_answers: existingAnswers,
+    display_answers: displayAnswers,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -1077,7 +1255,10 @@ router.post('/:form_id/edit', async (req, res) => {
   // Validate required fields
   for (const q of questions) {
     if (q.is_required) {
-      const answer = String(req.body[`answer_${q.id}`] || '').trim();
+      const key = (q.is_group_repeatable && q.group_key)
+        ? `answer_${q.id}_0`
+        : `answer_${q.id}`;
+      const answer = String(req.body[key] || '').trim();
       if (!answer) {
         req.session.flash = `❌ Please answer: "${q.question_text}"`;
         return res.redirect(`/recruitment/${formId}/edit`);
@@ -1088,10 +1269,21 @@ router.post('/:form_id/edit', async (req, res) => {
   // Delete old answers and re-insert
   await pool.query('DELETE FROM recruitment_answers WHERE application_id = ?', [application.id]);
   for (const q of questions) {
-    const answer = String(req.body[`answer_${q.id}`] || '').trim();
+    let answerText;
+    if (q.is_group_repeatable && q.group_key) {
+      const values = [];
+      let idx = 0;
+      while (req.body[`answer_${q.id}_${idx}`] !== undefined) {
+        values.push(String(req.body[`answer_${q.id}_${idx}`] || '').trim());
+        idx++;
+      }
+      answerText = values.length > 0 ? JSON.stringify(values) : '';
+    } else {
+      answerText = String(req.body[`answer_${q.id}`] || '').trim();
+    }
     await pool.query(
       'INSERT INTO recruitment_answers (application_id, question_id, answer_text) VALUES (?, ?, ?)',
-      [application.id, q.id, answer]
+      [application.id, q.id, answerText]
     );
   }
 
