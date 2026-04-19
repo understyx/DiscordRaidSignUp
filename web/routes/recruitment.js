@@ -422,6 +422,95 @@ router.post('/characters/register', express.json(), async (req, res) => {
   return res.json({ ok: true, character: char });
 });
 
+// ── Recruitment applicant: update character name ──────────────────────────────
+router.post('/characters/:char_id/update-name', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+  const newName = (req.body.char_name || '').trim();
+
+  if (!newName) {
+    return res.status(400).json({ error: 'Character name is required.' });
+  }
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  const nameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
+
+  await pool.query(
+    'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
+    [nameCap, char.char_name, userId]
+  );
+
+  return res.json({ ok: true });
+});
+
+// ── Recruitment applicant: update character realm ─────────────────────────────
+router.post('/characters/:char_id/update-realm', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+  const realm = (req.body.realm || 'Icecrown').trim();
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
+
+  await pool.query(
+    'UPDATE characters SET realm = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
+    [realmCap, char.char_name, userId]
+  );
+
+  return res.json({ ok: true });
+});
+
+// ── Recruitment applicant: update character class ─────────────────────────────
+router.post('/characters/:char_id/update-class', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charId = parseInt(req.params.char_id);
+  const charClass = (req.body.char_class || '').trim() || null;
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charId, userId]
+  );
+
+  if (!char) {
+    return res.status(404).json({ error: 'Character not found.' });
+  }
+
+  await pool.query(
+    'UPDATE characters SET char_class = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
+    [charClass, char.char_name, userId]
+  );
+
+  return res.json({ ok: true });
+});
+
 // ── OAuth callback (must be before /:form_id) ─────────────────────────────────
 
 router.get('/oauth-callback', async (req, res) => {
