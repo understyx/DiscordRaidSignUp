@@ -44,6 +44,23 @@ router.use(express.urlencoded({ extended: true }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Sentinel value stored in the database to represent "Best in Slot".
+const BIS_GS = 99999;
+
+/**
+ * Parse a gearscore string into a number (or null).
+ * Accepts plain numbers, "k" shorthand, and "bis" (case-insensitive).
+ * Returns null when the input is empty or unrecognisable.
+ */
+function parseGS(raw) {
+  const s = (raw || '').trim();
+  if (s === '') return null;
+  if (s.toLowerCase() === 'bis') return BIS_GS;
+  const v = parseFloat(s);
+  if (isNaN(v)) return null;
+  return v;
+}
+
 function requireAdmin(req, res, next) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
@@ -212,7 +229,7 @@ function parseQuestions(body) {
     const text = String(texts[i] || '').trim();
     if (!text) continue;
 
-    const type = ['text', 'textarea', 'select', 'radio'].includes(types[i])
+    const type = ['text', 'textarea', 'select', 'radio', 'characters'].includes(types[i])
       ? types[i]
       : 'text';
 
@@ -229,22 +246,32 @@ function parseQuestions(body) {
     const groupKey     = rawGroupKey.replace(/[^a-z0-9-]/g, '') || null;
     const groupLabel   = groupKey ? (String(groupLabels[i] || '').trim() || null) : null;
     const isGroupRepeatable = (groupKey && groupReps[i] === 'on') ? 1 : 0;
-    const colWidth = ['full', 'half', 'third'].includes(colWidths[i]) ? colWidths[i] : 'full';
+    // 'characters' is always full-width; group settings do not apply to it
+    const colWidth = (type === 'characters')
+      ? 'full'
+      : (['full', 'half', 'third'].includes(colWidths[i]) ? colWidths[i] : 'full');
 
     questions.push({
       question_text:       text,
       question_type:       type,
-      options,
+      options:             type === 'characters' ? null : options,
       is_required:         reqs[i] === 'on' ? 1 : 0,
       sort_order:          i,
-      default_value:       defaultValue,
-      group_key:           groupKey,
-      group_label:         groupLabel,
-      is_group_repeatable: isGroupRepeatable,
+      default_value:       type === 'characters' ? null : defaultValue,
+      group_key:           type === 'characters' ? null : groupKey,
+      group_label:         type === 'characters' ? null : groupLabel,
+      is_group_repeatable: type === 'characters' ? 0 : isGroupRepeatable,
       col_width:           colWidth,
     });
   }
-  return questions;
+
+  // Only one 'characters' question is allowed per form — keep the first occurrence.
+  let seenCharacters = false;
+  return questions.filter(q => {
+    if (q.question_type !== 'characters') return true;
+    if (!seenCharacters) { seenCharacters = true; return true; }
+    return false;
+  });
 }
 
 /**
@@ -338,6 +365,62 @@ function buildExistingGroupInstances(blocks, existingAnswers) {
 
   return result;
 }
+
+// ── Recruitment applicant: register a character ───────────────────────────────
+// Used by the 'characters' question type in the apply form.
+// Requires a valid recruitment OAuth session (recruit_discord_id).
+
+router.post('/characters/register', express.json(), async (req, res) => {
+  if (!req.session.recruit_discord_id) {
+    return res.status(401).json({ error: 'Not authenticated. Please reload the page and try again.' });
+  }
+
+  const userId = req.session.recruit_discord_id;
+  const charName = (req.body.char_name || '').trim();
+  const realm = (req.body.realm || 'Icecrown').trim();
+  const charClass = (req.body.char_class || '').trim() || null;
+  const spec = (req.body.spec || '').trim() || null;
+  const gearscore = parseGS(req.body.gearscore);
+
+  if (!charName) {
+    return res.status(400).json({ error: 'Character name is required.' });
+  }
+
+  const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
+  const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
+  const specNorm = spec || null;
+
+  const [[existing]] = await pool.query(
+    `SELECT id FROM characters
+     WHERE discord_user_id = ? AND char_name = ? AND realm = ?
+       AND (spec <=> ?)
+     LIMIT 1`,
+    [userId, charNameCap, realmCap, specNorm]
+  );
+
+  let charId;
+  if (existing) {
+    await pool.query(
+      'UPDATE characters SET char_class = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+      [charClass, gearscore, existing.id]
+    );
+    charId = existing.id;
+  } else {
+    const [result] = await pool.query(
+      `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [userId, charNameCap, realmCap, charClass, specNorm, gearscore]
+    );
+    charId = result.insertId;
+  }
+
+  const [[char]] = await pool.query(
+    'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE id = ?',
+    [charId]
+  );
+
+  return res.json({ ok: true, character: char });
+});
 
 // ── OAuth callback (must be before /:form_id) ─────────────────────────────────
 
@@ -682,13 +765,55 @@ router.get('/:form_id/applications/:app_id', requireAdmin, async (req, res) => {
     [appId]
   );
 
-  // Build Q&A pairs; format JSON-array answers (repeatable groups) as readable lists
+  // Build Q&A pairs; format JSON-array answers (repeatable groups) as readable lists.
+  // For 'characters' type, resolve IDs to character names.
   const answerMap = {};
   for (const a of answers) answerMap[String(a.question_id)] = a.answer_text;
+
+  // Pre-fetch characters referenced by any 'characters' type answer
+  const allCharIds = [];
+  for (const q of questions) {
+    if (q.question_type !== 'characters') continue;
+    const raw = answerMap[String(q.id)] || '[]';
+    try {
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids)) allCharIds.push(...ids.map(id => parseInt(id)).filter(id => !isNaN(id)));
+    } catch { /* ignore */ }
+  }
+  const charsById = {};
+  if (allCharIds.length > 0) {
+    const placeholders = allCharIds.map(() => '?').join(',');
+    const [charRows] = await pool.query(
+      `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders})`,
+      allCharIds
+    );
+    for (const c of charRows) charsById[c.id] = c;
+  }
+
   const qa = questions.map(q => {
     const raw = answerMap[String(q.id)] || '';
     let answer = raw;
-    if (raw.startsWith('[')) {
+    if (q.question_type === 'characters') {
+      try {
+        const ids = JSON.parse(raw || '[]');
+        if (Array.isArray(ids) && ids.length > 0) {
+          answer = ids.map(id => {
+            const c = charsById[id];
+            if (!c) return `#${id}`;
+            let s = c.char_name;
+            if (c.char_class) s += ` (${c.char_class}`;
+            if (c.spec) s += `/${c.spec}`;
+            if (c.gearscore) s += ` – ${c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore)} GS`;
+            if (c.char_class) s += ')';
+            return s;
+          }).join(', ');
+        } else {
+          answer = '(no characters selected)';
+        }
+      } catch {
+        answer = raw;
+      }
+    } else if (raw.startsWith('[')) {
       try {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) answer = arr.join(' | ');
@@ -848,6 +973,21 @@ router.get('/:form_id', async (req, res) => {
     if (b.type === 'group') b.instances = [{}];
   }
 
+  // Fetch the applicant's registered characters for any 'characters' type questions.
+  // All characters are pre-selected by default on a fresh application.
+  let applicantCharacters = [];
+  const preselectedCharsByQuestion = {};
+  const hasCharsQuestion = questionsForTemplate.some(q => q.question_type === 'characters');
+  if (hasCharsQuestion) {
+    [applicantCharacters] = await pool.query(
+      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
+      [req.session.recruit_discord_id]
+    );
+    for (const q of questionsForTemplate.filter(q => q.question_type === 'characters')) {
+      preselectedCharsByQuestion[String(q.id)] = applicantCharacters.map(c => c.id);
+    }
+  }
+
   res.render('recruitment_apply.html', {
     form,
     questions: questionsForTemplate,
@@ -858,6 +998,8 @@ router.get('/:form_id', async (req, res) => {
     application: null,
     existing_answers: {},
     display_answers: {},
+    applicant_characters: applicantCharacters,
+    preselected_chars_by_question: preselectedCharsByQuestion,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -898,14 +1040,22 @@ router.post('/:form_id/submit', async (req, res) => {
   // Validate required fields
   for (const q of questions) {
     if (q.is_required) {
-      // Repeatable-group questions are indexed; check index 0
-      const key = (q.is_group_repeatable && q.group_key)
-        ? `answer_${q.id}_0`
-        : `answer_${q.id}`;
-      const answer = String(req.body[key] || '').trim();
-      if (!answer) {
-        req.session.flash = `❌ Please answer: "${q.question_text}"`;
-        return res.redirect(`/recruitment/${formId}`);
+      if (q.question_type === 'characters') {
+        const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
+        if (selected.length === 0) {
+          req.session.flash = `❌ Please select at least one character for: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}`);
+        }
+      } else {
+        // Repeatable-group questions are indexed; check index 0
+        const key = (q.is_group_repeatable && q.group_key)
+          ? `answer_${q.id}_0`
+          : `answer_${q.id}`;
+        const answer = String(req.body[key] || '').trim();
+        if (!answer) {
+          req.session.flash = `❌ Please answer: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}`);
+        }
       }
     }
   }
@@ -927,7 +1077,11 @@ router.post('/:form_id/submit', async (req, res) => {
 
   for (const q of questions) {
     let answerText;
-    if (q.is_group_repeatable && q.group_key) {
+    if (q.question_type === 'characters') {
+      // Store selected character IDs as a JSON array
+      const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
+      answerText = JSON.stringify(selected.map(id => parseInt(id)).filter(id => !isNaN(id)));
+    } else if (q.is_group_repeatable && q.group_key) {
       // Collect all indexed values and store as JSON array
       const values = [];
       let idx = 0;
@@ -1003,10 +1157,71 @@ router.get('/:form_id/edit', async (req, res) => {
     }
   }
 
-  // Build display-friendly answers (format JSON arrays for read-only view)
+  // Fetch the applicant's registered characters for any 'characters' type questions.
+  // Pre-select only the IDs stored in the existing answer (or all if no answer yet).
+  let applicantCharacters = [];
+  const preselectedCharsByQuestion = {};
+  const hasCharsQuestion = questionsForTemplate.some(q => q.question_type === 'characters');
+  if (hasCharsQuestion) {
+    [applicantCharacters] = await pool.query(
+      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
+      [req.session.recruit_discord_id]
+    );
+    for (const q of questionsForTemplate.filter(q => q.question_type === 'characters')) {
+      const raw = existingAnswers[String(q.id)];
+      if (raw && raw.startsWith('[')) {
+        try {
+          const ids = JSON.parse(raw);
+          preselectedCharsByQuestion[String(q.id)] = Array.isArray(ids)
+            ? ids.map(id => parseInt(id)).filter(id => !isNaN(id))
+            : applicantCharacters.map(c => c.id);
+        } catch {
+          preselectedCharsByQuestion[String(q.id)] = applicantCharacters.map(c => c.id);
+        }
+      } else {
+        preselectedCharsByQuestion[String(q.id)] = applicantCharacters.map(c => c.id);
+      }
+    }
+  }
+
+  // Build display-friendly answers (format JSON arrays for read-only view).
+  // For 'characters' questions, look up names from the DB.
+  const charsById = Object.fromEntries(applicantCharacters.map(c => [c.id, c]));
   const displayAnswers = {};
   for (const [qid, raw] of Object.entries(existingAnswers)) {
-    if (raw && raw.startsWith('[')) {
+    const q = questionsForTemplate.find(qq => String(qq.id) === qid);
+    if (q && q.question_type === 'characters' && raw && raw.startsWith('[')) {
+      try {
+        const ids = JSON.parse(raw);
+        if (Array.isArray(ids) && ids.length > 0) {
+          // Fetch full details for any chars not already in applicantCharacters
+          const missingIds = ids.filter(id => !charsById[id]);
+          let extraChars = [];
+          if (missingIds.length > 0) {
+            const placeholders = missingIds.map(() => '?').join(',');
+            [extraChars] = await pool.query(
+              `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders})`,
+              missingIds
+            );
+            for (const c of extraChars) charsById[c.id] = c;
+          }
+          displayAnswers[qid] = ids.map(id => {
+            const c = charsById[id];
+            if (!c) return `#${id}`;
+            let s = c.char_name;
+            if (c.char_class) s += ` (${c.char_class}`;
+            if (c.spec) s += `/${c.spec}`;
+            if (c.gearscore) s += ` – ${c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore)} GS`;
+            if (c.char_class) s += ')';
+            return s;
+          }).join(', ');
+        } else {
+          displayAnswers[qid] = '(no characters selected)';
+        }
+      } catch {
+        displayAnswers[qid] = raw;
+      }
+    } else if (raw && raw.startsWith('[')) {
       try {
         const arr = JSON.parse(raw);
         displayAnswers[qid] = Array.isArray(arr) ? arr.join(' | ') : raw;
@@ -1028,6 +1243,8 @@ router.get('/:form_id/edit', async (req, res) => {
     application,
     existing_answers: existingAnswers,
     display_answers: displayAnswers,
+    applicant_characters: applicantCharacters,
+    preselected_chars_by_question: preselectedCharsByQuestion,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -1063,13 +1280,21 @@ router.post('/:form_id/edit', async (req, res) => {
   // Validate required fields
   for (const q of questions) {
     if (q.is_required) {
-      const key = (q.is_group_repeatable && q.group_key)
-        ? `answer_${q.id}_0`
-        : `answer_${q.id}`;
-      const answer = String(req.body[key] || '').trim();
-      if (!answer) {
-        req.session.flash = `❌ Please answer: "${q.question_text}"`;
-        return res.redirect(`/recruitment/${formId}/edit`);
+      if (q.question_type === 'characters') {
+        const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
+        if (selected.length === 0) {
+          req.session.flash = `❌ Please select at least one character for: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}/edit`);
+        }
+      } else {
+        const key = (q.is_group_repeatable && q.group_key)
+          ? `answer_${q.id}_0`
+          : `answer_${q.id}`;
+        const answer = String(req.body[key] || '').trim();
+        if (!answer) {
+          req.session.flash = `❌ Please answer: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}/edit`);
+        }
       }
     }
   }
@@ -1078,7 +1303,10 @@ router.post('/:form_id/edit', async (req, res) => {
   await pool.query('DELETE FROM recruitment_answers WHERE application_id = ?', [application.id]);
   for (const q of questions) {
     let answerText;
-    if (q.is_group_repeatable && q.group_key) {
+    if (q.question_type === 'characters') {
+      const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
+      answerText = JSON.stringify(selected.map(id => parseInt(id)).filter(id => !isNaN(id)));
+    } else if (q.is_group_repeatable && q.group_key) {
       const values = [];
       let idx = 0;
       while (req.body[`answer_${q.id}_${idx}`] !== undefined) {

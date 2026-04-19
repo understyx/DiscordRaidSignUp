@@ -29,6 +29,82 @@
   {% endif %}
 {% endmacro %}
 
+{# ── Macro: render a Characters question ── #}
+{% macro renderCharactersField(q, chars, preselected) %}
+  <div id="char-list-{{ q.id }}" class="mb-3">
+    {% for c in chars %}
+    {% set isChecked = c.id in preselected %}
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox"
+             name="char_sel_{{ q.id }}" value="{{ c.id }}"
+             id="char_{{ q.id }}_{{ c.id }}"
+             {% if isChecked %}checked{% endif %}>
+      <label class="form-check-label d-flex flex-wrap gap-2 align-items-center"
+             for="char_{{ q.id }}_{{ c.id }}">
+        <strong>{{ c.char_name }}</strong>
+        <span class="text-muted small">
+          {%- if c.char_class %}{{ c.char_class }}{% if c.spec %}/{{ c.spec }}{% endif %}{% elif c.spec %}{{ c.spec }}{% endif %}
+          {%- if c.gearscore %} – {{ c.gearscore | gsformat }} GS{% endif -%}
+        </span>
+      </label>
+    </div>
+    {% endfor %}
+    {% if not chars %}
+    <p class="text-muted small mb-2" id="char-no-chars-{{ q.id }}">No characters registered yet. Add one below.</p>
+    {% endif %}
+  </div>
+
+  <details id="char-add-details-{{ q.id }}">
+    <summary class="btn btn-sm btn-outline-secondary mb-2" style="list-style:none;cursor:pointer;">➕ Register a character</summary>
+    <div class="card p-3 mt-1">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-3">
+          <label class="form-label small mb-1">Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                 id="new_char_name_{{ q.id }}" maxlength="50" placeholder="e.g. Arthas">
+        </div>
+        <div class="col-sm-2">
+          <label class="form-label small mb-1">Realm</label>
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                 id="new_char_realm_{{ q.id }}" value="Icecrown" maxlength="50">
+        </div>
+        <div class="col-sm-3">
+          <label class="form-label small mb-1">Class</label>
+          <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                  id="new_char_class_{{ q.id }}">
+            <option value="">— select —</option>
+            <option>Death Knight</option>
+            <option>Druid</option>
+            <option>Hunter</option>
+            <option>Mage</option>
+            <option>Paladin</option>
+            <option>Priest</option>
+            <option>Rogue</option>
+            <option>Shaman</option>
+            <option>Warlock</option>
+            <option>Warrior</option>
+          </select>
+        </div>
+        <div class="col-sm-2">
+          <label class="form-label small mb-1">Spec</label>
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                 id="new_char_spec_{{ q.id }}" maxlength="50" placeholder="e.g. Holy">
+        </div>
+        <div class="col-sm-1">
+          <label class="form-label small mb-1">GS</label>
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                 id="new_char_gs_{{ q.id }}" maxlength="10" placeholder="—">
+        </div>
+        <div class="col-sm-auto">
+          <button type="button" class="btn btn-sm btn-wow"
+                  onclick="registerChar('{{ q.id }}')">Add</button>
+        </div>
+      </div>
+      <div id="char-add-error-{{ q.id }}" class="text-danger small mt-2"></div>
+    </div>
+  </details>
+{% endmacro %}
+
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
@@ -81,14 +157,19 @@
         {# ── Single ungrouped question ── #}
         {% if block.type == 'question' %}
           {% set q = block.question %}
-          {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
           <div class="card mb-3">
             <div class="card-body">
               <label class="form-label fw-semibold">
                 {{ q.question_text }}
                 {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
               </label>
-              {{ renderField(q, 'answer_' ~ (q.id | string), curVal) }}
+              {% if q.question_type == 'characters' %}
+                {% set preselected = preselected_chars_by_question[q.id | string] if preselected_chars_by_question else [] %}
+                {{ renderCharactersField(q, applicant_characters, preselected) }}
+              {% else %}
+                {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
+                {{ renderField(q, 'answer_' ~ (q.id | string), curVal) }}
+              {% endif %}
             </div>
           </div>
 
@@ -205,6 +286,81 @@
 
 {% block scripts %}
 <script>
+const BIS_GS = 99999;
+
+async function registerChar(qid) {
+  const nameEl  = document.getElementById('new_char_name_'  + qid);
+  const realmEl = document.getElementById('new_char_realm_' + qid);
+  const classEl = document.getElementById('new_char_class_' + qid);
+  const specEl  = document.getElementById('new_char_spec_'  + qid);
+  const gsEl    = document.getElementById('new_char_gs_'    + qid);
+  const errEl   = document.getElementById('char-add-error-' + qid);
+
+  const name = nameEl.value.trim();
+  if (!name) { errEl.textContent = 'Character name is required.'; return; }
+  errEl.textContent = '';
+
+  try {
+    const resp = await fetch('/recruitment/characters/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        char_name:  name,
+        realm:      (realmEl.value.trim() || 'Icecrown'),
+        char_class: classEl.value,
+        spec:       specEl.value.trim(),
+        gearscore:  gsEl.value.trim(),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      errEl.textContent = data.error || 'Failed to register character.';
+      return;
+    }
+
+    const c = data.character;
+    const list = document.getElementById('char-list-' + qid);
+
+    // Remove the "no characters" placeholder if present
+    const placeholder = document.getElementById('char-no-chars-' + qid);
+    if (placeholder) placeholder.remove();
+
+    // If the character is already listed just ensure it is checked
+    const existingCb = list.querySelector(`input[value="${c.id}"]`);
+    if (existingCb) {
+      existingCb.checked = true;
+    } else {
+      const gs = c.gearscore
+        ? (c.gearscore >= BIS_GS ? 'BiS' : Math.floor(c.gearscore) + ' GS')
+        : '';
+      const detail = [c.char_class, c.spec, gs].filter(Boolean).join('/');
+      const div = document.createElement('div');
+      div.className = 'form-check mb-2';
+      div.innerHTML =
+        `<input class="form-check-input" type="checkbox" name="char_sel_${qid}" ` +
+        `value="${c.id}" id="char_${qid}_${c.id}" checked>` +
+        `<label class="form-check-label d-flex flex-wrap gap-2 align-items-center" ` +
+        `for="char_${qid}_${c.id}">` +
+        `<strong>${c.char_name}</strong>` +
+        `<span class="text-muted small">${detail}</span>` +
+        `</label>`;
+      list.appendChild(div);
+    }
+
+    // Clear add-form inputs
+    nameEl.value = '';
+    specEl.value  = '';
+    gsEl.value    = '';
+    classEl.selectedIndex = 0;
+
+    // Collapse the details panel
+    const details = document.getElementById('char-add-details-' + qid);
+    if (details) details.removeAttribute('open');
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+  }
+}
+
 function addGroupInstance(container) {
   const instances = container.querySelectorAll('.group-instance');
   if (!instances.length) return;

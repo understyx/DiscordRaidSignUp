@@ -79,9 +79,10 @@
                 <option value="textarea">Long text</option>
                 <option value="select">Dropdown (select)</option>
                 <option value="radio">Multiple choice (radio)</option>
+                <option value="characters">Characters (linked)</option>
               </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 col-width-wrap">
               <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
                 <option value="full">Full width</option>
                 <option value="half">Half (2-col)</option>
@@ -94,7 +95,7 @@
             <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                       placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
           </div>
-          <div class="mb-2">
+          <div class="mb-2 default-val-wrap">
             <input type="text" class="form-control form-control-sm" name="q_default[]"
                    placeholder="Default / prefill value for applicants (optional)">
           </div>
@@ -105,7 +106,7 @@
                      onchange="syncHidden(this)">
               <label class="form-check-label small" for="req_0">Required</label>
             </div>
-            <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+            <button type="button" class="btn btn-sm btn-link p-0 text-muted small group-settings-btn"
                     onclick="toggleGroupSettings(this)">⚙ Group settings</button>
           </div>
           <div class="group-settings d-none mt-2 p-2 border border-secondary rounded">
@@ -149,9 +150,10 @@
                 <option value="textarea" {% if q.question_type == 'textarea' %}selected{% endif %}>Long text</option>
                 <option value="select" {% if q.question_type == 'select' %}selected{% endif %}>Dropdown (select)</option>
                 <option value="radio" {% if q.question_type == 'radio' %}selected{% endif %}>Multiple choice (radio)</option>
+                <option value="characters" {% if q.question_type == 'characters' %}selected{% endif %}>Characters (linked)</option>
               </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 col-width-wrap" {% if q.question_type == 'characters' %}style="display:none"{% endif %}>
               <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
                 <option value="full" {% if not q.col_width or q.col_width == 'full' %}selected{% endif %}>Full width</option>
                 <option value="half" {% if q.col_width == 'half' %}selected{% endif %}>Half (2-col)</option>
@@ -164,7 +166,7 @@
             <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                       placeholder="Option 1&#10;Option 2&#10;Option 3">{% if q.options_parsed %}{{ q.options_parsed | join('\n') }}{% endif %}</textarea>
           </div>
-          <div class="mb-2">
+          <div class="mb-2 default-val-wrap" {% if q.question_type == 'characters' %}style="display:none"{% endif %}>
             <input type="text" class="form-control form-control-sm" name="q_default[]"
                    value="{{ q.default_value if q.default_value else '' }}"
                    placeholder="Default / prefill value for applicants (optional)">
@@ -176,7 +178,8 @@
                      {% if q.is_required %}checked{% endif %} onchange="syncHidden(this)">
               <label class="form-check-label small" for="req_{{ loop.index0 }}">Required</label>
             </div>
-            <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+            <button type="button" class="btn btn-sm btn-link p-0 text-muted small group-settings-btn"
+                    {% if q.question_type == 'characters' %}style="display:none"{% endif %}
                     onclick="toggleGroupSettings(this)">⚙ {% if q.group_key %}Edit group{% else %}Group settings{% endif %}</button>
           </div>
           <div class="group-settings {% if not q.group_key %}d-none {% endif %}mt-2 p-2 border border-secondary rounded">
@@ -261,9 +264,10 @@ function addQuestion() {
           <option value="textarea">Long text</option>
           <option value="select">Dropdown (select)</option>
           <option value="radio">Multiple choice (radio)</option>
+          <option value="characters">Characters (linked)</option>
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-3 col-width-wrap">
         <select class="form-select" name="q_col_width[]" title="Column width in the apply form">
           <option value="full">Full width</option>
           <option value="half">Half (2-col)</option>
@@ -276,7 +280,7 @@ function addQuestion() {
       <textarea class="form-control form-control-sm" name="q_options[]" rows="3"
                 placeholder="Option 1\nOption 2\nOption 3"></textarea>
     </div>
-    <div class="mb-2">
+    <div class="mb-2 default-val-wrap">
       <input type="text" class="form-control form-control-sm" name="q_default[]"
              placeholder="Default / prefill value for applicants (optional)">
     </div>
@@ -287,7 +291,7 @@ function addQuestion() {
                onchange="syncHidden(this)">
         <label class="form-check-label small" for="req_${idx}">Required</label>
       </div>
-      <button type="button" class="btn btn-sm btn-link p-0 text-muted small"
+      <button type="button" class="btn btn-sm btn-link p-0 text-muted small group-settings-btn"
               onclick="toggleGroupSettings(this)">⚙ Group settings</button>
     </div>
     <div class="group-settings d-none mt-2 p-2 border border-secondary rounded">
@@ -314,6 +318,7 @@ function addQuestion() {
   `;
   container.appendChild(row);
   renumberQuestions();
+  updateCharactersAvailability();
 }
 
 function removeQuestion(btn) {
@@ -324,6 +329,7 @@ function removeQuestion(btn) {
   }
   row.remove();
   renumberQuestions();
+  updateCharactersAvailability();
 }
 
 function renumberQuestions() {
@@ -337,11 +343,63 @@ function renumberQuestions() {
 function toggleOptions(select) {
   const row = select.closest('.question-row');
   const optGroup = row.querySelector('.options-group');
-  if (select.value === 'select' || select.value === 'radio') {
+  const defaultWrap = row.querySelector('.default-val-wrap');
+  const colWidthWrap = row.querySelector('.col-width-wrap');
+  const groupSettingsBtn = row.querySelector('.group-settings-btn');
+  const groupSettingsPanel = row.querySelector('.group-settings');
+
+  const isChars = select.value === 'characters';
+  const needsOptions = select.value === 'select' || select.value === 'radio';
+
+  if (needsOptions) {
     optGroup.classList.add('visible');
   } else {
     optGroup.classList.remove('visible');
   }
+
+  if (isChars) {
+    if (defaultWrap) defaultWrap.style.display = 'none';
+    if (colWidthWrap) colWidthWrap.style.display = 'none';
+    if (groupSettingsBtn) groupSettingsBtn.style.display = 'none';
+    if (groupSettingsPanel) groupSettingsPanel.classList.add('d-none');
+  } else {
+    if (defaultWrap) defaultWrap.style.display = '';
+    if (colWidthWrap) colWidthWrap.style.display = '';
+    if (groupSettingsBtn) groupSettingsBtn.style.display = '';
+  }
+
+  updateCharactersAvailability();
 }
+
+/**
+ * Only one 'characters' question is allowed per form.
+ * When one already exists, disable the 'characters' option in all other rows.
+ */
+function updateCharactersAvailability() {
+  const rows = Array.from(document.querySelectorAll('.question-row'));
+  const charsRow = rows.find(r => {
+    const sel = r.querySelector('.q-type-select');
+    return sel && sel.value === 'characters';
+  });
+
+  rows.forEach(row => {
+    const sel = row.querySelector('.q-type-select');
+    if (!sel) return;
+    const opt = sel.querySelector('option[value="characters"]');
+    if (!opt) return;
+    if (charsRow && row !== charsRow) {
+      opt.disabled = true;
+      opt.title = 'Only one Characters question is allowed per form';
+    } else {
+      opt.disabled = false;
+      opt.title = '';
+    }
+  });
+}
+
+// Initialise state for questions that are already rendered on page load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.q-type-select').forEach(sel => toggleOptions(sel));
+});
 </script>
 {% endblock %}
