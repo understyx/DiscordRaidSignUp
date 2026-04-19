@@ -380,6 +380,7 @@ class SignupView(discord.ui.View):
         guild_id, guild_raid_number, subdomain = await loop.run_in_executor(None, _fetch_raid)
 
         if BASE_DOMAIN and guild_raid_number:
+            # Use subdomain URL: {subdomain or guild_id}.{BASE_DOMAIN}/raids/{guild_raid_number}
             slug = subdomain if subdomain else str(guild_id)
             protocol = "https" if "https" in WEB_BASE_URL else "http"
             url = f"{protocol}://{slug}.{BASE_DOMAIN}/raids/{guild_raid_number}"
