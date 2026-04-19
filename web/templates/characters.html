@@ -53,9 +53,8 @@
   <!-- ── Tab 1: Edit Characters ──────────────────────────────────────── -->
   <div class="tab-pane fade show active" id="edit-pane" role="tabpanel">
 
-    {% if charGroups %}
     <div class="table-responsive mb-3">
-      <table class="table table-hover align-middle">
+      <table class="table table-hover align-middle char-edit-table">
         <thead class="table-dark">
           <tr>
             <th>Character</th>
@@ -74,17 +73,52 @@
           {% for row in group.rows %}
           <tr class="{{ alt }}">
             {% if loop.index == 1 %}
-            <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
-              {{ group.name }}
-              <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
-                      data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
-                      title="Add Spec">➕</button>
+            <td rowspan="{{ group.rows | length }}" class="align-top pt-2">
+              <form method="post" action="/characters/{{ group_id }}/update-name"
+                    class="d-flex gap-1 align-items-center flex-nowrap">
+                <input type="text" name="char_name" value="{{ group.name }}"
+                       class="form-control form-control-sm bg-dark text-light border-secondary cls-{{ cls_key }}"
+                       style="width:110px" maxlength="50" required />
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Name">💾</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
+                        title="Add Spec">➕</button>
+              </form>
             </td>
-            <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
-            <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
+            <td rowspan="{{ group.rows | length }}" class="align-top pt-2">
+              <form method="post" action="/characters/{{ group_id }}/update-realm"
+                    class="d-flex gap-1 align-items-center flex-nowrap">
+                <input type="text" name="realm" value="{{ group.realm }}"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:100px" maxlength="50" />
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Realm">💾</button>
+              </form>
+            </td>
+            <td rowspan="{{ group.rows | length }}" class="align-top pt-2">
+              <form method="post" action="/characters/{{ group_id }}/update-class"
+                    class="d-flex gap-1 align-items-center flex-nowrap">
+                <select name="char_class"
+                        class="form-select form-select-sm bg-dark text-light border-secondary cls-{{ cls_key }}"
+                        style="width:130px">
+                  <option value="">— Class —</option>
+                  <option {% if group.char_class == 'Death Knight' %}selected{% endif %}>Death Knight</option>
+                  <option {% if group.char_class == 'Druid' %}selected{% endif %}>Druid</option>
+                  <option {% if group.char_class == 'Hunter' %}selected{% endif %}>Hunter</option>
+                  <option {% if group.char_class == 'Mage' %}selected{% endif %}>Mage</option>
+                  <option {% if group.char_class == 'Paladin' %}selected{% endif %}>Paladin</option>
+                  <option {% if group.char_class == 'Priest' %}selected{% endif %}>Priest</option>
+                  <option {% if group.char_class == 'Rogue' %}selected{% endif %}>Rogue</option>
+                  <option {% if group.char_class == 'Shaman' %}selected{% endif %}>Shaman</option>
+                  <option {% if group.char_class == 'Warlock' %}selected{% endif %}>Warlock</option>
+                  <option {% if group.char_class == 'Warrior' %}selected{% endif %}>Warrior</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Class">💾</button>
+              </form>
+            </td>
             {% endif %}
             <td>
-              <form method="post" action="/characters/{{ row.id }}/update-spec" class="d-flex gap-1 align-items-center">
+              <form method="post" action="/characters/{{ row.id }}/update-spec"
+                    class="d-flex gap-1 align-items-center">
                 <input type="text" name="spec" value="{{ row.spec or '' }}"
                        class="form-control form-control-sm bg-dark text-light border-secondary"
                        style="width:110px" placeholder="—" />
@@ -92,7 +126,8 @@
               </form>
             </td>
             <td>
-              <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-1 align-items-center">
+              <form method="post" action="/characters/{{ row.id }}/update-gs"
+                    class="d-flex gap-1 align-items-center">
                 <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}"
                        class="form-control form-control-sm bg-dark text-light border-secondary"
                        style="width:80px" placeholder="—" />
@@ -110,14 +145,16 @@
           <tr class="{{ alt }}">
             <td colspan="6" class="p-0 border-0">
               <div class="collapse" id="add-spec-{{ group_id }}">
-                <div class="p-2">
-                  <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
+                <div class="p-2 ps-3">
+                  <form method="post" action="/characters/register"
+                        class="d-flex gap-2 align-items-center flex-wrap">
                     <input type="hidden" name="char_name" value="{{ group.name }}" />
                     <input type="hidden" name="realm" value="{{ group.realm }}" />
                     <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
+                    <span class="text-muted small me-1">New spec for <strong>{{ group.name }}</strong>:</span>
                     <input type="text" name="spec"
                            class="form-control form-control-sm bg-dark text-light border-secondary"
-                           style="width:120px" placeholder="New spec" maxlength="50" />
+                           style="width:120px" placeholder="Spec" maxlength="50" />
                     <input type="text" name="gearscore"
                            class="form-control form-control-sm bg-dark text-light border-secondary"
                            style="width:80px" placeholder="GS" maxlength="10" />
@@ -128,64 +165,59 @@
             </td>
           </tr>
           {% endfor %}
+
+          <!-- Inline Add Character form row (hidden until triggered) -->
+          <tr id="addCharRow" class="d-none">
+            <td colspan="6" class="p-2">
+              <form method="post" action="/characters/register"
+                    class="d-flex gap-2 align-items-center flex-wrap">
+                <input type="text" name="char_name"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:120px" placeholder="Name *" maxlength="50" required />
+                <input type="text" name="realm"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:100px" placeholder="Realm" value="Icecrown" maxlength="50" />
+                <select name="char_class"
+                        class="form-select form-select-sm bg-dark text-light border-secondary"
+                        style="width:130px">
+                  <option value="">— Class —</option>
+                  <option>Death Knight</option>
+                  <option>Druid</option>
+                  <option>Hunter</option>
+                  <option>Mage</option>
+                  <option>Paladin</option>
+                  <option>Priest</option>
+                  <option>Rogue</option>
+                  <option>Shaman</option>
+                  <option>Warlock</option>
+                  <option>Warrior</option>
+                </select>
+                <input type="text" name="spec"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:110px" placeholder="Spec" maxlength="50" />
+                <input type="text" name="gearscore"
+                       class="form-control form-control-sm bg-dark text-light border-secondary"
+                       style="width:80px" placeholder="GS" maxlength="10" />
+                <button type="submit" class="btn btn-sm btn-wow">Add</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="hideAddChar()">✕</button>
+              </form>
+            </td>
+          </tr>
+
+          <!-- Add Character trigger row -->
+          <tr id="addCharTrigger">
+            <td colspan="6" class="py-2 ps-3"
+                style="cursor:pointer; color:var(--wow-gold)"
+                onclick="showAddChar()"
+                tabindex="0"
+                role="button"
+                onkeydown="if(event.key==='Enter'||event.key===' '){showAddChar();}">
+              ➕ Add Character
+            </td>
+          </tr>
         </tbody>
       </table>
-    </div>
-    {% else %}
-    <div class="card p-4 text-center text-muted mb-3">
-      No characters registered yet. Add one below!
-    </div>
-    {% endif %}
-
-    <button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm" aria-expanded="false">
-      ➕ Add new character
-    </button>
-
-    <div class="collapse mt-3" id="addCharForm">
-      <div class="card p-3">
-        <h6 class="mb-3">Add Character</h6>
-        <form method="post" action="/characters/register" class="row g-2 align-items-end">
-          <div class="col-auto">
-            <label class="form-label small">Character Name</label>
-            <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
-                   required maxlength="50" placeholder="e.g. Arthas" />
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Realm</label>
-            <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
-                   value="Icecrown" maxlength="50" />
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Class</label>
-            <select name="char_class" class="form-select bg-dark text-light border-secondary">
-              <option value="">— select —</option>
-              <option>Death Knight</option>
-              <option>Druid</option>
-              <option>Hunter</option>
-              <option>Mage</option>
-              <option>Paladin</option>
-              <option>Priest</option>
-              <option>Rogue</option>
-              <option>Shaman</option>
-              <option>Warlock</option>
-              <option>Warrior</option>
-            </select>
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Spec</label>
-            <input type="text" name="spec" class="form-control bg-dark text-light border-secondary"
-                   maxlength="50" placeholder="e.g. Holy" />
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">GS</label>
-            <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
-                   maxlength="10" placeholder="e.g. 6300" style="width:90px" />
-          </div>
-          <div class="col-auto">
-            <button type="submit" class="btn btn-wow">Add</button>
-          </div>
-        </form>
-      </div>
     </div>
 
   </div>{# /edit-pane #}
@@ -241,6 +273,17 @@
 </div>{# /tab-content #}
 
 <script>
+function showAddChar() {
+  document.getElementById('addCharRow').classList.remove('d-none');
+  document.getElementById('addCharTrigger').classList.add('d-none');
+  document.querySelector('#addCharRow input[name="char_name"]').focus();
+}
+
+function hideAddChar() {
+  document.getElementById('addCharRow').classList.add('d-none');
+  document.getElementById('addCharTrigger').classList.remove('d-none');
+}
+
 document.querySelectorAll('.save-cell').forEach(cell => {
   cell.addEventListener('click', async () => {
     if (cell.classList.contains('loading')) return;
