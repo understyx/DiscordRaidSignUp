@@ -36,6 +36,16 @@ async function postToDiscordChannel(channelId, payload) {
   }
 }
 
+async function postToRaidLogThread(raidId, message) {
+  const [[raid]] = await pool.query('SELECT discord_log_thread_id FROM raids WHERE id = ?', [raidId]);
+  const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
+  if (!threadId) return;
+  const result = await postToDiscordChannel(threadId, { content: message });
+  if (!result.ok) {
+    console.warn(`[log-thread] Failed to post to log thread ${threadId}: ${result.reason}`);
+  }
+}
+
 async function fetchCompLabels(raidId) {
   const [rows] = await pool.query(
     'SELECT comp_number, label FROM comp_labels WHERE raid_id = ?',
@@ -630,6 +640,15 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     }
   }
 
+  // Fetch character names for the log message before deleting existing signups
+  const charPlaceholders = characterIds.map(() => '?').join(', ');
+  const [charRows] = await pool.query(
+    `SELECT id, char_name, spec FROM characters WHERE id IN (${charPlaceholders})`,
+    characterIds
+  );
+  const charById = {};
+  for (const c of charRows) charById[String(c.id)] = c;
+
   // Delete all existing signups for this user in this raid, then re-insert
   await pool.query('DELETE FROM signups WHERE raid_id = ? AND discord_user_id = ?', [raidId, userId]);
 
@@ -641,6 +660,19 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
       [raidId, userId, charId, stype, sstatus]
     );
   }
+
+  // Post to raid log thread
+  const charLabels = characterIds.map(id => {
+    const c = charById[String(id)];
+    if (!c) return `#${id}`;
+    const isPrio = prioritySet.has(id);
+    const label = c.spec ? `**${c.char_name} (${c.spec})**` : `**${c.char_name}**`;
+    return isPrio ? `${label} ⭐ preferred` : label;
+  });
+  const logEmoji = isTentative ? '❓' : '✅';
+  const logAction = isTentative ? 'tentatively signed up' : 'signed up';
+  const logMsg = `${logEmoji} <@${userId}> ${logAction} via website with: ${charLabels.join(', ')}`;
+  postToRaidLogThread(raidId, logMsg).catch(() => {});
 
   req.session.flash = isTentative ? '❓ Signed up as tentative!' : '✅ Signed up!';
   res.redirect(raidUrl);
@@ -663,6 +695,7 @@ router.post('/:raid_number/withdraw', async (req, res) => {
 
   if (result.affectedRows > 0) {
     req.session.flash = '✅ Withdrawn from raid.';
+    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid via website.`).catch(() => {});
   } else {
     req.session.flash = 'You were not signed up.';
   }
