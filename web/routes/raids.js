@@ -37,7 +37,8 @@ async function postToDiscordChannel(channelId, payload) {
 }
 
 async function postToRaidLogThread(raidId, message) {
-  const [[raid]] = await pool.query('SELECT discord_log_thread_id FROM raids WHERE id = ?', [raidId]);
+  const [rows] = await pool.query('SELECT discord_log_thread_id FROM raids WHERE id = ?', [raidId]);
+  const raid = rows[0];
   const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
   if (!threadId) return;
   const result = await postToDiscordChannel(threadId, { content: message });
@@ -672,7 +673,9 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   const logEmoji = isTentative ? '❓' : '✅';
   const logAction = isTentative ? 'tentatively signed up' : 'signed up';
   const logMsg = `${logEmoji} <@${userId}> ${logAction} via website with: ${charLabels.join(', ')}`;
-  postToRaidLogThread(raidId, logMsg).catch(() => {});
+  postToRaidLogThread(raidId, logMsg).catch(err => {
+    console.warn('[log-thread] Failed to post signup log:', err.message || err);
+  });
 
   req.session.flash = isTentative ? '❓ Signed up as tentative!' : '✅ Signed up!';
   res.redirect(raidUrl);
@@ -695,7 +698,9 @@ router.post('/:raid_number/withdraw', async (req, res) => {
 
   if (result.affectedRows > 0) {
     req.session.flash = '✅ Withdrawn from raid.';
-    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid via website.`).catch(() => {});
+    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid via website.`).catch(err => {
+      console.warn('[log-thread] Failed to post withdraw log:', err.message || err);
+    });
   } else {
     req.session.flash = 'You were not signed up.';
   }
