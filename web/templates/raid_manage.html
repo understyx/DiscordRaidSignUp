@@ -491,7 +491,12 @@
     {# ── Centre column: Roster slots ─────────────────────────────────── #}
     <div class="roster-col-main">
       <div class="card p-3">
-        <h5 class="mb-3">🎯 Raid Roster</h5>
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h5 class="mb-0">🎯 Raid Roster</h5>
+          {% if can_edit %}
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openPresetModal()" title="Load or save a placeholder preset">📋 Presets</button>
+          {% endif %}
+        </div>
         <div id="rosterSlots">
           {% for group in slots | batch(5) %}
           <div class="row g-2 mb-2 slot-group">
@@ -643,6 +648,57 @@
         <button type="button" class="btn btn-info" id="postConfirmBtn">📋 Confirm &amp; Post</button>
         <button type="button" class="btn btn-outline-info" id="postCurrentBtn" style="display:none">📋 Post Raid {{ current_comp }} Only</button>
         <button type="button" class="btn btn-info" id="postAllBtn" style="display:none">📋 Post All Comps</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Placeholder preset modal ─────────────────────────────────────────── #}
+<div class="modal fade" id="presetModal" tabindex="-1" aria-labelledby="presetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content" style="background:#151b28; border:1px solid var(--border-dim);">
+      <div class="modal-header">
+        <h5 class="modal-title" id="presetModalLabel">📋 Placeholder Presets</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-bold" for="presetNameInput">Save current placeholder layout as preset:</label>
+          <div class="d-flex gap-2">
+            <input type="text" id="presetNameInput" class="form-control form-control-sm"
+                   placeholder="Preset name…" maxlength="100"
+                   style="background:#0f1520; border-color:var(--border-dim); color:#e0e0e0;">
+            <button type="button" class="btn btn-success btn-sm" onclick="saveCurrentAsPreset()" style="white-space:nowrap;">💾 Save</button>
+          </div>
+          <div id="presetSaveMsg" class="mt-1" style="font-size:0.8rem;"></div>
+        </div>
+        <hr style="border-color:var(--border-dim);">
+        <div id="presetList">
+          <p class="text-muted text-center" style="font-size:0.85rem;">Loading presets…</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Preset load-over-players warning modal ───────────────────────────── #}
+<div class="modal fade" id="presetWarnModal" tabindex="-1" aria-labelledby="presetWarnModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:#151b28; border:1px solid var(--border-dim);">
+      <div class="modal-header">
+        <h5 class="modal-title" id="presetWarnModalLabel">⚠️ Load Preset</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>The roster currently has <strong id="warnPlayerCount"></strong> assigned player(s). Loading this preset will remove them from their slots.</p>
+        <p class="text-warning mb-0">Do you want to continue?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="presetWarnConfirmBtn">Load Anyway</button>
       </div>
     </div>
   </div>
@@ -1614,5 +1670,206 @@
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
     new bootstrap.Tooltip(el);
   });
+
+  /* ── Placeholder Preset Management ─────────────────────────────────── */
+
+  let _presetModalInstance = null;
+  let _presetWarnModalInstance = null;
+  let _pendingPresetSlots = null; // preset slots waiting for user confirmation
+
+  function openPresetModal() {
+    if (!_presetModalInstance) {
+      _presetModalInstance = new bootstrap.Modal(document.getElementById('presetModal'));
+    }
+    document.getElementById('presetNameInput').value = '';
+    document.getElementById('presetSaveMsg').textContent = '';
+    loadPresetList();
+    _presetModalInstance.show();
+  }
+
+  function loadPresetList() {
+    const listEl = document.getElementById('presetList');
+    listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">Loading…</p>';
+    fetch('/raids/presets')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) { listEl.innerHTML = '<p class="text-danger">Failed to load presets.</p>'; return; }
+        if (data.presets.length === 0) {
+          listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">No presets yet. Save the current layout to create one.</p>';
+          return;
+        }
+        listEl.innerHTML = '';
+        for (const preset of data.presets) {
+          const row = document.createElement('div');
+          row.className = 'd-flex align-items-center justify-content-between gap-2 mb-2';
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'flex-grow-1';
+          nameSpan.style.fontSize = '0.9rem';
+          nameSpan.textContent = preset.name;
+
+          const loadBtn = document.createElement('button');
+          loadBtn.type = 'button';
+          loadBtn.className = 'btn btn-primary btn-sm';
+          loadBtn.textContent = '▶ Load';
+          loadBtn.onclick = () => initiateLoadPreset(preset.slots);
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn btn-outline-danger btn-sm';
+          delBtn.textContent = '✕';
+          delBtn.title = 'Delete preset';
+          delBtn.onclick = () => deletePreset(preset.id, row);
+
+          row.appendChild(nameSpan);
+          row.appendChild(loadBtn);
+          row.appendChild(delBtn);
+          listEl.appendChild(row);
+        }
+      })
+      .catch(() => { listEl.innerHTML = '<p class="text-danger">Failed to load presets.</p>'; });
+  }
+
+  function saveCurrentAsPreset() {
+    const name = document.getElementById('presetNameInput').value.trim();
+    const msgEl = document.getElementById('presetSaveMsg');
+    if (!name) { msgEl.textContent = '⚠️ Please enter a preset name.'; msgEl.style.color = '#ffc107'; return; }
+
+    // Collect only placeholder-filled slots
+    const slots = [];
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+      const placeholder = assignedDiv.dataset.placeholder;
+      if (!placeholder) return;
+      slots.push({
+        role_slot: slotCard.dataset.slot,
+        slot_role: slotCard.dataset.slotRole || 'dps',
+        placeholder_text: placeholder,
+      });
+    });
+
+    if (slots.length === 0) {
+      msgEl.textContent = '⚠️ No placeholder slots to save. Drag some placeholders onto the roster first.';
+      msgEl.style.color = '#ffc107';
+      return;
+    }
+
+    fetch('/raids/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, slots }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        msgEl.textContent = `✓ Preset "${data.name}" saved (${slots.length} slot(s)).`;
+        msgEl.style.color = '#198754';
+        document.getElementById('presetNameInput').value = '';
+        loadPresetList();
+      } else {
+        msgEl.textContent = '⚠️ ' + (data.error || 'Failed to save preset.');
+        msgEl.style.color = '#dc3545';
+      }
+    })
+    .catch(() => { msgEl.textContent = '⚠️ Failed to save preset.'; msgEl.style.color = '#dc3545'; });
+  }
+
+  function deletePreset(id, rowEl) {
+    fetch(`/raids/presets/${id}`, { method: 'DELETE' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          rowEl.remove();
+          const listEl = document.getElementById('presetList');
+          if (!listEl.querySelector('.d-flex')) {
+            listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">No presets yet. Save the current layout to create one.</p>';
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
+  function initiateLoadPreset(slots) {
+    // Count how many slots are currently filled with real players (not placeholders)
+    let playerCount = 0;
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (assignedDiv && assignedDiv.dataset.charId) playerCount++;
+    });
+
+    if (playerCount > 0) {
+      // Show warning modal
+      _pendingPresetSlots = slots;
+      document.getElementById('warnPlayerCount').textContent = playerCount;
+      if (!_presetWarnModalInstance) {
+        _presetWarnModalInstance = new bootstrap.Modal(document.getElementById('presetWarnModal'));
+      }
+      _presetWarnModalInstance.show();
+    } else {
+      applyPresetSlots(slots);
+    }
+  }
+
+  document.getElementById('presetWarnConfirmBtn').addEventListener('click', () => {
+    if (_presetWarnModalInstance) _presetWarnModalInstance.hide();
+    if (_pendingPresetSlots) {
+      applyPresetSlots(_pendingPresetSlots);
+      _pendingPresetSlots = null;
+    }
+  });
+
+  function applyPresetSlots(slots) {
+    // Close the preset modal first
+    if (_presetModalInstance) _presetModalInstance.hide();
+
+    // Clear all slots
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+      if (assignedDiv.dataset.charId || assignedDiv.dataset.placeholder) {
+        clearAssigned(assignedDiv);
+      }
+    });
+
+    // Build a map of role_slot -> preset entry for quick lookup
+    const presetMap = {};
+    for (const entry of slots) presetMap[entry.role_slot] = entry;
+
+    // Apply preset placeholders to matching slots
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const slot = slotCard.dataset.slot;
+      const entry = presetMap[slot];
+      if (!entry || !entry.placeholder_text) return;
+
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+
+      assignedDiv.innerHTML = '';
+      const label = document.createElement('span');
+      label.className = 'slot-placeholder-text placeholder-colored';
+      label.textContent = entry.placeholder_text;
+      const color = colorForPlaceholder(entry.placeholder_text);
+      if (color) label.style.color = color;
+      assignedDiv.appendChild(label);
+      assignedDiv.dataset.placeholder = entry.placeholder_text;
+      delete assignedDiv.dataset.charId;
+      delete assignedDiv.dataset.discordUserId;
+      delete assignedDiv.dataset.charClass;
+      applySlotTint(slotCard, null);
+
+      // Set slot role from preset
+      const slotRole = entry.slot_role || 'dps';
+      const roleBtn = slotCard.querySelector(`.role-btn[data-role="${slotRole}"]`);
+      if (roleBtn) setSlotRole(roleBtn, slotRole, true);
+
+      addDirtyChange(slot, { slot_role: slotRole, placeholder_text: entry.placeholder_text });
+    });
+
+    updateBuffPanel();
+    updateCharInCompStatus();
+    clearTimeout(saveTimer);
+    autoSave();
+  }
 </script>
 {% endblock %}
