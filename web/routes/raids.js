@@ -641,10 +641,10 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     }
   }
 
-  // Fetch character names for the log message before deleting existing signups
+  // Fetch character details for the log message before deleting existing signups
   const charPlaceholders = characterIds.map(() => '?').join(', ');
   const [charRows] = await pool.query(
-    `SELECT id, char_name, spec FROM characters WHERE id IN (${charPlaceholders})`,
+    `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${charPlaceholders})`,
     characterIds
   );
   const charById = {};
@@ -662,17 +662,26 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     );
   }
 
-  // Post to raid log thread
-  const charLabels = characterIds.map(id => {
+  // Build log message matching the text sign-up format:
+  // • **CharName** (CharClass) – Spec ⭐ GS 6200 / Spec2 GS 6300
+  const charGroups = {};
+  for (const id of characterIds) {
     const c = charById[String(id)];
-    if (!c) return `#${id}`;
-    const isPrio = prioritySet.has(id);
-    const label = c.spec ? `**${c.char_name} (${c.spec})**` : `**${c.char_name}**`;
-    return isPrio ? `${label} ⭐ preferred` : label;
-  });
+    if (!c) continue;
+    const key = c.char_name.toLowerCase();
+    if (!charGroups[key]) {
+      charGroups[key] = { char_name: c.char_name, char_class: c.char_class || '?', specs: [] };
+    }
+    const gs = Number(c.gearscore) >= 99999 ? 'BiS' : Math.floor(Number(c.gearscore) || 0);
+    const star = prioritySet.has(id) ? ' ⭐' : '';
+    charGroups[key].specs.push(`${c.spec || '?'}${star} GS ${gs}`);
+  }
+  const bullets = Object.values(charGroups).map(
+    d => `• **${d.char_name}** (${d.char_class}) – ${d.specs.join(' / ')}`
+  );
   const logEmoji = isTentative ? '❓' : '✅';
   const logAction = isTentative ? 'tentatively signed up' : 'signed up';
-  const logMsg = `${logEmoji} <@${userId}> ${logAction} via website with: ${charLabels.join(', ')}`;
+  const logMsg = `${logEmoji} <@${userId}> ${logAction} for **${raid.name}**:\n${bullets.join('\n')}`;
   postToRaidLogThread(raidId, logMsg).catch(err => {
     console.warn('[log-thread] Failed to post signup log:', err.message || err);
   });
@@ -698,7 +707,7 @@ router.post('/:raid_number/withdraw', async (req, res) => {
 
   if (result.affectedRows > 0) {
     req.session.flash = '✅ Withdrawn from raid.';
-    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid via website.`).catch(err => {
+    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid.`).catch(err => {
       console.warn('[log-thread] Failed to post withdraw log:', err.message || err);
     });
   } else {
