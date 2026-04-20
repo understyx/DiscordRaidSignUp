@@ -1785,9 +1785,11 @@
           if (!listEl.querySelector('.d-flex')) {
             listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">No presets yet. Save the current layout to create one.</p>';
           }
+        } else {
+          alert('Failed to delete preset: ' + (data.error || 'Unknown error'));
         }
       })
-      .catch(() => {});
+      .catch(() => { alert('Failed to delete preset. Please try again.'); });
   }
 
   function initiateLoadPreset(slots) {
