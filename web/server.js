@@ -2,6 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 
 const express = require('express');
 const session = require('express-session');
+const MySQLStore = require('express-mysql-session')(session);
 const nunjucks = require('nunjucks');
 const path = require('path');
 
@@ -25,11 +26,15 @@ const _sessionCookieOpts = {
 if (process.env.COOKIE_DOMAIN) {
   _sessionCookieOpts.domain = process.env.COOKIE_DOMAIN;
 }
+const sessionStore = new MySQLStore({
+  createDatabaseTable: false,
+}, pool);
 app.use(
   session({
     secret: process.env.WEB_SECRET_KEY || 'change_this_to_a_random_string',
     resave: false,
     saveUninitialized: false,
+    store: sessionStore,
     cookie: _sessionCookieOpts,
   })
 );
