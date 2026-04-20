@@ -187,6 +187,7 @@ function currentUser(req) {
  * session (set by the subdomain middleware or guild picker).
  */
 async function getRaidByUrlParams(guildId, raidNumber) {
+  if (!Number.isFinite(raidNumber)) return null;
   const guildIdParam = (guildId === '0' || guildId === 'null' || !guildId) ? null : guildId;
   let query, params;
   if (guildIdParam === null) {
