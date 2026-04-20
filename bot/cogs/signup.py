@@ -655,6 +655,8 @@ class SignupPrioritySelectView(discord.ui.View):
             session = get_session()
             try:
                 _upsert_discord_user(session, interaction.user)
+                raid = session.get(Raid, raid_id)
+                raid_name = raid.name if raid else None
                 for char in self.selected_chars:
                     signup_type = (
                         SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
@@ -682,10 +684,11 @@ class SignupPrioritySelectView(discord.ui.View):
                             )
                         )
                 session.commit()
+                return raid_name
             finally:
                 session.close()
 
-        await loop.run_in_executor(None, _upsert_all)
+        raid_name = await loop.run_in_executor(None, _upsert_all)
 
         is_tentative = signup_status == SignupStatus.tentative
         lines = [
@@ -706,9 +709,27 @@ class SignupPrioritySelectView(discord.ui.View):
             view=None,
         )
 
+        # Build grouped bullet lines matching the text sign-up format:
+        # • **CharName** (CharClass) – Spec ⭐ GS 6200 / Spec2 GS 6300
+        grouped: dict[str, dict] = {}
+        for c in self.selected_chars:
+            key = c["char_name"].lower()
+            if key not in grouped:
+                grouped[key] = {
+                    "char_name": c["char_name"],
+                    "char_class": c.get("char_class") or "?",
+                    "specs": [],
+                }
+            star = " ⭐" if c["id"] in priority_ids else ""
+            grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
+        bullets = [
+            f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
+            for d in grouped.values()
+        ]
+        raid_name_str = f" for **{raid_name}**" if raid_name else ""
         log_message = (
-            f"{log_emoji} {interaction.user.mention} {log_action} with: "
-            + ", ".join(f"**{_char_label(c)}**" for c in self.selected_chars)
+            f"{log_emoji} {interaction.user.mention} {log_action}{raid_name_str}:\n"
+            + "\n".join(bullets)
         )
         await _post_to_raid_log(interaction.client, raid_id, log_message)
         await update_raid_embed(interaction.client, raid_id)

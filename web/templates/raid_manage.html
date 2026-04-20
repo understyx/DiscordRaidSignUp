@@ -831,14 +831,18 @@
     if (label) label.textContent = `${roleEmojis[role] || ''}`;
 
     if (!skipDirty && !applyingRemote && oldRole !== role) {
-      // If the slot has content, re-save with the new role
+      // If the slot has content, re-save with the new role immediately
       const assignedDiv = slotCard.querySelector('.assigned-char');
       const charId      = assignedDiv && assignedDiv.dataset.charId;
       const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
       if (charId) {
         addDirtyChange(slot, { slot_role: role, character_id: charId });
+        clearTimeout(saveTimer);
+        autoSave();
       } else if (placeholder) {
         addDirtyChange(slot, { slot_role: role, placeholder_text: placeholder });
+        clearTimeout(saveTimer);
+        autoSave();
       }
       // Empty-slot role changes don't touch the DB (empty slots aren't persisted)
     }
