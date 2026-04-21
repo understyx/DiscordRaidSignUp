@@ -22,7 +22,9 @@ A World of Warcraft raid management system consisting of three components:
 1. Go to https://discord.com/developers/applications and create a new application.
 2. Under **Bot**, create a bot and copy the **Token**.
 3. Under **OAuth2 → General**, copy the **Client ID** and **Client Secret**.
-4. Add the redirect URI `http://localhost:8000/auth/callback` under **OAuth2 → Redirects**.
+4. Add the redirect URIs under **OAuth2 → Redirects**:
+   - `http://localhost:8000/auth/callback` (main login)
+   - `http://localhost:8000/recruitment/oauth-callback` (recruitment applicants)
 5. Under **Bot → Privileged Gateway Intents**, enable:
    - **Server Members Intent**
    - **Message Content Intent**
@@ -207,25 +209,80 @@ docker compose exec bot alembic upgrade head
 
 ---
 
+## Discord Bot Commands
+
+### Player Commands
+
+| Command | Description |
+|---------|-------------|
+| `/addcharacter` | Register a character with class, spec(s), and gearscore(s) (up to 6 specs) |
+| `/remove_character` | Remove a registered character (optionally by spec) |
+| `/my_characters` | List all your registered characters |
+| `/saves view` | Show all raid-save (lockout) states for your characters |
+| `/saves set` | Mark a character as saved or not saved for a raid instance |
+| `/saves toggle` | Toggle the save state for a character on a raid instance |
+| `/savecharacter` | Shortcut to toggle a character's save state |
+
+### Officer Commands
+
+| Command | Description |
+|---------|-------------|
+| `/create_raid` | Create a new raid via a modal dialog (Officer only) |
+| `/saves clear_all` | Clear all raid saves — equivalent to a weekly Warmane reset (Officer only) |
+
+### Server Manager Commands
+
+| Command | Description |
+|---------|-------------|
+| `/raidadmin add` | Grant a Discord role raid-admin access on the website |
+| `/raidadmin remove` | Revoke raid-admin access from a Discord role |
+| `/raidadmin list` | List all Discord roles with raid-admin access |
+
+### Sign-Up Methods (via Discord)
+
+Players can sign up for raids directly in Discord using three methods:
+
+1. **Button** – Click ✅ **Sign Up** (or ❓ **Tentative**) on the raid embed message, then select characters.
+2. **Text message** – Post character lines in the format `CharName / Class / Spec / GS` in the raid channel. The bot registers the character and signs you up automatically.
+3. **Bot DM** – DM the bot with character lines to register a character (does not auto-sign-up for a raid).
+
+---
+
 ## Project Structure
 
 ```
 .
 ├── bot/                  # Discord bot (discord.py 2.x slash commands)
 │   ├── cogs/
+│   │   ├── admin.py      # /raidadmin commands (server managers only)
 │   │   ├── character.py  # Character management commands
+│   │   ├── dev.py        # Developer-only seeding commands
 │   │   ├── raid.py       # Raid creation/management (officers only)
-│   │   └── signup.py     # Sign-up / persistent button views
+│   │   ├── saves.py      # Raid-save (lockout) management commands
+│   │   └── signup.py     # Sign-up button views and chat-message parser
+│   ├── class_utils.py    # WoW class/spec normalisation helpers
 │   ├── config.py
-│   └── main.py
+│   ├── db.py
+│   ├── main.py
+│   └── warmane.py        # Warmane armory integration
 ├── db/                   # Database layer
 │   ├── migrations/       # Alembic migration scripts
 │   └── models.py         # SQLAlchemy 2.0 ORM models
 ├── web/                  # Web interface (Node.js / Express + Nunjucks)
 │   ├── routes/
-│   ├── templates/
+│   │   ├── admin.js          # Admin-only actions (spec aliases, fake-data seeding)
+│   │   ├── adminCheck.js     # Shared admin-permission helper
+│   │   ├── auth.js           # Discord OAuth2 login / logout
+│   │   ├── characters.js     # Character registration and raid-save management
+│   │   ├── guildSettings.js  # Guild settings (admin roles, signup restriction, subdomain)
+│   │   ├── raids.js          # Raid listing, detail, sign-up, composition management
+│   │   └── recruitment.js    # Guild recruitment forms and applications
+│   ├── templates/        # Nunjucks HTML templates
 │   ├── db.js
-│   └── server.js
+│   ├── migrate.js
+│   ├── server.js
+│   ├── warmane.js        # Warmane armory integration (server-side)
+│   └── wotlk_buffs.json  # WotLK raid-buff definitions
 ├── systemd/              # systemd service files + install script
 │   ├── discord-raid-bot.service
 │   ├── discord-raid-web.service
@@ -242,17 +299,22 @@ docker compose exec bot alembic upgrade head
 
 ## Environment Variables Reference
 
-| Variable                 | Description                                          | Default                               |
-|--------------------------|------------------------------------------------------|---------------------------------------|
-| `DISCORD_BOT_TOKEN`      | Bot token from Discord Developer Portal             | –                                     |
-| `DISCORD_CLIENT_ID`      | OAuth2 Client ID                                     | –                                     |
-| `DISCORD_CLIENT_SECRET`  | OAuth2 Client Secret                                 | –                                     |
-| `DB_HOST`                | Database host                                        | `localhost`                           |
-| `DB_PORT`                | Database port                                        | `3306`                                |
-| `DB_USER`                | Database user                                        | `raidbot`                             |
-| `DB_PASSWORD`            | Database password                                    | `changeme`                            |
-| `DB_NAME`                | Database name                                        | `raidbot`                             |
-| `WEB_SECRET_KEY`         | Secret key for session cookies                       | –                                     |
-| `WEB_BASE_URL`           | Public base URL of the web app                       | `http://localhost:8000`               |
-| `DISCORD_REDIRECT_URI`   | OAuth2 redirect URI (must match Discord app setting) | `http://localhost:8000/auth/callback` |
-| `OFFICER_ROLE_NAME`      | Discord role name with officer permissions           | `Officer`                             |
+| Variable                          | Description                                                                 | Default                               |
+|-----------------------------------|-----------------------------------------------------------------------------|---------------------------------------|
+| `DISCORD_BOT_TOKEN`               | Bot token from Discord Developer Portal                                     | –                                     |
+| `DISCORD_CLIENT_ID`               | OAuth2 Client ID                                                            | –                                     |
+| `DISCORD_CLIENT_SECRET`           | OAuth2 Client Secret                                                        | –                                     |
+| `DB_HOST`                         | Database host                                                               | `localhost`                           |
+| `DB_PORT`                         | Database port                                                               | `3306`                                |
+| `DB_USER`                         | Database user                                                               | `raidbot`                             |
+| `DB_PASSWORD`                     | Database password                                                           | `changeme`                            |
+| `DB_NAME`                         | Database name                                                               | `raidbot`                             |
+| `WEB_SECRET_KEY`                  | Secret key for session cookies                                              | –                                     |
+| `WEB_BASE_URL`                    | Public base URL of the web app                                              | `http://localhost:8000`               |
+| `DISCORD_REDIRECT_URI`            | OAuth2 redirect URI for the main login flow (must match Discord app setting) | `http://localhost:8000/auth/callback` |
+| `RECRUITMENT_DISCORD_REDIRECT_URI`| OAuth2 redirect URI for the recruitment applicant flow                      | `http://localhost:8000/recruitment/oauth-callback` |
+| `OFFICER_ROLE_NAME`               | Discord role name with officer permissions                                  | `Officer`                             |
+| `BASE_DOMAIN`                     | Root domain for per-guild subdomains (e.g. `example.com`). Leave blank if not using subdomains. | – |
+| `COOKIE_DOMAIN`                   | Dot-prefixed root domain so the session cookie is shared across subdomains (e.g. `.example.com`). Required together with `BASE_DOMAIN`. | – |
+| `DEV_USER_ID`                     | Discord user ID of the developer/admin account — grants access to `/admin/spec-aliases` | – |
+| `DEV_MODE`                        | Set to `true` to enable fake-data seeding buttons for UI testing            | `false`                               |
