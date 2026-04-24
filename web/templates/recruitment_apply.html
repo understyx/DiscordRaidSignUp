@@ -38,6 +38,22 @@
     <label class="form-check-label">{{ opt }}</label>
   </div>
   {% endfor %}
+  {% elif q.question_type == 'checkbox' %}
+  {% for opt in q.options_parsed %}
+  {% set isChecked = false %}
+  {% if curVal and opt in curVal %}
+    {% set isChecked = true %}
+  {% endif %}
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="{{ fieldName }}"
+           value="{{ opt }}" {% if isChecked %}checked{% endif %}>
+    <label class="form-check-label">{{ opt }}</label>
+  </div>
+  {% endfor %}
+  {% elif q.question_type == 'header' %}
+    {# already rendered as a label or separate header, nothing else needed here #}
+  {% elif q.question_type == 'separator' %}
+    <hr class="border-secondary my-2">
   {% else %}
   <input type="text" class="form-control" name="{{ fieldName }}"
          value="{{ curVal }}" {% if q.is_required %}required{% endif %}>
@@ -245,21 +261,27 @@
         {# ── Single ungrouped question ── #}
         {% if block.type == 'question' %}
           {% set q = block.question %}
-          <div class="card mb-3">
-            <div class="card-body">
-              <label class="form-label fw-semibold">
-                {{ q.question_text }}
-                {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
-              </label>
-              {% if q.question_type == 'characters' %}
-                {% set preselected = preselected_chars_by_question[q.id | string] if preselected_chars_by_question else [] %}
-                {{ renderCharactersField(q, applicant_characters, preselected) }}
-              {% else %}
-                {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
-                {{ renderField(q, 'answer_' ~ (q.id | string), curVal) }}
-              {% endif %}
+          {% if q.question_type == 'header' %}
+            <h4 class="mt-4 mb-3 border-bottom pb-2">{{ q.question_text }}</h4>
+          {% elif q.question_type == 'separator' %}
+            <hr class="my-4 border-secondary opacity-50">
+          {% else %}
+            <div class="card mb-3">
+              <div class="card-body">
+                <label class="form-label fw-semibold">
+                  {{ q.question_text }}
+                  {% if q.is_required %}<span class="text-danger ms-1">*</span>{% endif %}
+                </label>
+                {% if q.question_type == 'characters' %}
+                  {% set preselected = preselected_chars_by_question[q.id | string] if preselected_chars_by_question else [] %}
+                  {{ renderCharactersField(q, applicant_characters, preselected) }}
+                {% else %}
+                  {% set curVal = existing_answers[q.id | string] if existing_answers[q.id | string] else (q.default_value if q.default_value else '') %}
+                  {{ renderField(q, 'answer_' ~ (q.id | string), curVal) }}
+                {% endif %}
+              </div>
             </div>
-          </div>
+          {% endif %}
 
         {# ── Grouped questions (multi-column / repeatable) ── #}
         {% elif block.type == 'group' %}
@@ -330,25 +352,7 @@
 
       {% endfor %}
 
-      {# ── Discord notification info (only on first submit) ── #}
-      {% if not is_editing %}
-      <div class="card mb-4">
-        <div class="card-body">
-          <div class="d-flex gap-2 align-items-start">
-            <span style="font-size:1.25rem;">🔔</span>
-            <p class="mb-0">
-              If you want to automatically be notified on Discord when your application status changes,
-              please join this server:
-              <a href="https://discord.gg/VfgQ4UKSEP" target="_blank" rel="noopener noreferrer">
-                https://discord.gg/VfgQ4UKSEP
-              </a>
-            </p>
-          </div>
-        </div>
-      </div>
-      {% endif %}
-
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 mt-4">
         <button type="submit" class="btn btn-wow px-5">
           {% if is_editing %}Save Changes{% else %}Submit Application{% endif %}
         </button>
