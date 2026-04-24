@@ -100,7 +100,8 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
       if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
       const c = e.character;
       const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
-      return `**${c.char_name}** — ${c.spec || c.char_class || '?'}${mention}`;
+      const tentative = c.status === 'tentative' ? ' [:question:]' : '';
+      return `**${c.char_name}** — ${c.spec || c.char_class || '?'}${mention}${tentative}`;
     });
     fields.push({
       name: `${roleLabel} [${entries.length}]`,
@@ -969,7 +970,10 @@ router.get('/:raid_number/manage', async (req, res) => {
   }
 
   const [existingComp] = await pool.query(
-    'SELECT * FROM compositions WHERE raid_id = ? AND comp_number = ?',
+    `SELECT co.*, s.status AS signup_status
+     FROM compositions co
+     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+     WHERE co.raid_id = ? AND co.comp_number = ?`,
     [raidId, currentComp]
   );
 
@@ -980,11 +984,13 @@ router.get('/:raid_number/manage', async (req, res) => {
   const placeholderMap = {};
   const slotRoleMap = {};
 
+  const compStatusMap = {};
   for (const c of existingComp) {
     const slotKey = c.role_slot; // "slot_N" format after migration 005
     const role = c.slot_role || 'dps';
     if (c.character_id) {
       compMap[slotKey] = String(c.character_id);
+      compStatusMap[slotKey] = c.signup_status;
     } else if (c.placeholder_text) {
       placeholderMap[slotKey] = c.placeholder_text;
     }
@@ -1047,6 +1053,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     signups,
     signupsByUser,
     signup_by_char_id: signupByCharId,
+    comp_status_map: compStatusMap,
     slots,
     comp_map: compMap,
     placeholder_map: placeholderMap,
@@ -1160,9 +1167,11 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     // Return current composition even for empty payloads
     const [emptyRows] = await pool.query(
       `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
-              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+              s.status AS signup_status
        FROM compositions co
        LEFT JOIN characters c ON co.character_id = c.id
+       LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
        WHERE co.raid_id = ? AND co.comp_number = ?
        ORDER BY co.role_slot`,
       [raidId, compNumber]
@@ -1176,6 +1185,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
       spec: r.spec || null,
       discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+      status: r.signup_status || null,
     }));
     return res.json({ ok: true, saved: [], entries: emptyEntries });
   }
@@ -1244,9 +1254,11 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
   // Return the full current composition so all clients can converge immediately
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
-            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+            s.status AS signup_status
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
+     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1261,6 +1273,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
     discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+    status: r.signup_status || null,
   }));
 
   res.json({ ok: true, saved: savedSlots, entries });
@@ -1280,9 +1293,11 @@ router.get('/:raid_number/manage/json', async (req, res) => {
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
             MAX(co.updated_at) OVER () AS max_updated_at,
-            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id
+            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+            s.status AS signup_status
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
+     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1304,6 +1319,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
     discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+    status: r.signup_status || null,
   }));
 
   res.json({ ok: true, version: version || '', entries });
@@ -1360,8 +1376,11 @@ router.get('/:raid_number/comp', async (req, res) => {
   const currentComp = parseInt(req.query.comp) || compNumbers[0];
 
   const [comps] = await pool.query(
-    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id
-     FROM compositions co LEFT JOIN characters c ON co.character_id = c.id
+    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id,
+            s.status AS signup_status
+     FROM compositions co
+     LEFT JOIN characters c ON co.character_id = c.id
+     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, currentComp]
@@ -1382,6 +1401,7 @@ router.get('/:raid_number/comp', async (req, res) => {
         gearscore: comp.gearscore,
         role: comp.role,
         discord_user_id: comp.char_discord_user_id,
+        status: comp.signup_status,
       } : null,
     };
     // Use slot_role column (populated during migration 005) for grouping
@@ -1454,9 +1474,11 @@ router.post('/:raid_number/post_comp', async (req, res) => {
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
           `SELECT co.slot_role, co.character_id, co.placeholder_text,
-                  c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id
+                  c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id,
+                  s.status AS signup_status
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
+           LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
            WHERE co.raid_id = ? AND co.comp_number = ?
            ORDER BY co.role_slot`,
           [raidId, cn]
@@ -1473,6 +1495,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
               spec: comp.spec,
               role: comp.role,
               discord_user_id: comp.char_discord_user_id ? String(comp.char_discord_user_id) : null,
+              status: comp.signup_status,
             } : null,
           };
           const roleKey = comp.slot_role || 'dps';

@@ -38,7 +38,7 @@
           {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
           <div class="card p-2 h-100 border-secondary text-center comp-char-card">
             <div class="small text-muted mb-1">{{ comp.role_slot }}</div>
-            <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+            <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if c.status == 'tentative' %} [?]{% endif %}</span>
             <small class="cls-{{ cls_key }} d-block" style="opacity:0.8;">{{ c.spec or "?" }}</small>
             <small class="text-muted d-block" style="font-size:0.7rem;">GS {{ c.gearscore | gsformat }}</small>
           </div>

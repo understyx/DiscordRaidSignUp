@@ -314,7 +314,19 @@ function onDrop(event) {
   assignedDiv.innerHTML = '';
   const nameSpan = document.createElement('span');
   nameSpan.className   = `fw-bold${draggedCharClass ? ' cls-' + draggedCharClass : ''}`;
-  nameSpan.textContent = draggedCharName;
+
+  let isTentative = false;
+  if (draggedDiscordUserId) {
+    const poolCard = document.querySelector(`.char-card[data-discord-user-id="${draggedDiscordUserId}"]`);
+    if (poolCard) {
+      const header = poolCard.closest('.user-group').querySelector('.user-group-header');
+      if (header && header.classList.contains('tentative')) {
+        isTentative = true;
+      }
+    }
+  }
+
+  nameSpan.textContent = draggedCharName + (isTentative ? ' [?]' : '');
   const specSmall = document.createElement('small');
   specSmall.className   = 'text-muted d-block';
   specSmall.textContent = draggedSpec || '?';
@@ -532,7 +544,17 @@ function applyRemoteState(entries) {
           assignedDiv.innerHTML = '';
           const nameSpan = document.createElement('span');
           nameSpan.className   = `fw-bold${remote.char_class ? ' cls-' + remote.char_class : ''}`;
-          nameSpan.textContent = remote.char_name || '?';
+
+          let remoteIsTentative = false;
+          const poolCard = document.querySelector(`.char-card[data-discord-user-id="${remote.discord_user_id}"]`);
+          if (poolCard) {
+            const header = poolCard.closest('.user-group').querySelector('.user-group-header');
+            if (header && header.classList.contains('tentative')) {
+              remoteIsTentative = true;
+            }
+          }
+
+          nameSpan.textContent = (remote.char_name || '?') + (remoteIsTentative ? ' [?]' : '');
           const specSmall = document.createElement('small');
           specSmall.className   = 'text-muted d-block';
           specSmall.textContent = remote.spec || '?';
