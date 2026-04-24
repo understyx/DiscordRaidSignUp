@@ -179,6 +179,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/js/spec_aliases.js"></script>
+  <script src="/js/raid_utils.js"></script>
   <script>
     // Shared WoW class colour map — keyed by CSS class suffix (e.g. 'paladin', 'death-knight')
     const WOW_CLASS_COLORS = {
@@ -193,32 +194,6 @@
       'rogue':        '#e8d850',
       'warlock':      '#9d9eec',
     };
-
-    /**
-     * Normalize a raw spec string (possibly user slang) to a canonical spec name.
-     * charClass: WoW class (case-insensitive, accepts 'death-knight' or 'Death Knight')
-     * specText:  raw spec text (e.g. "owl", "boomkin", "Balance, Feral", "ret")
-     * Returns the canonical spec name, or the original text (capitalized) as fallback.
-     */
-    function normalizeSpec(charClass, specText) {
-      if (!specText) return null;
-      // Normalize charClass: 'death-knight' → 'death knight'
-      const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
-      // Handle comma-separated specs from Warmane (e.g. "Balance, Feral") — use first
-      const firstSpec = specText.split(',')[0].trim();
-      const s = firstSpec.toLowerCase();
-      const clsMap = SPEC_ALIASES[cls];
-      if (clsMap) {
-        // Exact alias match
-        if (clsMap[s]) return clsMap[s];
-        // Spec text contains a known alias (e.g. "Balance Druid" contains "balance")
-        for (const [alias, canonical] of Object.entries(clsMap)) {
-          if (s.includes(alias)) return canonical;
-        }
-      }
-      // Fallback: capitalise the first word of the first spec
-      return firstSpec.charAt(0).toUpperCase() + firstSpec.slice(1);
-    }
   </script>
   {% block scripts %}{% endblock %}
 </body>
