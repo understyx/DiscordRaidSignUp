@@ -29,7 +29,13 @@
           <li class="nav-item"><a class="nav-link" href="/recruitment">📋 Recruitment</a></li>
           {% endif %}
           {% if user and user.id and user.id == dev_user_id and dev_user_id %}
-          <li class="nav-item"><a class="nav-link" href="/admin/spec-aliases">Spec Aliases</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle text-danger" href="#" role="button" data-bs-toggle="dropdown">🛠️ Dev Tools</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/admin/spec-aliases">Spec Aliases</a></li>
+              <li><a class="dropdown-item" href="/admin/all-characters">All Characters</a></li>
+            </ul>
+          </li>
           {% endif %}
         </ul>
         <ul class="navbar-nav ms-auto">

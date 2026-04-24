@@ -168,23 +168,44 @@ router.get('/callback', async (req, res) => {
     // Find which of the user's guilds have the bot installed
     let activeGuildId = null;
     let activeGuildName = null;
-    if (userGuildIds.length > 0) {
-      const placeholders = userGuildIds.map(() => '?').join(', ');
+
+    const devUserId = process.env.DEV_USER_ID || '';
+    const isDev = devUserId && userData.id === devUserId;
+
+    if (userGuildIds.length > 0 || isDev) {
       try {
-        const [allBotGuildRows] = await pool.query(
-          `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
-          userGuildIds
-        );
-        const botGuildRows = allBotGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID);
-        if (botGuildRows.length === 1) {
-          activeGuildId = String(botGuildRows[0].guild_id);
-          activeGuildName = botGuildRows[0].guild_name;
-        } else if (botGuildRows.length > 1) {
-          // Store available guilds and redirect to picker
-          req.session.available_guilds = botGuildRows.map(r => ({
+        let botGuildRows = [];
+        if (isDev) {
+          // Dev sees ALL guilds the bot is in
+          [botGuildRows] = await pool.query(
+            'SELECT guild_id, guild_name FROM bot_guilds'
+          );
+          botGuildRows = botGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID);
+          // Mark guilds the dev is NOT in as is_dev_only
+          botGuildRows = botGuildRows.map(r => ({
             guild_id: String(r.guild_id),
             guild_name: r.guild_name,
+            is_dev_only: !userGuildIds.includes(String(r.guild_id))
           }));
+        } else {
+          const placeholders = userGuildIds.map(() => '?').join(', ');
+          [botGuildRows] = await pool.query(
+            `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
+            userGuildIds
+          );
+          botGuildRows = botGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID).map(r => ({
+            guild_id: String(r.guild_id),
+            guild_name: r.guild_name,
+            is_dev_only: false
+          }));
+        }
+
+        if (botGuildRows.length === 1 && !isDev) {
+          activeGuildId = String(botGuildRows[0].guild_id);
+          activeGuildName = botGuildRows[0].guild_name;
+        } else if (botGuildRows.length > 1 || (botGuildRows.length === 1 && isDev)) {
+          // Store available guilds and redirect to picker
+          req.session.available_guilds = botGuildRows;
           req.session.active_guild_id = null;
           req.session.active_guild_name = null;
 

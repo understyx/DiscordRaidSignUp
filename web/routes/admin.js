@@ -1,4 +1,5 @@
 const express = require('express');
+const fetch = require('node-fetch');
 const pool = require('../db');
 
 const router = express.Router();
@@ -248,6 +249,151 @@ router.post('/seed-fake-players', async (req, res) => {
 
   req.session.flash = `✅ Seeded ${NUM_USERS} fake players with ${totalChars} characters total.`;
   res.redirect('/raids');
+});
+
+// GET /admin/all-characters — viewable by developers only
+router.get('/all-characters', async (req, res) => {
+  const devUserId = process.env.DEV_USER_ID || '';
+  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+    req.session.flash = '❌ Access denied. This page is only available to developers.';
+    return res.redirect('/raids');
+  }
+
+  // Fetch all characters and their owner's info
+  const [rows] = await pool.query(
+    `SELECT c.*, du.username as discord_username, du.display_name as discord_display_name
+     FROM characters c
+     LEFT JOIN discord_users du ON c.discord_user_id = du.discord_user_id
+     WHERE c.is_deleted = 0
+     ORDER BY du.username ASC, c.char_name ASC`
+  );
+
+  // Group by user
+  const byUser = {};
+  for (const row of rows) {
+    const userId = row.discord_user_id;
+    if (!byUser[userId]) {
+      byUser[userId] = {
+        userId,
+        username: row.discord_username || 'Unknown',
+        displayName: row.discord_display_name || 'Unknown',
+        characters: []
+      };
+    }
+    byUser[userId].characters.push(row);
+  }
+
+  const flash = req.session.flash;
+  delete req.session.flash;
+
+  res.render('admin_all_characters.html', {
+    users: Object.values(byUser),
+    flash,
+    user: req.session.user_id
+      ? { id: req.session.user_id, username: req.session.username, is_admin: req.session.is_admin }
+      : null,
+  });
+});
+
+// POST /admin/suggest-character-change
+router.post('/suggest-character-change', express.urlencoded({ extended: false }), async (req, res) => {
+  const devUserId = process.env.DEV_USER_ID || '';
+  // For now, only dev can suggest via this route, though plan mentioned officers too.
+  // We'll stick to dev for "all characters" and maybe add officers later if needed.
+  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+    req.session.flash = '❌ Access denied.';
+    return res.redirect('/raids');
+  }
+
+  const { char_id, char_class, spec, gearscore } = req.body;
+  const charId = parseInt(char_id);
+  if (isNaN(charId)) {
+    req.session.flash = '❌ Invalid character ID.';
+    return res.redirect('/admin/all-characters');
+  }
+
+  const gs = gearscore ? parseFloat(gearscore) : null;
+
+  try {
+    const [[char]] = await pool.query(
+      'SELECT c.*, du.username FROM characters c JOIN discord_users du ON c.discord_user_id = du.discord_user_id WHERE c.id = ?',
+      [charId]
+    );
+
+    if (!char) {
+      req.session.flash = '❌ Character not found.';
+      return res.redirect('/admin/all-characters');
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO character_suggestions (character_id, suggested_by, new_char_class, new_spec, new_gearscore)
+       VALUES (?, ?, ?, ?, ?)`,
+      [charId, req.session.user_id, char_class || null, spec || null, isNaN(gs) ? null : gs]
+    );
+    const suggestionId = result.insertId;
+
+    // Trigger Discord Bot DM
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    if (botToken) {
+      // 1. Create DM channel
+      const dmChannelRes = await fetch('https://discord.com/api/v10/users/@me/channels', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bot ${botToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ recipient_id: char.discord_user_id })
+      });
+
+      if (dmChannelRes.ok) {
+        const dmChannel = await dmChannelRes.json();
+
+        // 2. Send message with buttons
+        const suggesterName = req.session.username;
+        let changeText = '';
+        if (char_class && char_class !== char.char_class) changeText += `\n- Class: ${char.char_class} ➡️ ${char_class}`;
+        if (spec && spec !== char.spec) changeText += `\n- Spec: ${char.spec || 'None'} ➡️ ${spec}`;
+        if (gs && gs !== char.gearscore) changeText += `\n- GS: ${char.gearscore || 0} ➡️ ${gs}`;
+
+        await fetch(`https://discord.com/api/v10/channels/${dmChannel.id}/messages`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bot ${botToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            content: `👋 **${suggesterName}** suggested a change for your character **${char.char_name}**:${changeText}`,
+            components: [
+              {
+                type: 1,
+                components: [
+                  {
+                    type: 2,
+                    label: 'Accept',
+                    style: 3, // Success (green)
+                    custom_id: `suggest_accept_${suggestionId}`
+                  },
+                  {
+                    type: 2,
+                    label: 'Deny',
+                    style: 4, // Danger (red)
+                    custom_id: `suggest_deny_${suggestionId}`
+                  }
+                ]
+              }
+            ]
+          })
+        });
+      }
+    }
+
+    req.session.flash = `✅ Suggestion sent to ${char.username} for ${char.char_name}.`;
+  } catch (err) {
+    console.error('Failed to send suggestion:', err);
+    req.session.flash = '❌ Failed to send suggestion.';
+  }
+
+  res.redirect('/admin/all-characters');
 });
 
 // POST /admin/seed-fake-signups/:raid_id

@@ -118,3 +118,23 @@ class GuildAdminRole(Base):
     __tablename__ = "guild_admin_roles"
     guild_id = Column(BigInteger, primary_key=True)
     role_id = Column(BigInteger, primary_key=True)
+
+
+class SuggestionStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    denied = "denied"
+
+
+class CharacterSuggestion(Base):
+    __tablename__ = "character_suggestions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
+    suggested_by = Column(BigInteger, nullable=False)
+    new_char_class = Column(String(50), nullable=True)
+    new_spec = Column(String(100), nullable=True)
+    new_gearscore = Column(Float, nullable=True)
+    status = Column(Enum(SuggestionStatus), default=SuggestionStatus.pending)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    resolved_at = Column(DateTime, nullable=True)
+    character = relationship("Character")
