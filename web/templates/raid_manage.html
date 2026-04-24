@@ -359,15 +359,17 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  const CAN_EDIT = {{ 'true' if can_edit else 'false' }};
-  const CURRENT_COMP = {{ current_comp }};
-  const RAID_URL = '{{ raid_url }}';
-  const COMP_NUMBERS_ALL = {{ comp_numbers | tojson | safe }};
-  const COMP_SUMMARIES = {{ comp_summaries | tojson | safe }};
-  const COMP_LABELS = {{ comp_labels | tojson | safe }};
-  const CHARS_IN_COMPS = {{ chars_in_comps | tojson | safe }};
-  const WOTLK_RAID_BUFFS = {{ wotlk_buffs | tojson | safe }};
+<script id="rosterConfig" type="application/json">
+  {
+    "CAN_EDIT": {{ 'true' if can_edit else 'false' }},
+    "CURRENT_COMP": {{ current_comp }},
+    "RAID_URL": {{ raid_url | tojson | safe }},
+    "COMP_NUMBERS_ALL": {{ comp_numbers | tojson | safe }},
+    "COMP_SUMMARIES": {{ comp_summaries | tojson | safe }},
+    "COMP_LABELS": {{ comp_labels | tojson | safe }},
+    "CHARS_IN_COMPS": {{ chars_in_comps | tojson | safe }},
+    "WOTLK_RAID_BUFFS": {{ wotlk_buffs | tojson | safe }}
+  }
 </script>
 <script src="/js/raid_manage.js"></script>
 {% endblock %}

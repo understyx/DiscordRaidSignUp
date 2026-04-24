@@ -1,0 +1,5 @@
+.question-row { background: var(--bg-card-2); border: 1px solid var(--border-dim); border-radius: 6px; padding: 1rem; position: relative; }
+.question-row + .question-row { margin-top: 0.75rem; }
+.btn-xs { padding: 0.1rem 0.3rem; font-size: 0.75rem; line-height: 1; border-radius: 0.2rem; }
+.options-group { display: none; }
+.options-group.visible { display: block; }

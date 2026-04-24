@@ -1,0 +1,10 @@
+.btn-outline-wow {
+  color: var(--wow-gold);
+  border: 1px solid var(--wow-gold);
+  background: transparent;
+  font-weight: 600;
+}
+.btn-outline-wow:hover, .btn-outline-wow:focus {
+  background-color: var(--wow-gold);
+  color: #0e1117;
+}

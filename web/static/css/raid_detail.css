@@ -1,0 +1,32 @@
+.row-group-alt { --bs-table-bg: var(--bg-card-2); }
+
+/* Selected signup row — green tint overrides everything */
+.signup-row.row-selected td {
+  background-color: rgba(25, 135, 84, 0.22) !important;
+}
+.table-hover .signup-row.row-selected:hover td {
+  background-color: rgba(25, 135, 84, 0.35) !important;
+}
+
+/* Group (char/class) cells highlighted when any spec in the group is selected */
+.group-cell.group-cell-selected {
+  background-color: rgba(25, 135, 84, 0.22) !important;
+}
+.table-hover .group-cell.group-cell-selected:hover {
+  background-color: rgba(25, 135, 84, 0.35) !important;
+}
+
+/* Priority star — rendered as a borderless button */
+.prio-star {
+  cursor: pointer;
+  opacity: 0.22;
+  font-size: 1.05rem;
+  transition: opacity 0.12s;
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+}
+.prio-star:hover { opacity: 0.65; }
+.prio-star.prio-active { opacity: 1; }
