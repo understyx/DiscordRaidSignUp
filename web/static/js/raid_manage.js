@@ -2,6 +2,32 @@
  * Raid Roster Management Javascript
  */
 
+let CAN_EDIT = false;
+let CURRENT_COMP = 1;
+let RAID_URL = '';
+let COMP_NUMBERS_ALL = [];
+let COMP_SUMMARIES = {};
+let COMP_LABELS = {};
+let CHARS_IN_COMPS = {};
+let WOTLK_RAID_BUFFS = [];
+
+const configEl = document.getElementById('rosterConfig');
+if (configEl) {
+  try {
+    const config = JSON.parse(configEl.textContent);
+    CAN_EDIT = config.CAN_EDIT;
+    CURRENT_COMP = config.CURRENT_COMP;
+    RAID_URL = config.RAID_URL;
+    COMP_NUMBERS_ALL = config.COMP_NUMBERS_ALL;
+    COMP_SUMMARIES = config.COMP_SUMMARIES;
+    COMP_LABELS = config.COMP_LABELS;
+    CHARS_IN_COMPS = config.CHARS_IN_COMPS;
+    WOTLK_RAID_BUFFS = config.WOTLK_RAID_BUFFS;
+  } catch (e) {
+    console.error('Failed to parse roster configuration', e);
+  }
+}
+
 let draggedCharId        = null;
 let draggedCharName      = null;
 let draggedCharClass     = null;

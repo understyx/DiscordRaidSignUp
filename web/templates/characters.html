@@ -1,37 +1,7 @@
 {% extends "base.html" %}
 {% block title %}My Characters – RaidBot{% endblock %}
 {% block extra_head %}
-<style>
-  .row-group-alt { --bs-table-bg: var(--bg-card-2); }
-
-  /* ── Raid Saves grid ──────────────────────────────────────────────── */
-  .saves-grid-wrap {
-    overflow-x: auto;
-  }
-  .saves-table th, .saves-table td {
-    white-space: nowrap;
-    text-align: center;
-    vertical-align: middle;
-  }
-  .saves-table th.char-col {
-    text-align: left;
-    min-width: 120px;
-  }
-  .saves-table th.instance-col {
-    min-width: 110px;
-    font-size: 0.82rem;
-  }
-  .save-cell {
-    cursor: pointer;
-    user-select: none;
-    font-size: 1.15rem;
-    transition: opacity 0.1s;
-    border-radius: 4px;
-    padding: 4px 10px;
-  }
-  .save-cell:hover { opacity: 0.75; }
-  .save-cell.loading { opacity: 0.4; pointer-events: none; }
-</style>
+<link rel="stylesheet" href="/css/characters.css">
 {% endblock %}
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
@@ -242,35 +212,6 @@
 
 </div>{# /tab-content #}
 
-<script>
-document.querySelectorAll('.save-cell').forEach(cell => {
-  cell.addEventListener('click', async () => {
-    if (cell.classList.contains('loading')) return;
-    cell.classList.add('loading');
-
-    const charId = cell.dataset.charId;
-    const instanceName = cell.dataset.instance;
-
-    try {
-      const resp = await fetch('/characters/saves/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ char_id: parseInt(charId), instance_name: instanceName }),
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        const isSaved = data.is_saved === 1;
-        cell.textContent = isSaved ? '🔴' : '🟢';
-        cell.classList.toggle('saved', isSaved);
-        cell.classList.toggle('unsaved', !isSaved);
-      }
-    } catch (e) {
-      console.error('Toggle failed', e);
-    } finally {
-      cell.classList.remove('loading');
-    }
-  });
-});
-</script>
+<script src="/js/characters.js"></script>
 {% endblock %}
 
