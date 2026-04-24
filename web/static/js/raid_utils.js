@@ -49,6 +49,12 @@ const SPEC_TO_ROLE = {
   'vengeance':    'tank',
 };
 
+// Pre-compiled regexes for canonical specs to avoid re-compiling in specToRole()
+const SPEC_ROLE_REGEXES = Object.keys(SPEC_TO_ROLE).map(canonical => ({
+  role: SPEC_TO_ROLE[canonical],
+  regex: new RegExp(`\\b${canonical}\\b`, 'i')
+}));
+
 const ROLE_EMOJIS = {
   tank: '🛡️',
   healer: '💚',
@@ -62,16 +68,21 @@ const ROLE_EMOJIS = {
 function specToRole(spec) {
   if (!spec) return 'dps';
   const s = spec.toLowerCase();
+
   // Honour explicit inline role markers (e.g. "Blood (DPS)", "Feral (Bear) (Tank)")
   if (s.includes('(tank)'))  return 'tank';
   if (s.includes('(heal)') || s.includes('(healer)')) return 'healer';
   if (s.includes('(dps)'))   return 'dps';
+
   // Exact lookup against canonical spec names
   if (SPEC_TO_ROLE[s]) return SPEC_TO_ROLE[s];
-  // Substring lookup for composite names like "Feral (Bear)" or "Holy Paladin"
-  for (const [canonical, role] of Object.entries(SPEC_TO_ROLE)) {
-    if (s.includes(canonical)) return role;
+
+  // Word-boundary lookup for composite names like "Feral (Bear)" or "Holy Paladin".
+  // This prevents "Unholy" from matching "holy".
+  for (const { role, regex } of SPEC_ROLE_REGEXES) {
+    if (regex.test(s)) return role;
   }
+
   return 'dps';
 }
 
