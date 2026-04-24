@@ -12,7 +12,7 @@ from discord.ext import commands
 from bot.db import get_session
 from bot.class_utils import normalize_class
 from bot.cogs.signup import parse_gs, format_gs
-from db.models import Character, CharacterRole
+from db.models import Character, CharacterRole, CharacterSuggestion, SuggestionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +292,68 @@ class CharacterCog(commands.Cog):
             )
 
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        if interaction.type != discord.InteractionType.component:
+            return
+
+        custom_id = interaction.data.get("custom_id", "")
+        if not (custom_id.startswith("suggest_accept_") or custom_id.startswith("suggest_deny_")):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        action = "accepted" if custom_id.startswith("suggest_accept_") else "denied"
+        try:
+            suggestion_id = int(custom_id.split("_")[-1])
+        except (ValueError, IndexError):
+            await interaction.followup.send("❌ Invalid suggestion ID.", ephemeral=True)
+            return
+
+        loop = asyncio.get_event_loop()
+
+        def _process():
+            session = get_session()
+            try:
+                suggestion = session.get(CharacterSuggestion, suggestion_id)
+                if not suggestion or suggestion.status != SuggestionStatus.pending:
+                    return None, "This suggestion is no longer valid or already processed."
+
+                char = session.get(Character, suggestion.character_id)
+                if not char:
+                    return None, "Character not found."
+
+                if action == "accepted":
+                    if suggestion.new_char_class:
+                        char.char_class = suggestion.new_char_class
+                    if suggestion.new_spec:
+                        char.spec = suggestion.new_spec
+                    if suggestion.new_gearscore is not None:
+                        char.gearscore = suggestion.new_gearscore
+
+                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    suggestion.status = SuggestionStatus.accepted
+                else:
+                    suggestion.status = SuggestionStatus.denied
+
+                suggestion.resolved_at = datetime.datetime.now(datetime.timezone.utc)
+                session.commit()
+                return char.char_name, None
+            finally:
+                session.close()
+
+        char_name, error = await loop.run_in_executor(None, _process)
+
+        if error:
+            await interaction.followup.send(f"❌ {error}", ephemeral=True)
+        else:
+            await interaction.followup.send(f"✅ Suggestion for **{char_name}** has been **{action}**.", ephemeral=True)
+            # Update the original message to remove buttons
+            try:
+                await interaction.edit_original_response(view=None)
+            except discord.HTTPException:
+                pass
 
 
 async def setup(bot: commands.Bot):
