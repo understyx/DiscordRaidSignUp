@@ -43,7 +43,6 @@
       <tr>
         <th>Applicant</th>
         <th>Status</th>
-        <th>Notify?</th>
         <th>Invited?</th>
         <th>Submitted</th>
         <th></th>
@@ -63,13 +62,6 @@
           <span class="badge bg-success">Accepted</span>
           {% elif app.status == 'rejected' %}
           <span class="badge bg-danger">Rejected</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if app.wants_discord_notify %}
-          <span class="badge bg-primary">Yes</span>
-          {% else %}
-          <span class="text-muted small">No</span>
           {% endif %}
         </td>
         <td>

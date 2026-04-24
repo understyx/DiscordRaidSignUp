@@ -36,11 +36,7 @@
         <p class="text-muted small mb-1">Submitted</p>
         <p class="mb-0">{{ application.submitted_at | dateformat('%Y-%m-%d %H:%M') }}</p>
       </div>
-      <div class="col-sm-3">
-        <p class="text-muted small mb-1">Discord Notify</p>
-        <p class="mb-0">{% if application.wants_discord_notify %}Yes{% else %}No{% endif %}</p>
-      </div>
-      <div class="col-sm-3">
+      <div class="col-sm-6">
         <p class="text-muted small mb-1">Guild Invited</p>
         <p class="mb-0">{% if application.discord_invited %}✅ Yes{% else %}—{% endif %}</p>
       </div>

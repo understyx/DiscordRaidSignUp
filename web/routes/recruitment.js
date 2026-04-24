@@ -227,40 +227,41 @@ function parseQuestions(body) {
   const limit = Math.min(texts.length, MAX_QUESTIONS);
   for (let i = 0; i < limit; i++) {
     const text = String(texts[i] || '').trim();
-    if (!text) continue;
-
-    const type = ['text', 'textarea', 'select', 'radio', 'characters'].includes(types[i])
+    const type = ['text', 'textarea', 'select', 'radio', 'characters', 'checkbox', 'header', 'separator'].includes(types[i])
       ? types[i]
       : 'text';
 
+    if (!text && type !== 'separator') continue;
+
     let options = null;
-    if (type === 'select' || type === 'radio') {
+    if (['select', 'radio', 'checkbox'].includes(type)) {
       const rawOpts = String(opts[i] || '').trim();
       if (rawOpts) {
         options = JSON.stringify(rawOpts.split('\n').map(o => o.trim()).filter(Boolean));
       }
     }
 
-    const defaultValue = String(defaults[i] || '').trim() || null;
-    const rawGroupKey  = String(groupKeys[i] || '').trim().toLowerCase();
+    const isLayout = ['header', 'separator'].includes(type);
+    const defaultValue = (type === 'characters' || isLayout) ? null : (String(defaults[i] || '').trim() || null);
+    const rawGroupKey  = (type === 'characters' || isLayout) ? '' : String(groupKeys[i] || '').trim().toLowerCase();
     const groupKey     = rawGroupKey.replace(/[^a-z0-9-]/g, '') || null;
     const groupLabel   = groupKey ? (String(groupLabels[i] || '').trim() || null) : null;
     const isGroupRepeatable = (groupKey && groupReps[i] === 'on') ? 1 : 0;
-    // 'characters' is always full-width; group settings do not apply to it
-    const colWidth = (type === 'characters')
+    // 'characters', 'header', 'separator' are always full-width; group settings do not apply to them
+    const colWidth = (type === 'characters' || isLayout)
       ? 'full'
       : (['full', 'half', 'third'].includes(colWidths[i]) ? colWidths[i] : 'full');
 
     questions.push({
       question_text:       text,
       question_type:       type,
-      options:             type === 'characters' ? null : options,
-      is_required:         reqs[i] === 'on' ? 1 : 0,
+      options:             (type === 'characters' || isLayout) ? null : options,
+      is_required:         isLayout ? 0 : (reqs[i] === 'on' ? 1 : 0),
       sort_order:          i,
-      default_value:       type === 'characters' ? null : defaultValue,
-      group_key:           type === 'characters' ? null : groupKey,
-      group_label:         type === 'characters' ? null : groupLabel,
-      is_group_repeatable: type === 'characters' ? 0 : isGroupRepeatable,
+      default_value:       defaultValue,
+      group_key:           groupKey,
+      group_label:         groupLabel,
+      is_group_repeatable: isGroupRepeatable,
       col_width:           colWidth,
     });
   }
@@ -976,7 +977,14 @@ router.get('/:form_id/applications/:app_id', requireAdmin, async (req, res) => {
     } else if (raw.startsWith('[')) {
       try {
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) answer = arr.join(' | ');
+        if (Array.isArray(arr)) {
+          // If it's a 2D array (repeatable group with checkboxes), flatten or join specially
+          if (arr.length > 0 && Array.isArray(arr[0])) {
+            answer = arr.map(sub => sub.join(', ')).join(' | ');
+          } else {
+            answer = arr.join(', ');
+          }
+        }
       } catch { /* keep raw */ }
     }
     return { question: q.question_text, answer };
@@ -1206,6 +1214,13 @@ router.post('/:form_id/submit', async (req, res) => {
           req.session.flash = `❌ Please select at least one character for: "${q.question_text}"`;
           return res.redirect(`/recruitment/${formId}`);
         }
+      } else if (q.question_type === 'checkbox') {
+        const key = (q.is_group_repeatable && q.group_key) ? `answer_${q.id}_0` : `answer_${q.id}`;
+        const selected = [].concat(req.body[key] || []);
+        if (selected.filter(Boolean).length === 0) {
+          req.session.flash = `❌ Please select at least one option for: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}`);
+        }
       } else {
         // Repeatable-group questions are indexed; check index 0
         const key = (q.is_group_repeatable && q.group_key)
@@ -1241,6 +1256,20 @@ router.post('/:form_id/submit', async (req, res) => {
       // Store selected character IDs as a JSON array
       const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
       answerText = JSON.stringify(selected.map(id => parseInt(id)).filter(id => !isNaN(id)));
+    } else if (q.question_type === 'checkbox') {
+      if (q.is_group_repeatable && q.group_key) {
+        const values = [];
+        let idx = 0;
+        while (req.body[`answer_${q.id}_${idx}`] !== undefined) {
+          const selected = [].concat(req.body[`answer_${q.id}_${idx}`] || []);
+          values.push(selected.filter(Boolean));
+          idx++;
+        }
+        answerText = values.length > 0 ? JSON.stringify(values) : '';
+      } else {
+        const selected = [].concat(req.body[`answer_${q.id}`] || []);
+        answerText = JSON.stringify(selected.filter(Boolean));
+      }
     } else if (q.is_group_repeatable && q.group_key) {
       // Collect all indexed values and store as JSON array
       const values = [];
@@ -1446,6 +1475,13 @@ router.post('/:form_id/edit', async (req, res) => {
           req.session.flash = `❌ Please select at least one character for: "${q.question_text}"`;
           return res.redirect(`/recruitment/${formId}/edit`);
         }
+      } else if (q.question_type === 'checkbox') {
+        const key = (q.is_group_repeatable && q.group_key) ? `answer_${q.id}_0` : `answer_${q.id}`;
+        const selected = [].concat(req.body[key] || []);
+        if (selected.filter(Boolean).length === 0) {
+          req.session.flash = `❌ Please select at least one option for: "${q.question_text}"`;
+          return res.redirect(`/recruitment/${formId}/edit`);
+        }
       } else {
         const key = (q.is_group_repeatable && q.group_key)
           ? `answer_${q.id}_0`
@@ -1466,6 +1502,20 @@ router.post('/:form_id/edit', async (req, res) => {
     if (q.question_type === 'characters') {
       const selected = [].concat(req.body[`char_sel_${q.id}`] || []);
       answerText = JSON.stringify(selected.map(id => parseInt(id)).filter(id => !isNaN(id)));
+    } else if (q.question_type === 'checkbox') {
+      if (q.is_group_repeatable && q.group_key) {
+        const values = [];
+        let idx = 0;
+        while (req.body[`answer_${q.id}_${idx}`] !== undefined) {
+          const selected = [].concat(req.body[`answer_${q.id}_${idx}`] || []);
+          values.push(selected.filter(Boolean));
+          idx++;
+        }
+        answerText = values.length > 0 ? JSON.stringify(values) : '';
+      } else {
+        const selected = [].concat(req.body[`answer_${q.id}`] || []);
+        answerText = JSON.stringify(selected.filter(Boolean));
+      }
     } else if (q.is_group_repeatable && q.group_key) {
       const values = [];
       let idx = 0;
