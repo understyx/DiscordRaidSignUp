@@ -264,7 +264,10 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
         last_has_star = "⭐" in spec_gs[-1] or "★" in spec_gs[-1]
 
         # Note for this line — seeded with any note pre-extracted before the
-        # slash split; may be overwritten by an inline n:/note: inside a GS segment.
+        # slash split.  When a note was pre-extracted the GS segments no longer
+        # contain a note prefix, so segment_note will be empty and line_note
+        # stays as-is.  When no pre-extracted note exists, segment_note may
+        # still populate line_note via the inline n:/note: path in _parse_gs_and_note.
         line_note = pre_extracted_note
 
         i = 0
