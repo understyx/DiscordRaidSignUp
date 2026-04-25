@@ -1250,7 +1250,10 @@ class NoteCharSelectView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
     async def _on_write_note(self, interaction: discord.Interaction):
-        char = next(c for c in self.unique_chars if c["char_name"].lower() == self.selected_name)
+        char = next((c for c in self.unique_chars if c["char_name"].lower() == self.selected_name), None)
+        if char is None:
+            await interaction.response.send_message("❌ Could not find the selected character.", ephemeral=True)
+            return
         existing_note = self.parent_view.notes.get(self.selected_name, "")
         modal = NoteModal(
             char=char,
@@ -1286,7 +1289,7 @@ class NoteModal(discord.ui.Modal):
         parent_message: discord.Message,
         existing_note: str = "",
     ):
-        super().__init__(title=f"Note for {char['char_name']}"[:45])
+        super().__init__(title=f"Note for {char['char_name'][:35]}")
         self.char = char
         self.parent_view = parent_view
         self.parent_message = parent_message
