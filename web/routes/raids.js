@@ -67,10 +67,11 @@ function compTabLabel(compNumber, compLabels) {
 function collectUniqueUserIds(groups) {
   const seen = new Set();
   const ids = [];
-  for (const roleKey of ['tank', 'healer', 'dps']) {
+  for (const roleKey of ['tank', 'healer', 'mdps', 'rdps', 'dps']) {
     for (const e of groups[roleKey] || []) {
-      if (!e.is_placeholder && e.character && e.character.discord_user_id) {
-        const id = e.character.discord_user_id;
+      const userId = e.is_player_placeholder ? e.discord_user_id : (e.character && e.character.discord_user_id);
+      if (userId) {
+        const id = String(userId);
         if (!seen.has(id)) {
           seen.add(id);
           ids.push(id);
@@ -92,12 +93,18 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
   for (const [roleKey, roleLabel] of [
     ['tank', '🛡️ Tanks'],
     ['healer', '💚 Healers'],
+    ['mdps', '🗡️ Melee DPS'],
+    ['rdps', '🏹 Ranged DPS'],
     ['dps', '⚔️ DPS'],
   ]) {
     const entries = groups[roleKey] || [];
     if (entries.length === 0) continue;
     const lines = entries.map(e => {
       if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
+      if (e.is_player_placeholder) {
+        const mention = e.discord_user_id ? ` <@${e.discord_user_id}>` : '';
+        return `**${e.display_label || 'Any'}** — *Any Character*${mention}`;
+      }
       const c = e.character;
       const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
       const tentative = c.status === 'tentative' ? ' [:question:]' : '';
@@ -970,9 +977,11 @@ router.get('/:raid_number/manage', async (req, res) => {
   }
 
   const [existingComp] = await pool.query(
-    `SELECT co.*, s.status AS signup_status
+    `SELECT co.*, s.status AS signup_status,
+            du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
      WHERE co.raid_id = ? AND co.comp_number = ?`,
     [raidId, currentComp]
   );
@@ -982,6 +991,7 @@ router.get('/:raid_number/manage', async (req, res) => {
   // Build lookup maps keyed by absolute slot key "slot_N"
   const compMap = {};
   const placeholderMap = {};
+  const playerPlaceholderMap = {};
   const slotRoleMap = {};
 
   const compStatusMap = {};
@@ -991,6 +1001,13 @@ router.get('/:raid_number/manage', async (req, res) => {
     if (c.character_id) {
       compMap[slotKey] = String(c.character_id);
       compStatusMap[slotKey] = c.signup_status;
+    } else if (c.discord_user_id) {
+      let displayLabel = c.du_display_name || c.du_username || String(c.discord_user_id);
+      playerPlaceholderMap[slotKey] = {
+        discord_user_id: String(c.discord_user_id),
+        display_label: displayLabel,
+        status: userSignupMap[String(c.discord_user_id)]?.is_tentative ? 'tentative' : 'signed'
+      };
     } else if (c.placeholder_text) {
       placeholderMap[slotKey] = c.placeholder_text;
     }
@@ -1057,6 +1074,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     slots,
     comp_map: compMap,
     placeholder_map: placeholderMap,
+    player_placeholder_map: playerPlaceholderMap,
     slot_role_map: slotRoleMap,
     max_size: maxSize,
     comp_numbers: compNumbers,
@@ -1094,18 +1112,20 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
       return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
     }
     const hasChar = 'character_id' in entry && entry.character_id !== null && entry.character_id !== '';
+    const hasPlayer = 'discord_user_id' in entry && entry.discord_user_id;
     const hasPlaceholder = 'placeholder_text' in entry && entry.placeholder_text;
-    if (!hasChar && !hasPlaceholder) {
-      return res.json({ ok: false, error: 'Each entry must have either character_id or placeholder_text.' });
+    if (!hasChar && !hasPlayer && !hasPlaceholder) {
+      return res.json({ ok: false, error: 'Each entry must have character_id, discord_user_id, or placeholder_text.' });
     }
     if (hasChar && isNaN(parseInt(entry.character_id))) {
       return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
     }
   }
 
-  // Separate character entries from placeholder entries
+  // Separate character entries, player entries, and placeholder entries
   const charEntries = body.filter(e => e.character_id !== null && e.character_id !== undefined && e.character_id !== '');
-  const placeholderEntries = body.filter(e => !e.character_id && e.placeholder_text);
+  const playerEntries = body.filter(e => !e.character_id && e.discord_user_id);
+  const placeholderEntries = body.filter(e => !e.character_id && !e.discord_user_id && e.placeholder_text);
 
   if (charEntries.length > 0) {
     // Validate: each Discord user may only appear once in the composition
@@ -1127,18 +1147,28 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
 
   await pool.query('DELETE FROM compositions WHERE raid_id = ? AND comp_number = ?', [raidId, compNumber]);
 
+  const validRoles = ['tank', 'healer', 'dps', 'mdps', 'rdps'];
+
   for (const entry of charEntries) {
-    const slotRole = ['tank', 'healer', 'dps'].includes(entry.slot_role) ? entry.slot_role : 'dps';
+    const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
       [raidId, parseInt(entry.character_id), entry.role_slot, slotRole, compNumber, userId]
     );
   }
 
-  for (const entry of placeholderEntries) {
-    const slotRole = ['tank', 'healer', 'dps'].includes(entry.slot_role) ? entry.slot_role : 'dps';
+  for (const entry of playerEntries) {
+    const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      [raidId, entry.discord_user_id, entry.role_slot, slotRole, compNumber, userId]
+    );
+  }
+
+  for (const entry of placeholderEntries) {
+    const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
+    await pool.query(
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
       [raidId, entry.placeholder_text, entry.role_slot, slotRole, compNumber, userId]
     );
   }
@@ -1196,10 +1226,11 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
     }
     const hasChar = entry.character_id !== null && entry.character_id !== undefined && entry.character_id !== '';
+    const hasPlayer = !!entry.discord_user_id;
     const hasPlaceholder = !!entry.placeholder_text;
     const isClear = entry.clear === true;
-    if (!hasChar && !hasPlaceholder && !isClear) {
-      return res.json({ ok: false, error: `Entry for ${entry.role_slot} must have character_id, placeholder_text, or clear:true.` });
+    if (!hasChar && !hasPlayer && !hasPlaceholder && !isClear) {
+      return res.json({ ok: false, error: `Entry for ${entry.role_slot} must have character_id, discord_user_id, placeholder_text, or clear:true.` });
     }
     if (hasChar && isNaN(parseInt(entry.character_id))) {
       return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
@@ -1210,9 +1241,11 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
 
   for (const entry of body) {
     const { role_slot } = entry;
-    const slotRole = ['tank', 'healer', 'dps'].includes(entry.slot_role) ? entry.slot_role : 'dps';
+    const validRoles = ['tank', 'healer', 'dps', 'mdps', 'rdps'];
+    const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     const charId = (entry.character_id !== null && entry.character_id !== undefined && entry.character_id !== '')
       ? parseInt(entry.character_id) : null;
+    const discordUserId = entry.discord_user_id || null;
     const placeholderText = entry.placeholder_text || null;
     const isClear = entry.clear === true;
 
@@ -1224,24 +1257,40 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       savedSlots.push({ role_slot, cleared: true });
     } else if (charId !== null) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
+         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = VALUES(character_id),
            placeholder_text = NULL,
+           discord_user_id  = NULL,
            slot_role       = VALUES(slot_role),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
         [raidId, charId, role_slot, slotRole, compNumber, userId]
       );
       savedSlots.push({ role_slot });
+    } else if (discordUserId) {
+      await pool.query(
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
+         VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+         ON DUPLICATE KEY UPDATE
+           character_id    = NULL,
+           placeholder_text = NULL,
+           discord_user_id  = VALUES(discord_user_id),
+           slot_role       = VALUES(slot_role),
+           created_by      = VALUES(created_by),
+           updated_at      = NOW(3)`,
+        [raidId, discordUserId, role_slot, slotRole, compNumber, userId]
+      );
+      savedSlots.push({ role_slot });
     } else if (placeholderText) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
+         VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = NULL,
            placeholder_text = VALUES(placeholder_text),
+           discord_user_id  = NULL,
            slot_role       = VALUES(slot_role),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
@@ -1253,12 +1302,14 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
 
   // Return the full current composition so all clients can converge immediately
   const [rows] = await pool.query(
-    `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
+    `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
             c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
-            s.status AS signup_status
+            s.status AS signup_status,
+            du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1269,10 +1320,11 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     slot_role: r.slot_role || 'dps',
     character_id: r.character_id ? String(r.character_id) : null,
     placeholder_text: r.placeholder_text || null,
+    discord_user_id: r.discord_user_id ? String(r.discord_user_id) : (r.char_discord_user_id ? String(r.char_discord_user_id) : null),
+    display_label: r.du_display_name || r.du_username || null,
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
-    discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
     status: r.signup_status || null,
   }));
 
@@ -1291,13 +1343,15 @@ router.get('/:raid_number/manage/json', async (req, res) => {
   const compNumber = parseInt(req.query.comp) || 1;
 
   const [rows] = await pool.query(
-    `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
+    `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
             MAX(co.updated_at) OVER () AS max_updated_at,
             c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
-            s.status AS signup_status
+            s.status AS signup_status,
+            du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1315,10 +1369,11 @@ router.get('/:raid_number/manage/json', async (req, res) => {
     slot_role: r.slot_role || 'dps',
     character_id: r.character_id ? String(r.character_id) : null,
     placeholder_text: r.placeholder_text || null,
+    discord_user_id: r.discord_user_id ? String(r.discord_user_id) : (r.char_discord_user_id ? String(r.char_discord_user_id) : null),
+    display_label: r.du_display_name || r.du_username || null,
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
-    discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
     status: r.signup_status || null,
   }));
 
@@ -1377,21 +1432,26 @@ router.get('/:raid_number/comp', async (req, res) => {
 
   const [comps] = await pool.query(
     `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id,
-            s.status AS signup_status
+            s.status AS signup_status,
+            du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, currentComp]
   );
 
-  const groups = { tank: [], healer: [], dps: [] };
+  const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
   for (const comp of comps) {
     const entry = {
       ...comp,
-      is_placeholder: !comp.character_id,
+      is_placeholder: !comp.character_id && !comp.discord_user_id,
+      is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
       placeholder_text: comp.placeholder_text || null,
+      discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
+      display_label: comp.du_display_name || comp.du_username || null,
       character: comp.character_id ? {
         id: comp.c_id,
         char_name: comp.char_name,
@@ -1473,22 +1533,27 @@ router.post('/:raid_number/post_comp', async (req, res) => {
       let allPosted = true;
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
-          `SELECT co.slot_role, co.character_id, co.placeholder_text,
+          `SELECT co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
                   c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id,
-                  s.status AS signup_status
+                  s.status AS signup_status,
+                  du.username AS du_username, du.display_name AS du_display_name
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
            LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+           LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
            WHERE co.raid_id = ? AND co.comp_number = ?
            ORDER BY co.role_slot`,
           [raidId, cn]
         );
 
-        const groups = { tank: [], healer: [], dps: [] };
+        const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
         for (const comp of comps) {
           const entry = {
-            is_placeholder: !comp.character_id,
+            is_placeholder: !comp.character_id && !comp.discord_user_id,
+            is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
             placeholder_text: comp.placeholder_text || null,
+            discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
+            display_label: comp.du_display_name || comp.du_username || null,
             character: comp.character_id ? {
               char_name: comp.char_name,
               char_class: comp.char_class,
