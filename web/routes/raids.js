@@ -90,28 +90,43 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
 
   const fields = [];
 
-  for (const [roleKey, roleLabel] of [
-    ['tank', '🛡️ Tanks'],
-    ['healer', '💚 Healers'],
-    ['mdps', '🗡️ Melee DPS'],
-    ['rdps', '🏹 Ranged DPS'],
-    ['dps', '⚔️ DPS'],
-  ]) {
-    const entries = groups[roleKey] || [];
+  const roleEmojis = {
+    tank: '🛡️',
+    healer: '💚',
+    mdps: '🗡️',
+    rdps: '🏹',
+    dps: '⚔️'
+  };
+
+  const sections = [
+    { label: '🛡️ Tanks', keys: ['tank'] },
+    { label: '💚 Healers', keys: ['healer'] },
+    { label: '⚔️ DPS', keys: ['mdps', 'rdps', 'dps'] },
+  ];
+
+  for (const section of sections) {
+    const entries = [];
+    for (const key of section.keys) {
+      if (groups[key]) entries.push(...groups[key]);
+    }
+
     if (entries.length === 0) continue;
+
     const lines = entries.map(e => {
-      if (e.is_placeholder) return `*${e.placeholder_text || '?'}*`;
+      const emoji = roleEmojis[e.slot_role] || '❓';
+      if (e.is_placeholder) return `${emoji} *${e.placeholder_text || '?'}*`;
       if (e.is_player_placeholder) {
         const mention = e.discord_user_id ? ` <@${e.discord_user_id}>` : '';
-        return `**${e.display_label || 'Any'}** — *Any Character*${mention}`;
+        return `${emoji} **Any Character**${mention}`;
       }
       const c = e.character;
       const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
       const tentative = c.status === 'tentative' ? ' [:question:]' : '';
-      return `**${c.char_name}** — ${c.spec || c.char_class || '?'}${mention}${tentative}`;
+      return `${emoji} **${c.char_name}**${mention}${tentative}`;
     });
+
     fields.push({
-      name: `${roleLabel} [${entries.length}]`,
+      name: `${section.label} [${entries.length}]`,
       value: lines.join('\n') || '—',
       inline: false,
     });
@@ -1045,7 +1060,7 @@ router.get('/:raid_number/manage', async (req, res) => {
   // Build per-comp role-count summaries for the post confirmation modal
   const compSummaries = {};
   for (const cn of compNumbers) {
-    compSummaries[cn] = { tank: 0, healer: 0, dps: 0 };
+    compSummaries[cn] = { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
   }
   if (compNumbers.length > 1) {
     const sqlPlaceholders = compNumbers.map(() => '?').join(', ');
@@ -1058,7 +1073,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     );
     for (const row of summaryRows) {
       const cn = row.comp_number;
-      if (compSummaries[cn] && ['tank', 'healer', 'dps'].includes(row.slot_role)) {
+      if (compSummaries[cn] && ['tank', 'healer', 'mdps', 'rdps', 'dps'].includes(row.slot_role)) {
         compSummaries[cn][row.slot_role] = Number(row.cnt);
       }
     }

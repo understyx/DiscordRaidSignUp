@@ -99,7 +99,13 @@ function specToRole(spec, charClass) {
   // Honour explicit inline role markers (e.g. "Blood (DPS)", "Feral (Bear) (Tank)")
   if (s.includes('(tank)'))  return 'tank';
   if (s.includes('(heal)') || s.includes('(healer)')) return 'healer';
-  if (s.includes('(dps)'))   return 'dps';
+  if (s.includes('(dps)')) {
+    if (charClass) {
+      const cls = charClass.toLowerCase().replace(/-/g, ' ').trim();
+      return CLASS_ROLES[cls] || 'dps';
+    }
+    return 'dps';
+  }
 
   // Exact lookup against canonical spec names
   if (SPEC_TO_ROLE[s]) return SPEC_TO_ROLE[s];
@@ -148,6 +154,11 @@ function getClassColor(charClass, alpha = 1.0) {
 function colorForPlaceholder(text) {
   if (!text) return null;
   const t = text.toLowerCase();
+
+  // Role colors
+  if (t.includes('melee dps')) return '#a335ee';
+  if (t.includes('ranged dps')) return '#ff8000';
+
   for (const [key, hex] of Object.entries(typeof WOW_CLASS_COLORS !== 'undefined' ? WOW_CLASS_COLORS : {})) {
     const kw = key.replace(/-/g, ' ');
     if (t.includes(kw)) return hex;

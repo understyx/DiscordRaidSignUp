@@ -49,7 +49,17 @@ function applyPlaceholderColors() {
 }
 
 function applySlotTint(slotCard, charClass) {
-  const rgba = getClassColor(charClass, 0.22);
+  let rgba = getClassColor(charClass, 0.22);
+  if (!rgba) {
+    // Fall back to role-based tinting
+    const role = slotCard.dataset.slotRole;
+    if (role === 'mdps') rgba = 'rgba(163, 53, 238, 0.15)';
+    else if (role === 'rdps') rgba = 'rgba(255, 128, 0, 0.15)';
+    else if (role === 'tank') rgba = 'rgba(91, 155, 213, 0.15)';
+    else if (role === 'healer') rgba = 'rgba(87, 168, 91, 0.15)';
+    else if (role === 'dps') rgba = 'rgba(201, 64, 64, 0.15)';
+  }
+
   if (rgba) {
     slotCard.style.backgroundColor = rgba;
   } else {
@@ -61,9 +71,8 @@ function applySlotTint(slotCard, charClass) {
 function applyInitialTints() {
   document.querySelectorAll('.slot-card').forEach(slotCard => {
     const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (assignedDiv && assignedDiv.dataset.charClass) {
-      applySlotTint(slotCard, assignedDiv.dataset.charClass);
-    }
+    const charClass = assignedDiv ? assignedDiv.dataset.charClass : null;
+    applySlotTint(slotCard, charClass);
   });
 }
 
@@ -228,7 +237,11 @@ function filterPool(role) {
     group.querySelectorAll('.char-card').forEach(card => {
       const charClass = card.dataset.charClass || '';
       const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
-      const show = role === 'all' || allSpecs.some(s => specToRole(normalizeSpec(charClass, s)) === role);
+      const show = role === 'all' || allSpecs.some(s => {
+        const r = specToRole(normalizeSpec(charClass, s), charClass);
+        if (role === 'dps') return r === 'dps' || r === 'mdps' || r === 'rdps';
+        return r === role;
+      });
       card.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
     });
@@ -304,7 +317,7 @@ function onDrop(event) {
     applySlotTint(slotCard, null);
 
     // Auto-detect role from the placeholder's data-role and set slot role
-    if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
+    if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
       const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
       if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
     }
@@ -719,12 +732,13 @@ function showPostConfirmModal() {
     html += '<table class="table table-sm table-dark mb-2">';
     html += '<thead><tr><th>Comp</th><th>🛡️ Tanks</th><th>💚 Healers</th><th>⚔️ DPS</th><th>Total</th></tr></thead><tbody>';
     for (const cn of COMP_NUMBERS_ALL) {
-      const s = COMP_SUMMARIES[cn] || { tank: 0, healer: 0, dps: 0 };
-      const total = s.tank + s.healer + s.dps;
+      const s = COMP_SUMMARIES[cn] || { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
+      const dpsTotal = (s.mdps || 0) + (s.rdps || 0) + (s.dps || 0);
+      const total = (s.tank || 0) + (s.healer || 0) + dpsTotal;
       const isCurrent = cn === CURRENT_COMP;
       html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
       html += `<td>${compTabLabel(cn)}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
-      html += `<td>${s.tank}</td><td>${s.healer}</td><td>${s.dps}</td><td><strong>${total}</strong></td>`;
+      html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${dpsTotal}</td><td><strong>${total}</strong></td>`;
       html += '</tr>';
     }
     html += '</tbody></table>';
@@ -736,7 +750,7 @@ function showPostConfirmModal() {
     document.getElementById('postAllBtn').style.display = '';
   } else {
     // Single comp: existing behaviour
-    let tanks = 0, healers = 0, dps = 0, placeholders = 0;
+    let tanks = 0, healers = 0, dpsTotal = 0, placeholders = 0;
     document.querySelectorAll('.slot-card').forEach(card => {
       const assignedDiv = card.querySelector('.assigned-char');
       const charId      = assignedDiv && assignedDiv.dataset.charId;
@@ -745,16 +759,16 @@ function showPostConfirmModal() {
       const role = card.dataset.slotRole || 'dps';
       if (role === 'tank') tanks++;
       else if (role === 'healer') healers++;
-      else dps++;
+      else dpsTotal++;
       if (placeholder) placeholders++;
     });
-    const total = tanks + healers + dps;
+    const total = tanks + healers + dpsTotal;
 
     document.getElementById('postConfirmSummary').innerHTML =
       `<table class="table table-sm table-dark mb-0">` +
       `<tr><td>🛡️ Tanks</td><td><strong>${tanks}</strong></td></tr>` +
       `<tr><td>💚 Healers</td><td><strong>${healers}</strong></td></tr>` +
-      `<tr><td>⚔️ DPS</td><td><strong>${dps}</strong></td></tr>` +
+      `<tr><td>⚔️ DPS</td><td><strong>${dpsTotal}</strong></td></tr>` +
       `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td></tr>` +
       `</table>` +
       (placeholders > 0
@@ -794,28 +808,31 @@ const PLACEHOLDER_CLASS_SPEC = {
   '💚 Disc Priest':     { cls: 'priest',        spec: 'Discipline' },
   '💚 Resto Druid':     { cls: 'druid',         spec: 'Restoration' },
   '💚 Resto Shaman':    { cls: 'shaman',        spec: 'Restoration' },
-  '⚔️ DPS':             { cls: null,            spec: null },
-  '⚔️ Arms Warrior':    { cls: 'warrior',       spec: 'Arms' },
-  '⚔️ Fury Warrior':    { cls: 'warrior',       spec: 'Fury' },
-  '⚔️ Ret Paladin':     { cls: 'paladin',       spec: 'Retribution' },
-  '⚔️ Shadow Priest':   { cls: 'priest',        spec: 'Shadow' },
-  '⚔️ Balance Druid':   { cls: 'druid',         spec: 'Balance' },
-  '⚔️ Feral (Cat)':     { cls: 'druid',         spec: 'Feral (Cat)' },
-  '⚔️ MM Hunter':       { cls: 'hunter',        spec: 'Marksmanship' },
-  '⚔️ BM Hunter':       { cls: 'hunter',        spec: 'Beast Mastery' },
-  '⚔️ Surv Hunter':     { cls: 'hunter',        spec: 'Survival' },
-  '⚔️ Arcane Mage':     { cls: 'mage',          spec: 'Arcane' },
-  '⚔️ Fire Mage':       { cls: 'mage',          spec: 'Fire' },
-  '⚔️ Frost Mage':      { cls: 'mage',          spec: 'Frost' },
-  '⚔️ Combat Rogue':    { cls: 'rogue',         spec: 'Combat' },
-  '⚔️ Mutilate Rogue':  { cls: 'rogue',         spec: 'Assassination' },
-  '⚔️ Elem Shaman':     { cls: 'shaman',        spec: 'Elemental' },
-  '⚔️ Enh Shaman':      { cls: 'shaman',        spec: 'Enhancement' },
-  '⚔️ Affli Warlock':   { cls: 'warlock',       spec: 'Affliction' },
-  '⚔️ Destro Warlock':  { cls: 'warlock',       spec: 'Destruction' },
-  '⚔️ Demo Warlock':    { cls: 'warlock',       spec: 'Demonology' },
-  '⚔️ Frost DK':        { cls: 'death-knight',  spec: 'Frost' },
-  '⚔️ Unholy DK':       { cls: 'death-knight',  spec: 'Unholy' },
+  '⚔️ DPS':             { cls: null,            spec: null }, // Legacy fallback
+  '🗡️ Melee DPS':       { cls: null,            spec: null },
+  '🗡️ Arms Warrior':    { cls: 'warrior',       spec: 'Arms' },
+  '🗡️ Fury Warrior':    { cls: 'warrior',       spec: 'Fury' },
+  '🗡️ Ret Paladin':     { cls: 'paladin',       spec: 'Retribution' },
+  '🗡️ Feral (Cat)':     { cls: 'druid',         spec: 'Feral (Cat)' },
+  '🗡️ Combat Rogue':    { cls: 'rogue',         spec: 'Combat' },
+  '🗡️ Mutilate Rogue':  { cls: 'rogue',         spec: 'Assassination' },
+  '🗡️ Enha Shaman':     { cls: 'shaman',        spec: 'Enhancement' },
+  '🗡️ Frost DK':        { cls: 'death-knight',  spec: 'Frost' },
+  '🗡️ Unholy DK':       { cls: 'death-knight',  spec: 'Unholy' },
+  '🗡️ Blood DK DPS':   { cls: 'death-knight',  spec: 'Blood' },
+  '🏹 Ranged DPS':      { cls: null,            spec: null },
+  '🏹 Shadow Priest':   { cls: 'priest',        spec: 'Shadow' },
+  '🏹 Balance Druid':   { cls: 'druid',         spec: 'Balance' },
+  '🏹 MM Hunter':       { cls: 'hunter',        spec: 'Marksmanship' },
+  '🏹 BM Hunter':       { cls: 'hunter',        spec: 'Beast Mastery' },
+  '🏹 SV Hunter':       { cls: 'hunter',        spec: 'Survival' },
+  '🏹 Arcane Mage':     { cls: 'mage',          spec: 'Arcane' },
+  '🏹 Fire Mage':       { cls: 'mage',          spec: 'Fire' },
+  '🏹 Frost Mage':      { cls: 'mage',          spec: 'Frost' },
+  '🏹 Ele Shaman':      { cls: 'shaman',        spec: 'Elemental' },
+  '🏹 Affli Warlock':   { cls: 'warlock',       spec: 'Affliction' },
+  '🏹 Destro Warlock':  { cls: 'warlock',       spec: 'Destruction' },
+  '🏹 Demo Warlock':    { cls: 'warlock',       spec: 'Demonology' },
 };
 
 // Returns true if (charClass CSS-key, canonicalSpec) matches a buff provider entry.
