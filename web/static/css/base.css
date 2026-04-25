@@ -59,11 +59,15 @@ footer { border-top: 1px solid var(--border-dim); margin-top: 3rem; padding: 1re
 .slot-tank   { border-left: 3px solid #5b9bd5 !important; }
 .slot-healer { border-left: 3px solid #57a85b !important; }
 .slot-dps    { border-left: 3px solid #c94040 !important; }
+.slot-mdps   { border-left: 3px solid #a335ee !important; }
+.slot-rdps   { border-left: 3px solid #ff8000 !important; }
 
 /* ── Role section headers (comp view) ────────────────────────────────── */
 .role-section-tank   { border-left: 4px solid #5b9bd5; }
 .role-section-healer { border-left: 4px solid #57a85b; }
 .role-section-dps    { border-left: 4px solid #c94040; }
+.role-section-mdps   { border-left: 4px solid #a335ee; }
+.role-section-rdps   { border-left: 4px solid #ff8000; }
 
 /* ── Sign-up pool ────────────────────────────────────────────────────── */
 .user-group-header { background: rgba(255,255,255,0.04); border-radius: 4px; }

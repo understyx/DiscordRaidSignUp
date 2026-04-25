@@ -1045,7 +1045,7 @@ router.get('/:raid_number/manage', async (req, res) => {
   // Build per-comp role-count summaries for the post confirmation modal
   const compSummaries = {};
   for (const cn of compNumbers) {
-    compSummaries[cn] = { tank: 0, healer: 0, dps: 0 };
+    compSummaries[cn] = { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
   }
   if (compNumbers.length > 1) {
     const sqlPlaceholders = compNumbers.map(() => '?').join(', ');
@@ -1058,7 +1058,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     );
     for (const row of summaryRows) {
       const cn = row.comp_number;
-      if (compSummaries[cn] && ['tank', 'healer', 'dps'].includes(row.slot_role)) {
+      if (compSummaries[cn] && ['tank', 'healer', 'mdps', 'rdps', 'dps'].includes(row.slot_role)) {
         compSummaries[cn][row.slot_role] = Number(row.cnt);
       }
     }

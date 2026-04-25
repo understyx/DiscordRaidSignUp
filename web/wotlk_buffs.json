@@ -26,7 +26,7 @@
   {
     "id": "str_agi",
     "name": "Strength and Agility",
-    "desc": "+Str & Agi (Horn of Winter – DK / Strength of Earth – Enh Shaman)",
+    "desc": "+Str & Agi (Horn of Winter – DK / Strength of Earth – Enha Shaman)",
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "death knight", "spec": null },
@@ -50,7 +50,7 @@
   {
     "id": "ap_pct",
     "name": "10% Attack Power",
-    "desc": "+10% AP (Trueshot Aura – MM Hunter / Unleashed Rage – Enh Shaman / Abomination's Might – Blood DK)",
+    "desc": "+10% AP (Trueshot Aura – MM Hunter / Unleashed Rage – Enha Shaman / Abomination's Might – Blood DK)",
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "hunter",       "spec": "Marksmanship" },
@@ -75,7 +75,7 @@
   {
     "id": "melee_haste",
     "name": "20% Melee Haste",
-    "desc": "+Melee Haste (Windfury Totem – Enh Shaman / Improved Icy Talons – Frost DK)",
+    "desc": "+Melee Haste (Windfury Totem – Enha Shaman / Improved Icy Talons – Frost DK)",
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "shaman",       "spec": "Enhancement" },
@@ -130,7 +130,7 @@
   {
     "id": "spell_power",
     "name": "Spell Power",
-    "desc": "+SP (Totem of Wrath – Elem Shaman / Demonic Pact – Demo Warlock)",
+    "desc": "+SP (Totem of Wrath – Ele Shaman / Demonic Pact – Demo Warlock)",
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "shaman",  "spec": "Elemental" },
@@ -144,7 +144,7 @@
   {
     "id": "spell_crit_aura",
     "name": "5% Spell Crit",
-    "desc": "+5% Spell Crit (Moonkin Aura – Balance Druid / Elemental Oath – Elem Shaman)",
+    "desc": "+5% Spell Crit (Moonkin Aura – Balance Druid / Elemental Oath – Ele Shaman)",
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "druid",  "spec": "Balance" },
