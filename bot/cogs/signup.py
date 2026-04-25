@@ -510,6 +510,242 @@ def _group_chars_by_name(char_dicts: list[dict]) -> list[dict]:
     return result
 
 
+async def process_text_signup(
+    bot: discord.Client,
+    user: discord.User | discord.Member,
+    content: str,
+    raid_id: int,
+    raid_name: str,
+    log_thread_id: Optional[int],
+    channel: discord.abc.Messageable,
+    message_to_delete: Optional[discord.Message] = None,
+    interaction: Optional[discord.Interaction] = None,
+) -> bool:
+    """
+    Common logic for processing a text-based sign-up (either from a channel
+    message or a modal submission).
+
+    Returns True if successful, False otherwise.
+    """
+    # 1. Validation
+    random_lines = _find_random_text_lines(content)
+    parsed, parse_errors = _parse_character_lines(content)
+    is_tentative_msg = _is_tentative_message(content)
+    signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
+
+    all_errors: list[str] = []
+    if random_lines:
+        quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
+        all_errors.append(
+            "Your message contains text that is not a character sign-up line:\n"
+            + quoted
+            + "\nPlease post **only** your character sign-up lines "
+            "(optionally preceded by `tentative` or `maybe` on its own line)."
+        )
+    all_errors.extend(parse_errors)
+
+    if all_errors or not parsed:
+        if message_to_delete:
+            try:
+                await message_to_delete.delete()
+            except Exception:
+                pass
+        if not all_errors:
+            all_errors.append(
+                "No valid sign-up lines could be parsed. "
+                "Expected format: `CharName / Class / Spec / GS`"
+            )
+        error_text = (
+            f"❌ {user.mention} Sign-up rejected:\n"
+            + "\n".join(all_errors)
+        )
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(error_text, ephemeral=True)
+            else:
+                await interaction.response.send_message(error_text, ephemeral=True)
+        else:
+            try:
+                await channel.send(error_text)
+            except Exception:
+                pass
+        return False
+
+    # 2. Save and signup
+    discord_user_id = user.id
+    loop = asyncio.get_event_loop()
+
+    def _save_and_signup_db():
+        session = get_session()
+        try:
+            _upsert_discord_user(session, user)
+            # Remove ALL existing signups for this user+raid so the new message
+            # fully overwrites the old sign-up instead of merging with it.
+            session.query(Signup).filter_by(
+                raid_id=raid_id,
+                discord_user_id=discord_user_id,
+            ).delete()
+
+            char_spec_info: dict[str, dict] = {}
+            for entry in parsed:
+                char = (
+                    session.query(Character)
+                    .filter_by(
+                        discord_user_id=discord_user_id,
+                        char_name=entry["char_name"],
+                        spec=entry["spec"],
+                    )
+                    .first()
+                )
+                if char is None:
+                    char = Character(
+                        discord_user_id=discord_user_id,
+                        char_name=entry["char_name"],
+                    )
+                    session.add(char)
+                char.char_class = entry["char_class"]
+                char.spec = entry["spec"]
+                char.gearscore = entry["gearscore"]
+                char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                session.flush()
+
+                signup_type = (
+                    SignupType.prio_character if entry["is_prio"] else SignupType.fill
+                )
+                session.add(
+                    Signup(
+                        raid_id=raid_id,
+                        discord_user_id=discord_user_id,
+                        character_id=char.id,
+                        signup_type=signup_type,
+                        status=signup_status,
+                        is_saved=entry["is_saved"],
+                        note=entry.get("note") or None,
+                    )
+                )
+
+                key = entry["char_name"].lower()
+                if key not in char_spec_info:
+                    char_spec_info[key] = {
+                        "char_name": entry["char_name"],
+                        "char_class": entry["char_class"],
+                        "specs": [],
+                        "is_saved": entry["is_saved"],
+                        "note": entry.get("note", ""),
+                    }
+                char_spec_info[key]["specs"].append(
+                    {
+                        "spec": entry["spec"],
+                        "gearscore": entry["gearscore"],
+                        "is_prio": entry["is_prio"],
+                    }
+                )
+            session.commit()
+
+            summaries = []
+            for data in char_spec_info.values():
+                spec_parts = []
+                for s in data["specs"]:
+                    star = " ⭐" if s["is_prio"] else ""
+                    spec_parts.append(f"{s['spec']}{star} GS {format_gs(s['gearscore'])}")
+                specs_str = " / ".join(spec_parts)
+                saved_flag = " ❌" if data["is_saved"] else ""
+                note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
+                summaries.append(
+                    f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}{note_str}"
+                )
+            return summaries
+        finally:
+            session.close()
+
+    try:
+        summaries = await loop.run_in_executor(None, _save_and_signup_db)
+    except Exception:
+        logger.exception("Failed to process character sign-up from %s", discord_user_id)
+        if interaction:
+            msg = "❌ An error occurred while processing your sign-up."
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        return False
+
+    # 3. Log and cleanup
+    if signup_status == SignupStatus.tentative:
+        log_message = (
+            f"❓ {user.mention} tentatively signed up for **{raid_name}**:\n"
+            + "\n".join(summaries)
+        )
+    else:
+        log_message = (
+            f"✅ {user.mention} signed up for **{raid_name}**:\n"
+            + "\n".join(summaries)
+        )
+
+    if message_to_delete:
+        try:
+            await message_to_delete.delete()
+        except Exception:
+            pass
+
+    if log_thread_id:
+        try:
+            thread = bot.get_channel(log_thread_id)
+            if thread is None:
+                thread = await bot.fetch_channel(log_thread_id)
+            await thread.send(log_message)
+        except Exception:
+            logger.warning("Failed to post to log thread, falling back to channel")
+            try:
+                await channel.send(log_message)
+            except Exception:
+                pass
+    else:
+        try:
+            await channel.send(log_message)
+        except Exception:
+            pass
+
+    if interaction:
+        success_msg = f"✅ Sign-up processed for **{raid_name}**!"
+        if interaction.response.is_done():
+            await interaction.followup.send(success_msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(success_msg, ephemeral=True)
+
+    await update_raid_embed(bot, raid_id)
+    return True
+
+
+class TextSignupModal(discord.ui.Modal):
+    characters = discord.ui.TextInput(
+        label="Character Sign-up Lines",
+        style=discord.TextStyle.paragraph,
+        placeholder="Format: CharName / Class / Spec / GS\nExample: Thrall / Shaman / Enh / 6200\nOne character per line.",
+        required=True,
+        max_length=2000,
+    )
+
+    def __init__(self, raid_id: int, raid_name: str, log_thread_id: Optional[int], initial_text: str = ""):
+        super().__init__(title=f"Sign Up: {raid_name}"[:45])
+        self.raid_id = raid_id
+        self.raid_name = raid_name
+        self.log_thread_id = log_thread_id
+        self.characters.default = initial_text
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await process_text_signup(
+            interaction.client,
+            interaction.user,
+            self.characters.value,
+            self.raid_id,
+            self.raid_name,
+            self.log_thread_id,
+            interaction.channel,
+            interaction=interaction,
+        )
+
+
 _SELECT_PAGE_SIZE = 25
 
 
@@ -1039,51 +1275,62 @@ class SignupView(discord.ui.View):
         await interaction.response.send_message(HOWTO_TEXT, ephemeral=True)
 
     @discord.ui.button(
-        label="Show Characters",
+        label="Text Sign Up",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:show_characters",
         emoji="📋",
         row=1,
     )
     async def btn_show_characters(self, interaction: discord.Interaction, button: discord.ui.Button):
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
         discord_user_id = interaction.user.id
         loop = asyncio.get_event_loop()
 
         def _fetch():
             session = get_session()
             try:
+                raid = session.get(Raid, raid_id)
                 chars = (
                     session.query(Character)
                     .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .order_by(Character.char_name, Character.gearscore.desc())
                     .all()
                 )
-                return _chars_to_dicts(chars)
+                if not raid:
+                    return None, None, None, []
+                return raid.id, raid.name, raid.discord_log_thread_id, _chars_to_dicts(chars)
             finally:
                 session.close()
 
-        char_dicts = await loop.run_in_executor(None, _fetch)
+        r_id, r_name, r_log_id, char_dicts = await loop.run_in_executor(None, _fetch)
 
-        if not char_dicts:
-            await interaction.response.send_message(
-                "You have no registered characters. Use `/addcharacter` to add one.",
-                ephemeral=True,
-            )
+        if r_id is None:
+            await interaction.response.send_message("❌ Raid not found.", ephemeral=True)
             return
 
-        char_groups = _group_chars_by_name(char_dicts)
-        lines = []
-        for g in char_groups:
-            parts = [g["char_name"], g["char_class"] or "Unknown"]
-            if g["specs"]:
-                for spec, gs, _ in g["specs"]:
-                    parts.append(spec)
-                    parts.append(f"{gs:.0f}")
-            line = " / ".join(parts)
-            lines.append(line)
+        initial_text = ""
+        if char_dicts:
+            char_groups = _group_chars_by_name(char_dicts)
+            lines = []
+            for g in char_groups:
+                parts = [g["char_name"], g["char_class"] or "Unknown"]
+                if g["specs"]:
+                    for spec, gs, _ in g["specs"]:
+                        parts.append(spec)
+                        parts.append(f"{gs:.0f}")
+                line = " / ".join(parts)
+                lines.append(line)
+            initial_text = "\n".join(lines)
 
-        codeblock = "```\n" + "\n".join(lines) + "\n```"
-        await interaction.response.send_message(codeblock, ephemeral=True)
+        await interaction.response.send_modal(
+            TextSignupModal(r_id, r_name, r_log_id, initial_text=initial_text)
+        )
 
     @discord.ui.button(
         label="Withdraw",
@@ -1327,200 +1574,16 @@ class SignupCog(commands.Cog):
         if not raid_info:
             return  # Not a raid channel with an open raid; ignore silently
 
-        # ── Strict validation ────────────────────────────────────────────────
-        # Now that we know this is a raid channel, validate the full message.
-
-        # 1. Check for non-signup lines mixed in with character lines.
-        random_lines = _find_random_text_lines(content)
-
-        # 2. Parse character lines with strict name + class validation.
-        parsed, parse_errors = _parse_character_lines(content)
-
-        is_tentative_msg = _is_tentative_message(content)
-        signup_status = SignupStatus.tentative if is_tentative_msg else SignupStatus.signed
-
-        all_errors: list[str] = []
-        if random_lines:
-            quoted = "\n".join(f"> {line}" for line in random_lines[:_MAX_RANDOM_LINES_IN_ERROR])
-            all_errors.append(
-                "Your message contains text that is not a character sign-up line:\n"
-                + quoted
-                + "\nPlease post **only** your character sign-up lines "
-                "(optionally preceded by `tentative` or `maybe` on its own line)."
-            )
-        all_errors.extend(parse_errors)
-
-        if all_errors or not parsed:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            if not all_errors:
-                all_errors.append(
-                    "No valid sign-up lines could be parsed. "
-                    "Expected format: `CharName / Class / Spec / GS`"
-                )
-            error_text = (
-                f"❌ {message.author.mention} Sign-up rejected:\n"
-                + "\n".join(all_errors)
-            )
-            try:
-                await message.channel.send(error_text)
-            except Exception:
-                pass
-            return
-        # ── end validation ───────────────────────────────────────────────────
-
-        discord_user_id = message.author.id
-        raid_id = raid_info["id"]
-
-        def _save_and_signup():
-            session = get_session()
-            try:
-                _upsert_discord_user(session, message.author)
-
-                # Remove ALL existing signups for this user+raid so the new message
-                # fully overwrites the old sign-up instead of merging with it.
-                session.query(Signup).filter_by(
-                    raid_id=raid_id,
-                    discord_user_id=discord_user_id,
-                ).delete()
-
-                # Accumulate spec info per char_name for grouped summary display
-                char_spec_info: dict[str, dict] = {}
-                for entry in parsed:
-                    # Upsert character keyed on (discord_user_id, char_name, spec)
-                    char = (
-                        session.query(Character)
-                        .filter_by(
-                            discord_user_id=discord_user_id,
-                            char_name=entry["char_name"],
-                            spec=entry["spec"],
-                        )
-                        .first()
-                    )
-                    if char is None:
-                        char = Character(
-                            discord_user_id=discord_user_id,
-                            char_name=entry["char_name"],
-                        )
-                        session.add(char)
-
-                    char.char_class = entry["char_class"]
-                    char.spec = entry["spec"]
-                    char.gearscore = entry["gearscore"]
-                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
-                    session.flush()
-
-                    # Upsert signup (one per character row per raid)
-                    signup_type = (
-                        SignupType.prio_character if entry["is_prio"] else SignupType.fill
-                    )
-                    existing = (
-                        session.query(Signup)
-                        .filter_by(raid_id=raid_id, discord_user_id=discord_user_id, character_id=char.id)
-                        .first()
-                    )
-                    if existing:
-                        existing.signup_type = signup_type
-                        existing.status = signup_status
-                        existing.is_saved = entry["is_saved"]
-                        existing.note = entry.get("note") or None
-                    else:
-                        session.add(
-                            Signup(
-                                raid_id=raid_id,
-                                discord_user_id=discord_user_id,
-                                character_id=char.id,
-                                signup_type=signup_type,
-                                status=signup_status,
-                                is_saved=entry["is_saved"],
-                                note=entry.get("note") or None,
-                            )
-                        )
-
-                    # Collect spec data for grouped summary
-                    key = entry["char_name"].lower()
-                    if key not in char_spec_info:
-                        char_spec_info[key] = {
-                            "char_name": entry["char_name"],
-                            "char_class": entry["char_class"],
-                            "specs": [],
-                            "is_saved": entry["is_saved"],
-                            "note": entry.get("note", ""),
-                        }
-                    char_spec_info[key]["specs"].append(
-                        {
-                            "spec": entry["spec"],
-                            "gearscore": entry["gearscore"],
-                            "is_prio": entry["is_prio"],
-                        }
-                    )
-
-                session.commit()
-
-                # Build summaries grouped by character name
-                summaries = []
-                for data in char_spec_info.values():
-                    spec_parts = []
-                    for s in data["specs"]:
-                        star = " ⭐" if s["is_prio"] else ""
-                        spec_parts.append(f"{s['spec']}{star} GS {format_gs(s['gearscore'])}")
-                    specs_str = " / ".join(spec_parts)
-                    saved_flag = " ❌" if data["is_saved"] else ""
-                    note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
-                    summaries.append(
-                        f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}{note_str}"
-                    )
-                return summaries
-            finally:
-                session.close()
-
-        try:
-            summaries = await loop.run_in_executor(None, _save_and_signup)
-        except Exception:
-            logger.exception("Failed to process chat character sign-up from %s", discord_user_id)
-            return
-
-        if signup_status == SignupStatus.tentative:
-            log_message = (
-                f"❓ {message.author.mention} tentatively signed up for **{raid_info['name']}**:\n"
-                + "\n".join(summaries)
-            )
-        else:
-            log_message = (
-                f"✅ {message.author.mention} signed up for **{raid_info['name']}**:\n"
-                + "\n".join(summaries)
-            )
-
-        # Delete the user's message to keep the channel clean
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        # Post sign-up summary to the log thread; fall back to channel if no thread exists
-        log_thread_id = raid_info.get("discord_log_thread_id")
-        if log_thread_id:
-            try:
-                thread = self.bot.get_channel(log_thread_id)
-                if thread is None:
-                    thread = await self.bot.fetch_channel(log_thread_id)
-                await thread.send(log_message)
-            except Exception:
-                logger.warning("Failed to post to log thread, falling back to channel")
-                try:
-                    await message.channel.send(log_message)
-                except Exception:
-                    pass
-        else:
-            try:
-                await message.channel.send(log_message)
-            except Exception:
-                pass
-
-        # Refresh the raid embed
-        await update_raid_embed(self.bot, raid_id)
+        await process_text_signup(
+            self.bot,
+            message.author,
+            content,
+            raid_info["id"],
+            raid_info["name"],
+            raid_info.get("discord_log_thread_id"),
+            message.channel,
+            message_to_delete=message,
+        )
 
 
 async def setup(bot: commands.Bot):
