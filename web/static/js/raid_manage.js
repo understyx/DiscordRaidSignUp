@@ -642,8 +642,8 @@ function applyRemoteState(entries) {
           if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
           delete assignedDiv.dataset.placeholder;
           applySlotTint(slotCard, remote.char_class || null);
-          syncSlotRole(slotCard, remote.slot_role || 'dps');
         }
+        syncSlotRole(slotCard, remote.slot_role || 'dps');
       } else if (remote.discord_user_id) {
         if (localCharId || assignedDiv.dataset.discordUserId !== remote.discord_user_id) {
           assignedDiv.innerHTML = '';
@@ -667,8 +667,8 @@ function applyRemoteState(entries) {
           delete assignedDiv.dataset.charClass;
           delete assignedDiv.dataset.placeholder;
           applySlotTint(slotCard, null);
-          syncSlotRole(slotCard, remote.slot_role || 'dps');
         }
+        syncSlotRole(slotCard, remote.slot_role || 'dps');
       } else if (remote.placeholder_text) {
         if (localPh !== remote.placeholder_text) {
           assignedDiv.innerHTML = '';
@@ -683,8 +683,8 @@ function applyRemoteState(entries) {
           delete assignedDiv.dataset.charClass;
           assignedDiv.dataset.placeholder = remote.placeholder_text;
           applySlotTint(slotCard, null);
-          syncSlotRole(slotCard, remote.slot_role || 'dps');
         }
+        syncSlotRole(slotCard, remote.slot_role || 'dps');
       }
     });
   } finally {
@@ -1189,8 +1189,7 @@ function applyPresetSlots(slots) {
 
     // Set slot role from preset
     const slotRole = entry.slot_role || 'dps';
-    const roleBtn = slotCard.querySelector(`.role-btn[data-role="${slotRole}"]`);
-    if (roleBtn) setSlotRole(roleBtn, slotRole, true);
+    setSlotRole(slotCard, slotRole, true);
 
     addDirtyChange(slot, { slot_role: slotRole, placeholder_text: entry.placeholder_text });
   });
