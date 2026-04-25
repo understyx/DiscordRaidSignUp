@@ -20,16 +20,21 @@
 {% endif %}
 
 {% set role_info = [
-  {"key": "tank", "label": "🛡️ Tanks"},
-  {"key": "healer", "label": "💚 Healers"},
-  {"key": "mdps", "label": "🗡️ Melee DPS"},
-  {"key": "rdps", "label": "🏹 Ranged DPS"},
-  {"key": "dps", "label": "⚔️ DPS"}
+  {"keys": ["tank"], "label": "🛡️ Tanks", "css": "tank"},
+  {"keys": ["healer"], "label": "💚 Healers", "css": "healer"},
+  {"keys": ["mdps", "rdps", "dps"], "label": "⚔️ DPS", "css": "dps"}
 ] %}
 {% for ri in role_info %}
-  {% set entries = groups[ri.key] or [] %}
+  {% set entries = [] %}
+  {% for k in ri.keys %}
+    {% if groups[k] %}
+      {% for e in groups[k] %}
+        {% set _ = entries.push(e) %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
   {% if entries | length > 0 %}
-  <div class="card mb-4 p-3 role-section-{{ ri.key }}">
+  <div class="card mb-4 p-3 role-section-{{ ri.css }}">
     <h4 class="mb-3">{{ ri.label }} <span class="badge bg-secondary ms-2" style="font-size:0.75rem;">{{ entries | length }}</span></h4>
     <div class="row g-2">
       {% for comp in entries %}

@@ -730,14 +730,15 @@ function showPostConfirmModal() {
     // Multi-comp: show summary table for all comps and offer "post current" vs "post all"
     let html = '<p class="mb-2">Which composition(s) do you want to post to Discord?</p>';
     html += '<table class="table table-sm table-dark mb-2">';
-    html += '<thead><tr><th>Comp</th><th>🛡️</th><th>💚</th><th>🗡️</th><th>🏹</th><th>⚔️</th><th>Total</th></tr></thead><tbody>';
+    html += '<thead><tr><th>Comp</th><th>🛡️ Tanks</th><th>💚 Healers</th><th>⚔️ DPS</th><th>Total</th></tr></thead><tbody>';
     for (const cn of COMP_NUMBERS_ALL) {
       const s = COMP_SUMMARIES[cn] || { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
-      const total = (s.tank || 0) + (s.healer || 0) + (s.mdps || 0) + (s.rdps || 0) + (s.dps || 0);
+      const dpsTotal = (s.mdps || 0) + (s.rdps || 0) + (s.dps || 0);
+      const total = (s.tank || 0) + (s.healer || 0) + dpsTotal;
       const isCurrent = cn === CURRENT_COMP;
       html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
       html += `<td>${compTabLabel(cn)}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
-      html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${s.mdps || 0}</td><td>${s.rdps || 0}</td><td>${s.dps || 0}</td><td><strong>${total}</strong></td>`;
+      html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${dpsTotal}</td><td><strong>${total}</strong></td>`;
       html += '</tr>';
     }
     html += '</tbody></table>';
@@ -749,7 +750,7 @@ function showPostConfirmModal() {
     document.getElementById('postAllBtn').style.display = '';
   } else {
     // Single comp: existing behaviour
-    let tanks = 0, healers = 0, mdps = 0, rdps = 0, dps = 0, placeholders = 0;
+    let tanks = 0, healers = 0, dpsTotal = 0, placeholders = 0;
     document.querySelectorAll('.slot-card').forEach(card => {
       const assignedDiv = card.querySelector('.assigned-char');
       const charId      = assignedDiv && assignedDiv.dataset.charId;
@@ -758,20 +759,16 @@ function showPostConfirmModal() {
       const role = card.dataset.slotRole || 'dps';
       if (role === 'tank') tanks++;
       else if (role === 'healer') healers++;
-      else if (role === 'mdps') mdps++;
-      else if (role === 'rdps') rdps++;
-      else dps++;
+      else dpsTotal++;
       if (placeholder) placeholders++;
     });
-    const total = tanks + healers + mdps + rdps + dps;
+    const total = tanks + healers + dpsTotal;
 
     document.getElementById('postConfirmSummary').innerHTML =
       `<table class="table table-sm table-dark mb-0">` +
       `<tr><td>🛡️ Tanks</td><td><strong>${tanks}</strong></td></tr>` +
       `<tr><td>💚 Healers</td><td><strong>${healers}</strong></td></tr>` +
-      `<tr><td>🗡️ Melee DPS</td><td><strong>${mdps}</strong></td></tr>` +
-      `<tr><td>🏹 Ranged DPS</td><td><strong>${rdps}</strong></td></tr>` +
-      (dps > 0 ? `<tr><td>⚔️ DPS</td><td><strong>${dps}</strong></td></tr>` : '') +
+      `<tr><td>⚔️ DPS</td><td><strong>${dpsTotal}</strong></td></tr>` +
       `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td></tr>` +
       `</table>` +
       (placeholders > 0
