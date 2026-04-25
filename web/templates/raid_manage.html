@@ -173,13 +173,15 @@
                    ondrop="onDrop(event)"
                    {% endif %}>
                 {% if can_edit %}
-                <div class="slot-actions">
+                <div class="slot-role-btns-left">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
                   <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
+                </div>
+                <div class="slot-role-btns-right">
                   <button class="role-btn{% if slot_prefix == 'mdps' %} active{% endif %}" data-role="mdps" onclick="setSlotRole(this,'mdps')" title="Melee DPS" aria-label="Set role: Melee DPS">🗡️</button>
                   <button class="role-btn{% if slot_prefix == 'rdps' %} active{% endif %}" data-role="rdps" onclick="setSlotRole(this,'rdps')" title="Ranged DPS" aria-label="Set role: Ranged DPS">🏹</button>
-                  <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
                 </div>
+                <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
                 {% endif %}
                 <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
