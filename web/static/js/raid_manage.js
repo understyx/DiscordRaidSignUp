@@ -32,10 +32,12 @@ let draggedCharId        = null;
 let draggedCharName      = null;
 let draggedCharClass     = null;
 let draggedDiscordUserId = null;
+let draggedDisplayLabel  = null;
 let draggedSpec          = null;
 let draggedRole          = null;   // detected role for auto-slot-assignment
 let draggedPlaceholder   = null;
 let draggedPlaceholderColor = null;
+let draggedIsPlayer      = false;
 
 // Apply colors to any placeholder-colored spans already in the DOM
 function applyPlaceholderColors() {
@@ -164,7 +166,7 @@ function setSlotRole(btn, role, skipDirty) {
   const slot     = slotCard.dataset.slot;      // "slot_N" — never changes
   const oldRole  = slotCard.dataset.slotRole;
   slotCard.dataset.slotRole = role;
-  slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps');
+  slotCard.classList.remove('slot-tank', 'slot-healer', 'slot-dps', 'slot-mdps', 'slot-rdps');
   slotCard.classList.add('slot-' + role);
   slotCard.querySelectorAll('.role-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.role === role);
@@ -176,9 +178,14 @@ function setSlotRole(btn, role, skipDirty) {
     // If the slot has content, re-save with the new role immediately
     const assignedDiv = slotCard.querySelector('.assigned-char');
     const charId      = assignedDiv && assignedDiv.dataset.charId;
+    const discordUserId = assignedDiv && assignedDiv.dataset.discordUserId && !charId ? assignedDiv.dataset.discordUserId : null;
     const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
     if (charId) {
       addDirtyChange(slot, { slot_role: role, character_id: charId });
+      clearTimeout(saveTimer);
+      autoSave();
+    } else if (discordUserId) {
+      addDirtyChange(slot, { slot_role: role, discord_user_id: discordUserId });
       clearTimeout(saveTimer);
       autoSave();
     } else if (placeholder) {
@@ -233,17 +240,36 @@ function filterPool(role) {
 function onDragStart(event) {
   draggedPlaceholder      = null;
   draggedPlaceholderColor = null;
+  draggedIsPlayer         = false;
+  draggedDisplayLabel     = null;
   draggedCharId           = event.currentTarget.dataset.charId;
   draggedCharName         = event.currentTarget.dataset.charName;
   draggedCharClass        = event.currentTarget.dataset.charClass || null;
   draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
   draggedSpec             = event.currentTarget.dataset.spec || null;
-  draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec));
+  draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec), draggedCharClass);
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function onPlayerDragStart(event) {
+  event.stopPropagation();
+  draggedPlaceholder      = null;
+  draggedPlaceholderColor = null;
+  draggedCharId           = null;
+  draggedCharName         = null;
+  draggedCharClass        = null;
+  draggedSpec             = null;
+  draggedRole             = null;
+  draggedIsPlayer         = true;
+  draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
+  draggedDisplayLabel     = event.currentTarget.dataset.displayLabel || null;
   event.dataTransfer.effectAllowed = 'move';
 }
 
 /* ── Drag start: placeholder chip ─────────────────────────────────── */
 function onPlaceholderDragStart(event) {
+  draggedIsPlayer         = false;
+  draggedDisplayLabel     = null;
   draggedCharId           = null;
   draggedCharName         = null;
   draggedCharClass        = null;
@@ -289,6 +315,51 @@ function onDrop(event) {
     addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, placeholder_text: assignedDiv.dataset.placeholder });
     clearTimeout(saveTimer);
     updateBuffPanel();
+    autoSave();
+    return;
+  }
+
+  /* Player (any character) drop */
+  if (draggedIsPlayer && draggedDiscordUserId) {
+    /* Enforce one character/placeholder per Discord user */
+    document.querySelectorAll('.assigned-char[data-discord-user-id]').forEach(el => {
+      if (el.dataset.discordUserId === draggedDiscordUserId) {
+        clearAssigned(el);
+      }
+    });
+
+    assignedDiv.innerHTML = '';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'fw-bold';
+
+    let isTentative = false;
+    const header = document.getElementById(`ug-${draggedDiscordUserId}-header`) ||
+                   Array.from(document.querySelectorAll('.user-group-header')).find(h => h.dataset.discordUserId === draggedDiscordUserId);
+    if (header && header.classList.contains('tentative')) {
+      isTentative = true;
+    }
+
+    nameSpan.textContent = draggedDisplayLabel + (isTentative ? ' [?]' : '');
+    const specSmall = document.createElement('small');
+    specSmall.className = 'text-muted d-block fst-italic';
+    specSmall.textContent = 'Any Character';
+    assignedDiv.appendChild(nameSpan);
+    assignedDiv.appendChild(specSmall);
+    assignedDiv.dataset.discordUserId = draggedDiscordUserId;
+    delete assignedDiv.dataset.charId;
+    delete assignedDiv.dataset.charClass;
+    delete assignedDiv.dataset.placeholder;
+    applySlotTint(slotCard, null);
+
+    const finalUserId = draggedDiscordUserId;
+    draggedDiscordUserId = null;
+    draggedDisplayLabel  = null;
+    draggedIsPlayer      = false;
+
+    addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, discord_user_id: finalUserId });
+    updateCharInCompStatus();
+    updateBuffPanel();
+    clearTimeout(saveTimer);
     autoSave();
     return;
   }
@@ -339,7 +410,7 @@ function onDrop(event) {
   applySlotTint(slotCard, draggedCharClass);
 
   // Auto-detect role from the character's data-role and set slot role
-  if (draggedRole && ['tank', 'healer', 'dps'].includes(draggedRole)) {
+  if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
     const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
     if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
   }
@@ -422,9 +493,12 @@ function buildPayload() {
     const assignedDiv = slot.querySelector('.assigned-char');
     if (!assignedDiv) return;
     const charId = assignedDiv.dataset.charId;
+    const discordUserId = assignedDiv.dataset.discordUserId && !charId ? assignedDiv.dataset.discordUserId : null;
     const placeholder = assignedDiv.dataset.placeholder;
     if (charId) {
       payload.push({ character_id: parseInt(charId), role_slot: slot.dataset.slot, slot_role: slot.dataset.slotRole });
+    } else if (discordUserId) {
+      payload.push({ discord_user_id: discordUserId, role_slot: slot.dataset.slot, slot_role: slot.dataset.slotRole });
     } else if (placeholder) {
       payload.push({ placeholder_text: placeholder, role_slot: slot.dataset.slot, slot_role: slot.dataset.slotRole });
     }
@@ -565,6 +639,31 @@ function applyRemoteState(entries) {
           if (remote.discord_user_id) assignedDiv.dataset.discordUserId = remote.discord_user_id;
           delete assignedDiv.dataset.placeholder;
           applySlotTint(slotCard, remote.char_class || null);
+          syncSlotRole(slotCard, remote.slot_role || 'dps');
+        }
+      } else if (remote.discord_user_id) {
+        if (localCharId || assignedDiv.dataset.discordUserId !== remote.discord_user_id) {
+          assignedDiv.innerHTML = '';
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'fw-bold';
+
+          let remoteIsTentative = false;
+          const header = Array.from(document.querySelectorAll('.user-group-header')).find(h => h.dataset.discordUserId === remote.discord_user_id);
+          if (header && header.classList.contains('tentative')) {
+            remoteIsTentative = true;
+          }
+
+          nameSpan.textContent = (remote.display_label || remote.char_name || '?') + (remoteIsTentative ? ' [?]' : '');
+          const specSmall = document.createElement('small');
+          specSmall.className = 'text-muted d-block fst-italic';
+          specSmall.textContent = 'Any Character';
+          assignedDiv.appendChild(nameSpan);
+          assignedDiv.appendChild(specSmall);
+          assignedDiv.dataset.discordUserId = remote.discord_user_id;
+          delete assignedDiv.dataset.charId;
+          delete assignedDiv.dataset.charClass;
+          delete assignedDiv.dataset.placeholder;
+          applySlotTint(slotCard, null);
           syncSlotRole(slotCard, remote.slot_role || 'dps');
         }
       } else if (remote.placeholder_text) {

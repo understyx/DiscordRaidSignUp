@@ -58,15 +58,42 @@ const SPEC_ROLE_REGEXES = Object.keys(SPEC_TO_ROLE).map(canonical => ({
 const ROLE_EMOJIS = {
   tank: '🛡️',
   healer: '💚',
-  dps: '⚔️'
+  dps: '⚔️',
+  mdps: '🗡️',
+  rdps: '🏹'
+};
+
+const CLASS_ROLES = {
+  'warrior': 'mdps',
+  'rogue': 'mdps',
+  'death knight': 'mdps',
+  'paladin': 'mdps', // Ret is mdps
+  'shaman': 'mdps', // Enhancement is mdps, Elemental is rdps
+  'hunter': 'rdps',
+  'druid': 'mdps', // Feral is mdps, Balance is rdps
+  'mage': 'rdps',
+  'warlock': 'rdps',
+  'priest': 'rdps'
+};
+
+const SPEC_ROLES = {
+  'elemental': 'rdps',
+  'balance': 'rdps',
+  'shadow': 'rdps'
 };
 
 /**
  * Detect role from spec name.
  * `spec` should already be the canonical name returned by normalizeSpec().
  */
-function specToRole(spec) {
-  if (!spec) return 'dps';
+function specToRole(spec, charClass) {
+  if (!spec) {
+    if (charClass) {
+      const cls = charClass.toLowerCase().replace(/-/g, ' ').trim();
+      return CLASS_ROLES[cls] || 'dps';
+    }
+    return 'dps';
+  }
   const s = spec.toLowerCase();
 
   // Honour explicit inline role markers (e.g. "Blood (DPS)", "Feral (Bear) (Tank)")
@@ -81,6 +108,17 @@ function specToRole(spec) {
   // This prevents "Unholy" from matching "holy".
   for (const { role, regex } of SPEC_ROLE_REGEXES) {
     if (regex.test(s)) return role;
+  }
+
+  // Check specific specs for rdps vs mdps
+  for (const [specName, role] of Object.entries(SPEC_ROLES)) {
+    if (s.includes(specName)) return role;
+  }
+
+  // Fallback to class-based role detection for DPS
+  if (charClass) {
+    const cls = charClass.toLowerCase().replace(/-/g, ' ').trim();
+    return CLASS_ROLES[cls] || 'dps';
   }
 
   return 'dps';

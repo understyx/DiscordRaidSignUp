@@ -88,6 +88,10 @@
         <div class="user-group mb-2">
           <div class="user-group-header d-flex align-items-center gap-2 px-2 py-1 rounded mb-1{% if userGroup.is_tentative %} tentative{% endif %}"
                id="{{ grp_id }}-header"
+               draggable="{{ 'true' if can_edit else 'false' }}"
+               data-discord-user-id="{{ userGroup.discord_user_id }}"
+               data-display-label="{{ userGroup.display_label }}"
+               {% if can_edit %}ondragstart="onPlayerDragStart(event)"{% endif %}
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
@@ -155,7 +159,7 @@
           <div class="row g-2 mb-2 slot-group">
             {% for slot in group %}
             {% set slot_prefix = slot_role_map[slot] or "dps" %}
-            {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️"} %}
+            {% set slotEmojis = {"tank": "🛡️", "healer": "💚", "dps": "⚔️", "mdps": "🗡️", "rdps": "🏹"} %}
             {% set slot_emoji = slotEmojis[slot_prefix] or "❓" %}
             {% set assigned_char_id = comp_map[slot] %}
             <div class="col">
@@ -172,7 +176,8 @@
                 <div class="slot-actions">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
                   <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
-                  <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="DPS" aria-label="Set role: DPS">⚔️</button>
+                  <button class="role-btn{% if slot_prefix == 'mdps' %} active{% endif %}" data-role="mdps" onclick="setSlotRole(this,'mdps')" title="Melee DPS" aria-label="Set role: Melee DPS">🗡️</button>
+                  <button class="role-btn{% if slot_prefix == 'rdps' %} active{% endif %}" data-role="rdps" onclick="setSlotRole(this,'rdps')" title="Ranged DPS" aria-label="Set role: Ranged DPS">🏹</button>
                   <button class="slot-remove-btn" onclick="clearSlot(this)" title="Remove player" aria-label="Remove player">✕</button>
                 </div>
                 {% endif %}
@@ -191,6 +196,12 @@
                     — empty —
                   </div>
                   {% endif %}
+                {% elif player_placeholder_map[slot] %}
+                  {% set pp = player_placeholder_map[slot] %}
+                  <div class="assigned-char" data-discord-user-id="{{ pp.discord_user_id }}">
+                    <span class="fw-bold">{{ pp.display_label }}{% if pp.status == 'tentative' %} [?]{% endif %}</span><br>
+                    <small class="text-muted fst-italic">Any Character</small>
+                  </div>
                 {% elif placeholder_map[slot] %}
                 <div class="assigned-char" data-placeholder="{{ placeholder_map[slot] }}">
                   <span class="slot-placeholder-text placeholder-colored">{{ placeholder_map[slot] }}</span>

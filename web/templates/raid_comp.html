@@ -19,7 +19,13 @@
 </div>
 {% endif %}
 
-{% set role_info = [{"key": "tank", "label": "🛡️ Tanks"}, {"key": "healer", "label": "💚 Healers"}, {"key": "dps", "label": "⚔️ DPS"}] %}
+{% set role_info = [
+  {"key": "tank", "label": "🛡️ Tanks"},
+  {"key": "healer", "label": "💚 Healers"},
+  {"key": "mdps", "label": "🗡️ Melee DPS"},
+  {"key": "rdps", "label": "🏹 Ranged DPS"},
+  {"key": "dps", "label": "⚔️ DPS"}
+] %}
 {% for ri in role_info %}
   {% set entries = groups[ri.key] or [] %}
   {% if entries | length > 0 %}
@@ -28,7 +34,13 @@
     <div class="row g-2">
       {% for comp in entries %}
         <div class="col-6 col-md-3">
-          {% if comp.is_placeholder %}
+          {% if comp.is_player_placeholder %}
+          <div class="card p-2 h-100 border-secondary text-center comp-char-card player-placeholder-card">
+            <div class="small text-muted mb-1">{{ comp.role_slot }}</div>
+            <span class="fw-bold">{{ comp.display_label }}{% if comp.status == 'tentative' %} [?]{% endif %}</span>
+            <small class="text-muted d-block fst-italic" style="font-size:0.75rem;">Any Character</small>
+          </div>
+          {% elif comp.is_placeholder %}
           <div class="card p-2 h-100 border-secondary text-center comp-char-card comp-placeholder-card">
             <div class="small text-muted mb-1">{{ comp.role_slot }}</div>
             <span class="fw-bold fst-italic placeholder-spec-text" data-placeholder="{{ comp.placeholder_text }}">{{ comp.placeholder_text }}</span>
