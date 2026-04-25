@@ -84,7 +84,7 @@
 
 /* ── Compact roster slot cards ──────────────────────────────────────── */
 .slot-card {
-  padding: 0.3rem 0.4rem !important;
+  padding: 0.3rem 0.4rem 1rem 0.4rem !important;
   position: relative;
 }
 .slot-card .slot-label {
@@ -102,12 +102,19 @@
 }
 
 /* ── Slot action overlay (role switchers + remove) ───────────────────── */
-.slot-actions {
+.slot-role-btns-left {
   position: absolute;
-  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  display: flex;
+  gap: 1px;
+  z-index: 2;
+}
+.slot-role-btns-right {
+  position: absolute;
+  bottom: 2px;
   right: 2px;
   display: flex;
-  flex-direction: column;
   gap: 1px;
   z-index: 2;
 }
@@ -124,6 +131,9 @@
 .role-btn:hover  { opacity: 0.8; }
 .role-btn.active { opacity: 1; }
 .slot-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
   background: none;
   border: none;
   color: #ff6b6b;
@@ -133,6 +143,7 @@
   opacity: 0.4;
   padding: 0 1px;
   transition: opacity 0.1s;
+  z-index: 2;
 }
 .slot-remove-btn:hover { opacity: 1; }
 
