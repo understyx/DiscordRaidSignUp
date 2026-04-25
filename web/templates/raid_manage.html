@@ -78,11 +78,9 @@
         </h5>
         <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Filter sign-ups by role">
           <button type="button" class="btn btn-outline-secondary pool-filter-btn active" data-role="all" onclick="filterPool('all')">All</button>
-          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️</button>
-          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚</button>
-          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="mdps" onclick="filterPool('mdps')">🗡️</button>
-          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="rdps" onclick="filterPool('rdps')">🏹</button>
-          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️ Tank</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚 Heal</button>
+          <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️ DPS</button>
         </div>
 
         {% for userGroup in signupsByUser %}
@@ -178,7 +176,6 @@
                 <div class="slot-role-btns-left">
                   <button class="role-btn{% if slot_prefix == 'tank' %} active{% endif %}" data-role="tank" onclick="setSlotRole(this,'tank')" title="Tank" aria-label="Set role: Tank">🛡️</button>
                   <button class="role-btn{% if slot_prefix == 'healer' %} active{% endif %}" data-role="healer" onclick="setSlotRole(this,'healer')" title="Healer" aria-label="Set role: Healer">💚</button>
-                  <button class="role-btn{% if slot_prefix == 'dps' %} active{% endif %}" data-role="dps" onclick="setSlotRole(this,'dps')" title="Generic DPS" aria-label="Set role: Generic DPS">⚔️</button>
                 </div>
                 <div class="slot-role-btns-right">
                   <button class="role-btn{% if slot_prefix == 'mdps' %} active{% endif %}" data-role="mdps" onclick="setSlotRole(this,'mdps')" title="Melee DPS" aria-label="Set role: Melee DPS">🗡️</button>
@@ -261,7 +258,7 @@
 
         <div class="placeholder-group-label">🗡️ Melee DPS</div>
         <div class="d-flex flex-column gap-1 mb-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="🗡️ Melee DPS"       data-role="mdps" data-color="#c4cad8"  style="color:#c4cad8;"     ondragstart="onPlaceholderDragStart(event)">🗡️ Melee DPS</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🗡️ Melee DPS"       data-role="mdps" data-color="#a335ee"  style="color:#a335ee;"     ondragstart="onPlaceholderDragStart(event)">🗡️ Melee DPS</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🗡️ Arms Warrior"    data-role="mdps" data-color="#C69B3A"  style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">🗡️ Arms Warrior</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🗡️ Fury Warrior"    data-role="mdps" data-color="#C69B3A"  style="color:#C69B3A;"     ondragstart="onPlaceholderDragStart(event)">🗡️ Fury Warrior</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🗡️ Ret Paladin"     data-role="mdps" data-color="#F48CBA"  style="color:#F48CBA;"     ondragstart="onPlaceholderDragStart(event)">🗡️ Ret Paladin</span>
@@ -276,7 +273,7 @@
 
         <div class="placeholder-group-label">🏹 Ranged DPS</div>
         <div class="d-flex flex-column gap-1">
-          <span class="placeholder-chip" draggable="true" data-placeholder="🏹 Ranged DPS"      data-role="rdps" data-color="#c4cad8"  style="color:#c4cad8;"     ondragstart="onPlaceholderDragStart(event)">🏹 Ranged DPS</span>
+          <span class="placeholder-chip" draggable="true" data-placeholder="🏹 Ranged DPS"      data-role="rdps" data-color="#ff8000"  style="color:#ff8000;"     ondragstart="onPlaceholderDragStart(event)">🏹 Ranged DPS</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🏹 Shadow Priest"   data-role="rdps" data-color="#c8ccd4"  style="color:#c8ccd4;"     ondragstart="onPlaceholderDragStart(event)">🏹 Shadow Priest</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🏹 Balance Druid"   data-role="rdps" data-color="#FF7C0A"  style="color:#FF7C0A;"     ondragstart="onPlaceholderDragStart(event)">🏹 Balance Druid</span>
           <span class="placeholder-chip" draggable="true" data-placeholder="🏹 MM Hunter"       data-role="rdps" data-color="#AAD372"  style="color:#AAD372;"     ondragstart="onPlaceholderDragStart(event)">🏹 MM Hunter</span>

@@ -49,17 +49,7 @@ function applyPlaceholderColors() {
 }
 
 function applySlotTint(slotCard, charClass) {
-  let rgba = getClassColor(charClass, 0.22);
-  if (!rgba) {
-    // Fall back to role-based tinting
-    const role = slotCard.dataset.slotRole;
-    if (role === 'mdps') rgba = 'rgba(163, 53, 238, 0.15)';
-    else if (role === 'rdps') rgba = 'rgba(255, 128, 0, 0.15)';
-    else if (role === 'tank') rgba = 'rgba(91, 155, 213, 0.15)';
-    else if (role === 'healer') rgba = 'rgba(87, 168, 91, 0.15)';
-    else if (role === 'dps') rgba = 'rgba(201, 64, 64, 0.15)';
-  }
-
+  const rgba = getClassColor(charClass, 0.22);
   if (rgba) {
     slotCard.style.backgroundColor = rgba;
   } else {
@@ -71,8 +61,9 @@ function applySlotTint(slotCard, charClass) {
 function applyInitialTints() {
   document.querySelectorAll('.slot-card').forEach(slotCard => {
     const assignedDiv = slotCard.querySelector('.assigned-char');
-    const charClass = assignedDiv ? assignedDiv.dataset.charClass : null;
-    applySlotTint(slotCard, charClass);
+    if (assignedDiv && assignedDiv.dataset.charClass) {
+      applySlotTint(slotCard, assignedDiv.dataset.charClass);
+    }
   });
 }
 
@@ -168,10 +159,12 @@ function updateCharInCompStatus() {
   });
 }
 
-// Called when a role icon button is clicked — updates data-slot-role, border colour, and slot label
-// skipDirty is set internally when the call comes from a drop or remote-state sync
-function setSlotRole(btn, role, skipDirty) {
-  const slotCard = btn.closest('.slot-card');
+// Called when a role icon button is clicked (btnOrSlot is the button) or
+// programmatically (btnOrSlot is the slot card).
+// Updates data-slot-role, border colour, and slot label.
+// skipDirty is set internally when the call comes from a drop or remote-state sync.
+function setSlotRole(btnOrSlot, role, skipDirty) {
+  const slotCard = btnOrSlot.classList.contains('slot-card') ? btnOrSlot : btnOrSlot.closest('.slot-card');
   const slot     = slotCard.dataset.slot;      // "slot_N" — never changes
   const oldRole  = slotCard.dataset.slotRole;
   slotCard.dataset.slotRole = role;
@@ -318,8 +311,7 @@ function onDrop(event) {
 
     // Auto-detect role from the placeholder's data-role and set slot role
     if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
-      const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
-      if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
+      setSlotRole(slotCard, draggedRole, true); // skipDirty — we record below
     }
 
     draggedPlaceholder      = null;
@@ -424,8 +416,7 @@ function onDrop(event) {
 
   // Auto-detect role from the character's data-role and set slot role
   if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
-    const roleBtn = slotCard.querySelector(`.role-btn[data-role="${draggedRole}"]`);
-    if (roleBtn) setSlotRole(roleBtn, draggedRole, true); // skipDirty — we record below
+    setSlotRole(slotCard, draggedRole, true); // skipDirty — we record below
   }
 
   const finalCharId = draggedCharId;
@@ -595,8 +586,7 @@ let lastKnownVersion = null;
 // ── Helper: sync slot role button state to a given role ─────────────
 function syncSlotRole(slotCard, slotRole) {
   if (!slotCard.classList.contains('slot-' + slotRole)) {
-    const roleBtn = slotCard.querySelector(`.role-btn[data-role="${slotRole}"]`);
-    if (roleBtn) setSlotRole(roleBtn, slotRole, true); // skipDirty
+    setSlotRole(slotCard, slotRole, true); // skipDirty
   }
 }
 
