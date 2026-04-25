@@ -28,7 +28,8 @@ HOWTO_TEXT = (
     "**Method 2: Use `/addcharacter` then click the Sign Up button**\n"
     "1. Register your character: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<gearscore>`\n"
     "2. Click the **✅ Sign Up** (or **❓ Tentative**) button on the raid message\n"
-    "3. Select your character(s), optionally mark preferred, then confirm\n\n"
+    "3. Select your character(s), optionally mark preferred, then confirm\n"
+    "   Use the **📝 Add Note to Character** button to attach a note to any character.\n\n"
     "**Method 3: Post your character(s) as a text message in this channel**\n"
     "Post one character per line in the format below. "
     "This will both **register your character** and **sign you up** automatically.\n"
@@ -49,6 +50,9 @@ HOWTO_TEXT = (
     "Put ⭐ at the very end of the line (after the last GS) to mark **all** specs as preferred:\n"
     "`Puredecay / Hunter / Survival / 6500 ⭐` → all listed specs are preferred\n\n"
     "Add ❌ anywhere in the line if your character is already saved this lockout.\n\n"
+    "**Adding a note (Method 3 & 4)**\n"
+    "Append `Note:` (or `N:`) followed by your note text after the last GS value:\n"
+    "`Shadowmeld / Rogue / Sub / 6400 Note: might be 10 min late`\n\n"
     "*Your message will be deleted automatically and a sign-up summary will be posted in the log thread.*"
 )
 
@@ -91,6 +95,10 @@ _MAX_RANDOM_LINES_IN_ERROR = 5
 # Matches a GS number (with optional k/K suffix) at the start of a segment,
 # followed by optional whitespace and an optional trailing note.
 _GS_NOTE_RE = re.compile(r"^([0-9]+(?:[.,][0-9]+)?[kK]?)\s*(.*)?$", re.DOTALL)
+
+# Explicit note prefix: "Note:", "note:", "N:", or "n:" (case-insensitive).
+# Only text following this prefix is treated as the signup note.
+_NOTE_PREFIX_RE = re.compile(r"^[Nn](?:ote)?:\s*(.*)", re.DOTALL)
 
 # Sentinel float value representing a "Best in Slot" gearscore.
 BIS_GS = 99999.0
@@ -141,8 +149,9 @@ def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
     """Parse a GS segment, returning ``(gearscore, note)``.
 
     Star markers (⭐ ★) are stripped before parsing.  ``"bis"`` (case-insensitive)
-    is accepted as a synonym for Best-in-Slot.  Any text that follows the numeric
-    GS value (after stripping stars and whitespace) is returned as the note.
+    is accepted as a synonym for Best-in-Slot.  A note is only extracted when an
+    explicit prefix is found after the numeric GS value: ``Note:``, ``note:``,
+    ``N:``, or ``n:`` (case-insensitive).  Any other trailing text is ignored.
     Raises ``ValueError`` if no valid GS number is found.
     """
     cleaned = gs_raw.replace("⭐", "").replace("★", "").strip()
@@ -152,7 +161,9 @@ def _parse_gs_and_note(gs_raw: str) -> tuple[float, str]:
     if not m:
         raise ValueError(f"Cannot parse GS from {gs_raw!r}")
     gs = parse_gs(m.group(1))
-    note = (m.group(2) or "").strip()
+    trailing = (m.group(2) or "").strip()
+    note_match = _NOTE_PREFIX_RE.match(trailing)
+    note = note_match.group(1).strip() if note_match else ""
     return gs, note
 
 
@@ -187,6 +198,9 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
+        # Convert Discord text-form emoji :star: to the actual star character so
+        # modal/text sign-ups using keyboard shortcuts are treated correctly.
+        line = line.replace(":star:", "⭐").replace(":Star:", "⭐")
         if not line or not _CHAR_LINE_RE.match(line):
             continue
 
@@ -769,6 +783,7 @@ class SignupPrioritySelectView(discord.ui.View):
         *,
         page: int = 0,
         priority_ids: set[int] | None = None,
+        notes: dict[str, str] | None = None,
     ):
         super().__init__(timeout=120)
         self.raid_id = raid_id
@@ -776,6 +791,7 @@ class SignupPrioritySelectView(discord.ui.View):
         self.signup_status = signup_status
         self.page = page
         self.priority_ids: set[int] = set(priority_ids) if priority_ids else set()
+        self.notes: dict[str, str] = dict(notes) if notes else {}  # char_name.lower() -> note
         self.priority_select: discord.ui.Select | None = None
         self._build_components()
 
@@ -839,6 +855,15 @@ class SignupPrioritySelectView(discord.ui.View):
         confirm_btn.callback = self.confirm
         self.add_item(confirm_btn)
 
+        add_note_btn = discord.ui.Button(
+            label="Add Note to Character",
+            style=discord.ButtonStyle.secondary,
+            emoji="📝",
+            row=3,
+        )
+        add_note_btn.callback = self._on_add_note
+        self.add_item(add_note_btn)
+
     def _update_priority_from_page(self, selected_values: list[str]):
         """Replace priority marks for the current page's items based on the select interaction."""
         start = self.page * _SELECT_PAGE_SIZE
@@ -863,7 +888,25 @@ class SignupPrioritySelectView(discord.ui.View):
             if marked:
                 text += f"\n\n**Marked as preferred:** {marked}"
             text += f"\n\n*Page {self.page + 1} of {max_pages}*"
+        if self.notes:
+            seen: set[str] = set()
+            note_lines = []
+            for c in self.selected_chars:
+                key = c["char_name"].lower()
+                if key in self.notes and key not in seen:
+                    seen.add(key)
+                    note_lines.append(f"• **{c['char_name']}**: *{self.notes[key]}*")
+            if note_lines:
+                text += "\n\n**Notes:**\n" + "\n".join(note_lines)
         return text
+
+    async def _on_add_note(self, interaction: discord.Interaction):
+        parent_message = interaction.message
+        note_view = NoteCharSelectView(parent_view=self, parent_message=parent_message)
+        await interaction.response.edit_message(
+            content="Select a character to add a note to:",
+            view=note_view,
+        )
 
     async def _on_priority_select(self, interaction: discord.Interaction):
         self._update_priority_from_page(interaction.data.get("values", []))
@@ -882,6 +925,7 @@ class SignupPrioritySelectView(discord.ui.View):
 
     async def confirm(self, interaction: discord.Interaction):
         priority_ids = self.priority_ids
+        notes = self.notes  # char_name.lower() -> note
         discord_user_id = interaction.user.id
         raid_id = self.raid_id
         signup_status = self.signup_status
@@ -906,9 +950,11 @@ class SignupPrioritySelectView(discord.ui.View):
                         )
                         .first()
                     )
+                    char_note = notes.get(char["char_name"].lower()) or None
                     if existing:
                         existing.signup_type = signup_type
                         existing.status = signup_status
+                        existing.note = char_note
                     else:
                         session.add(
                             Signup(
@@ -917,6 +963,7 @@ class SignupPrioritySelectView(discord.ui.View):
                                 character_id=char["id"],
                                 signup_type=signup_type,
                                 status=signup_status,
+                                note=char_note,
                             )
                         )
                 session.commit()
@@ -927,10 +974,16 @@ class SignupPrioritySelectView(discord.ui.View):
         raid_name = await loop.run_in_executor(None, _upsert_all)
 
         is_tentative = signup_status == SignupStatus.tentative
-        lines = [
-            f"• **{_char_label(c)}**" + (" ⭐ preferred" if c["id"] in priority_ids else "")
-            for c in self.selected_chars
-        ]
+        char_note_shown: set[str] = set()
+        lines = []
+        for c in self.selected_chars:
+            prio_str = " ⭐ preferred" if c["id"] in priority_ids else ""
+            name_key = c["char_name"].lower()
+            note_str = ""
+            if name_key in notes and name_key not in char_note_shown:
+                note_str = f" 💬 *{notes[name_key]}*"
+                char_note_shown.add(name_key)
+            lines.append(f"• **{_char_label(c)}**{prio_str}{note_str}")
         if is_tentative:
             reply_prefix = "❓ Tentatively signed up for the raid:"
             log_emoji = "❓"
@@ -946,7 +999,7 @@ class SignupPrioritySelectView(discord.ui.View):
         )
 
         # Build grouped bullet lines matching the text sign-up format:
-        # • **CharName** (CharClass) – Spec ⭐ GS 6200 / Spec2 GS 6300
+        # • **CharName** (CharClass) – Spec ⭐ GS 6200 / Spec2 GS 6300 💬 note
         grouped: dict[str, dict] = {}
         for c in self.selected_chars:
             key = c["char_name"].lower()
@@ -958,10 +1011,12 @@ class SignupPrioritySelectView(discord.ui.View):
                 }
             star = " ⭐" if c["id"] in priority_ids else ""
             grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
-        bullets = [
-            f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
-            for d in grouped.values()
-        ]
+        bullets = []
+        for key, d in grouped.items():
+            note_str = f" 💬 *{notes[key]}*" if key in notes else ""
+            bullets.append(
+                f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
+            )
         raid_name_str = f" for **{raid_name}**" if raid_name else ""
         log_message = (
             f"{log_emoji} {interaction.user.mention} {log_action}{raid_name_str}:\n"
@@ -1118,6 +1173,148 @@ class SignupCharacterSelectView(discord.ui.View):
             content=view._step_text(),
             embed=None,
             view=view,
+        )
+
+
+class NoteCharSelectView(discord.ui.View):
+    """
+    Shown when the player clicks "Add Note to Character" inside
+    SignupPrioritySelectView.  Lets the player pick one character then open a
+    modal to type a note.  After the modal is submitted the parent view is
+    restored with the note stored.
+    """
+
+    def __init__(
+        self,
+        parent_view: SignupPrioritySelectView,
+        parent_message: discord.Message,
+    ):
+        super().__init__(timeout=120)
+        self.parent_view = parent_view
+        self.parent_message = parent_message
+        self.selected_name: str | None = None
+        # Deduplicate selected_chars by character name so the player picks a
+        # character (not a per-spec row) when adding a note.
+        seen: set[str] = set()
+        self.unique_chars: list[dict] = []
+        for c in parent_view.selected_chars:
+            key = c["char_name"].lower()
+            if key not in seen:
+                seen.add(key)
+                self.unique_chars.append(c)
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+        options = [
+            discord.SelectOption(
+                label=c["char_name"][:100],
+                description=_char_display_description(c)[:100],
+                value=c["char_name"].lower(),
+                default=c["char_name"].lower() == self.selected_name,
+                emoji="📝" if c["char_name"].lower() in self.parent_view.notes else None,
+            )
+            for c in self.unique_chars
+        ]
+        char_select = discord.ui.Select(
+            placeholder="Select a character…",
+            options=options,
+            min_values=1,
+            max_values=1,
+            row=0,
+        )
+        char_select.callback = self._on_select
+        self.add_item(char_select)
+
+        write_btn = discord.ui.Button(
+            label="Write Note",
+            style=discord.ButtonStyle.primary,
+            emoji="✏️",
+            disabled=self.selected_name is None,
+            row=1,
+        )
+        write_btn.callback = self._on_write_note
+        self.add_item(write_btn)
+
+        back_btn = discord.ui.Button(
+            label="Back",
+            style=discord.ButtonStyle.secondary,
+            row=1,
+        )
+        back_btn.callback = self._on_back
+        self.add_item(back_btn)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        self.selected_name = interaction.data["values"][0]
+        self._build_components()
+        await interaction.response.edit_message(view=self)
+
+    async def _on_write_note(self, interaction: discord.Interaction):
+        char = next((c for c in self.unique_chars if c["char_name"].lower() == self.selected_name), None)
+        if char is None:
+            await interaction.response.send_message("❌ Could not find the selected character.", ephemeral=True)
+            return
+        existing_note = self.parent_view.notes.get(self.selected_name, "")
+        modal = NoteModal(
+            char=char,
+            parent_view=self.parent_view,
+            parent_message=self.parent_message,
+            existing_note=existing_note,
+        )
+        await interaction.response.send_modal(modal)
+
+    async def _on_back(self, interaction: discord.Interaction):
+        self.parent_view._build_components()
+        await interaction.response.edit_message(
+            content=self.parent_view._step_text(),
+            view=self.parent_view,
+        )
+
+
+class NoteModal(discord.ui.Modal):
+    """Modal for entering or editing a character note during select-based sign-up."""
+
+    note_input = discord.ui.TextInput(
+        label="Note",
+        style=discord.TextStyle.short,
+        placeholder="Enter a note for this character (leave blank to clear)…",
+        required=False,
+        max_length=200,
+    )
+
+    def __init__(
+        self,
+        char: dict,
+        parent_view: SignupPrioritySelectView,
+        parent_message: discord.Message,
+        existing_note: str = "",
+    ):
+        super().__init__(title=f"Note for {char['char_name'][:35]}")
+        self.char = char
+        self.parent_view = parent_view
+        self.parent_message = parent_message
+        self.note_input.default = existing_note
+
+    async def on_submit(self, interaction: discord.Interaction):
+        note = self.note_input.value.strip()
+        name_key = self.char["char_name"].lower()
+        if note:
+            self.parent_view.notes[name_key] = note
+        else:
+            self.parent_view.notes.pop(name_key, None)
+        # Restore the SignupPrioritySelectView with updated note content
+        self.parent_view._build_components()
+        try:
+            await self.parent_message.edit(
+                content=self.parent_view._step_text(),
+                view=self.parent_view,
+            )
+        except Exception:
+            logger.warning("Failed to edit parent message after note modal submission")
+        action = "saved" if note else "cleared"
+        await interaction.response.send_message(
+            f"✅ Note {action} for **{self.char['char_name']}**.",
+            ephemeral=True,
         )
 
 
