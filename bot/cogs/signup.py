@@ -100,6 +100,12 @@ _GS_NOTE_RE = re.compile(r"^([0-9]+(?:[.,][0-9]+)?[kK]?)\s*(.*)?$", re.DOTALL)
 # Only text following this prefix is treated as the signup note.
 _NOTE_PREFIX_RE = re.compile(r"^[Nn](?:ote)?:\s*(.*)", re.DOTALL)
 
+# Used to split a raw line at the note prefix so that slashes inside the note
+# value are not treated as field separators.  Requires at least one whitespace
+# character before the prefix so it is not confused with a field that starts
+# with the letter N (e.g. a spec named "No" would never be followed by ":").
+_NOTE_SPLIT_RE = re.compile(r"\s+[Nn](?:ote)?:\s*")
+
 # Sentinel float value representing a "Best in Slot" gearscore.
 BIS_GS = 99999.0
 
@@ -210,6 +216,15 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
         # so we can detect per-spec priority later.
         clean = line.replace("❌", "").replace("✗", "").strip()
 
+        # Pre-extract any explicit note (n: / note: / N: / Note:) *before*
+        # splitting on "/" so that slashes inside the note value are not
+        # treated as additional field separators.
+        pre_extracted_note = ""
+        note_split_m = _NOTE_SPLIT_RE.search(clean)
+        if note_split_m:
+            pre_extracted_note = clean[note_split_m.end():]
+            clean = clean[: note_split_m.start()]
+
         parts = [p.strip() for p in clean.split("/")]
         # Need at least: CharName / CharClass / Spec / GS
         if len(parts) < 4:
@@ -248,8 +263,12 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
         # for this character are priority.
         last_has_star = "⭐" in spec_gs[-1] or "★" in spec_gs[-1]
 
-        # Note for this line — accumulated from any GS segment that has trailing text.
-        line_note = ""
+        # Note for this line — seeded with any note pre-extracted before the
+        # slash split.  When a note was pre-extracted the GS segments no longer
+        # contain a note prefix, so segment_note will be empty and line_note
+        # stays as-is.  When no pre-extracted note exists, segment_note may
+        # still populate line_note via the inline n:/note: path in _parse_gs_and_note.
+        line_note = pre_extracted_note
 
         i = 0
         while i + 1 < len(spec_gs):
