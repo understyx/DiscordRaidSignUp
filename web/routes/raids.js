@@ -114,7 +114,13 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
 
     const lines = entries.map(e => {
       const emoji = roleEmojis[e.slot_role] || '❓';
-      if (e.is_placeholder) return `${emoji} *${e.placeholder_text || '?'}*`;
+      if (e.is_placeholder) {
+        const text = e.placeholder_text || '?';
+        // If the placeholder text already starts with an emoji (likely the role emoji),
+        // don't double-post it.
+        const startsWithEmoji = /^\p{Emoji}/u.test(text);
+        return startsWithEmoji ? `*${text}*` : `${emoji} *${text}*`;
+      }
       if (e.is_player_placeholder) {
         const mention = e.discord_user_id ? ` <@${e.discord_user_id}>` : '';
         return `${emoji} **Any Character**${mention}`;
@@ -1564,6 +1570,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
         const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
         for (const comp of comps) {
           const entry = {
+            slot_role: comp.slot_role || 'dps',
             is_placeholder: !comp.character_id && !comp.discord_user_id,
             is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
             placeholder_text: comp.placeholder_text || null,
