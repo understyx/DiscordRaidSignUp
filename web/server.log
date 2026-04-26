@@ -2,7 +2,7 @@
 > raid-signup-web@1.0.0 start
 > node server.js
 
-(node:122263) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(node:55975) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 [migrate] Fatal error during migrations: AggregateError [ECONNREFUSED]:
     at internalConnectMultiple (node:net:1134:18)

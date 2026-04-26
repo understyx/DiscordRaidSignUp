@@ -1110,7 +1110,7 @@ router.get('/:raid_number/manage', async (req, res) => {
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?`,
     [raidId, currentComp]
   );
@@ -1211,7 +1211,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     current_comp: currentComp,
     next_comp: nextComp,
     comp_summaries: compSummaries,
-    chars_in_comps: charsInComps,
+    chars_in_comps: charsInComps, emojis: EMOJIS, raid: raid,
     wotlk_buffs: WOTLK_BUFFS,
     flash: popFlash(req),
     user: currentUser(req),
@@ -1438,7 +1438,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1480,7 +1480,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1566,7 +1566,7 @@ router.get('/:raid_number/comp', async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, currentComp]
@@ -1672,7 +1672,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
            LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-           LEFT JOIN discord_users du ON du.discord_user_id = co.discord_user_id
+           LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
            WHERE co.raid_id = ? AND co.comp_number = ?
            ORDER BY co.role_slot`,
           [raidId, cn]
