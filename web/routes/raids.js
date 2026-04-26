@@ -51,6 +51,53 @@ async function postToRaidLogThread(raidId, message) {
   }
 }
 
+async function fetchSpecAliases() {
+  const [rows] = await pool.query(
+    'SELECT char_class, alias, canonical FROM spec_aliases'
+  );
+  const map = {};
+  for (const { char_class, alias, canonical } of rows) {
+    const clsKey = (char_class || '').toLowerCase().trim();
+    const aliasKey = (alias || '').toLowerCase().trim();
+    if (!map[clsKey]) map[clsKey] = {};
+    map[clsKey][aliasKey] = canonical;
+  }
+  return map;
+}
+
+function getCanonicalSpec(charClass, specText, aliasMap) {
+  if (!specText) return null;
+  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
+  const firstSpec = specText.split(',')[0].trim();
+  const s = firstSpec.toLowerCase();
+
+  const clsMap = aliasMap ? aliasMap[cls] : null;
+  if (clsMap) {
+    if (clsMap[s]) return clsMap[s];
+    for (const [alias, canonical] of Object.entries(clsMap)) {
+      if (s.includes(alias)) return canonical;
+    }
+  }
+  return firstSpec.charAt(0).toUpperCase() + firstSpec.slice(1);
+}
+
+function getRoleBasedSpec(charClass, role) {
+  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
+
+  if (role === 'tank') {
+    if (cls === 'paladin') return 'Protection';
+    if (cls === 'druid') return 'Guardian';
+    if (cls === 'warrior') return 'Protection';
+    if (cls === 'death knight') return 'Blood';
+  } else if (role === 'healer') {
+    if (cls === 'paladin') return 'Holy';
+    if (cls === 'priest') return 'Holy'; // or Discipline, but Holy is a safe default
+    if (cls === 'shaman') return 'Restoration';
+    if (cls === 'druid') return 'Restoration';
+  }
+  return null;
+}
+
 async function fetchCompLabels(raidId) {
   const [rows] = await pool.query(
     'SELECT comp_number, label FROM comp_labels WHERE raid_id = ?',
@@ -86,7 +133,7 @@ function collectUniqueUserIds(groups) {
   return ids;
 }
 
-function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
+function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAliasesMap) {
   const label = compTabLabel(compNumber, compLabels);
   const compLabel = totalComps > 1 ? ` – ${label}` : '';
   const unixTs = Math.floor(new Date(raid.date).getTime() / 1000);
@@ -123,10 +170,28 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
         const c = e.character;
         if (c.char_class && EMOJIS[c.char_class]) {
           const classData = EMOJIS[c.char_class];
-          let specToLookup = c.spec;
-          if (c.char_class === 'Druid' && typeof c.spec === 'string' && c.spec.startsWith('Feral')) {
-            specToLookup = 'Feral';
+
+          let specToLookup = null;
+
+          // 1. Raw spec
+          if (c.spec && classData.specs && classData.specs[c.spec]) {
+            specToLookup = c.spec;
           }
+          // 2. Canonical spec
+          if (!specToLookup) {
+            const canonical = getCanonicalSpec(c.char_class, c.spec, specAliasesMap);
+            if (canonical && classData.specs && classData.specs[canonical]) {
+              specToLookup = canonical;
+            }
+          }
+          // 3. Role-based spec
+          if (!specToLookup) {
+            const roleBased = getRoleBasedSpec(c.char_class, e.slot_role);
+            if (roleBased && classData.specs && classData.specs[roleBased]) {
+              specToLookup = roleBased;
+            }
+          }
+
           if (specToLookup && classData.specs && classData.specs[specToLookup]) {
             emoji = classData.specs[specToLookup];
           } else if (classData.emoji) {
@@ -1568,6 +1633,9 @@ router.post('/:raid_number/post_comp', async (req, res) => {
     // Fetch custom comp labels for embed titles
     const compLabels = await fetchCompLabels(raidId);
 
+    // Fetch spec aliases for canonical spec mapping
+    const specAliasesMap = await fetchSpecAliases();
+
     // Post the final composition to the main raid channel (not the log thread)
     const discordTargetId = raid.discord_channel_id;
 
@@ -1610,7 +1678,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
           if (groups[roleKey]) groups[roleKey].push(entry);
         }
 
-        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length, compLabels);
+        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length, compLabels, specAliasesMap);
         const result = await postToDiscordChannel(String(discordTargetId), payload);
         if (!result.ok) {
           allPosted = false;
