@@ -10,6 +10,10 @@ const WOTLK_BUFFS = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'wotlk_buffs.json'), 'utf8')
 );
 
+const EMOJIS = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', '..', 'emojis.json'), 'utf8')
+);
+
 const DISCORD_API = 'https://discord.com/api/v10';
 
 async function postToDiscordChannel(channelId, payload) {
@@ -113,7 +117,24 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
     if (entries.length === 0) continue;
 
     const lines = entries.map(e => {
-      const emoji = roleEmojis[e.slot_role] || '❓';
+      let emoji = roleEmojis[e.slot_role] || '❓';
+
+      if (!e.is_placeholder && !e.is_player_placeholder && e.character) {
+        const c = e.character;
+        if (c.char_class && EMOJIS[c.char_class]) {
+          const classData = EMOJIS[c.char_class];
+          let specToLookup = c.spec;
+          if (c.char_class === 'Druid' && typeof c.spec === 'string' && c.spec.startsWith('Feral')) {
+            specToLookup = 'Feral';
+          }
+          if (specToLookup && classData.specs && classData.specs[specToLookup]) {
+            emoji = classData.specs[specToLookup];
+          } else if (classData.emoji) {
+            emoji = classData.emoji;
+          }
+        }
+      }
+
       if (e.is_placeholder) {
         const text = e.placeholder_text || '?';
         // If the placeholder text already starts with an emoji (likely the role emoji),
