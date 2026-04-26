@@ -4,7 +4,6 @@
 
 let CAN_EDIT = false;
 let CURRENT_COMP = 1;
-let MAX_SIZE = 25;
 let RAID_URL = '';
 let COMP_NUMBERS_ALL = [];
 let COMP_SUMMARIES = {};
@@ -20,7 +19,6 @@ if (configEl) {
     const config = JSON.parse(configEl.textContent);
     CAN_EDIT = config.CAN_EDIT;
     CURRENT_COMP = config.CURRENT_COMP;
-    MAX_SIZE = config.MAX_SIZE || 25;
     RAID_URL = config.RAID_URL;
     COMP_NUMBERS_ALL = config.COMP_NUMBERS_ALL;
     COMP_SUMMARIES = config.COMP_SUMMARIES;
@@ -874,367 +872,64 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Update buff panel if it is currently visible.
-function updateBuffPanel() {
-  const panel = document.getElementById('panelBuffs');
-  if (panel && panel.style.display !== 'none') {
-    renderBuffPanel();
-  }
-}
+async function showPostConfirmModal() {
+  const summaryEl = document.getElementById('postConfirmSummary');
+  summaryEl.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-info mb-2" role="status"></div><br><small class="text-muted">Generating Discord preview...</small></div>';
 
-/* ── Comp tab inline rename ───────────────────────────────────────── */
-function buildTabDOM(labelText) {
-  // Build the tab's inner DOM safely — no innerHTML with user content
-  const span = document.createElement('span');
-  span.id = 'activeTabLabel';
-  span.textContent = labelText;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'comp-tab-rename-btn';
-  btn.title = 'Rename this comp tab';
-  btn.textContent = '✏️';
-  btn.addEventListener('click', startTabRename);
-  return [span, btn];
-}
+  const modal = new bootstrap.Modal(document.getElementById('postConfirmModal'));
+  modal.show();
 
-function startTabRename() {
-  const tab = document.getElementById('activeCompTab');
-  const labelEl = document.getElementById('activeTabLabel');
-  const currentLabel = labelEl.textContent.trim();
+  const compsToFetch = (COMP_NUMBERS_ALL.length > 1) ? COMP_NUMBERS_ALL : [CURRENT_COMP];
 
-  // Swap label + button for an input, using DOM API to avoid XSS
-  tab.replaceChildren();
-  const input = document.createElement('input');
-  input.id = 'tabRenameInput';
-  input.className = 'comp-tab-rename-input';
-  input.type = 'text';
-  input.maxLength = 100;
-  input.value = currentLabel;
-  input.title = 'Enter a name and press Enter, or Escape to cancel';
-  tab.appendChild(input);
-  input.focus();
-  input.select();
-
-  async function commitRename() {
-    const newLabel = input.value.trim();
-    try {
-      const resp = await fetch(`${RAID_URL}/comp_label`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comp_number: CURRENT_COMP, label: newLabel }),
-      });
+  try {
+    const compDataResults = await Promise.all(compsToFetch.map(async (cn) => {
+      const resp = await fetch(`${RAID_URL}/manage/json?comp=${cn}`);
       const data = await resp.json();
-      if (data.ok) {
-        COMP_LABELS[CURRENT_COMP] = data.label || null;
+      return { cn, entries: data.entries || [] };
+    }));
+
+    let combinedHtml = '<div class="discord-preview-scroll-wrap">';
+
+    for (const { cn, entries } of compDataResults) {
+      const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
+      for (const e of entries) {
+        const entry = {
+          slot_role: e.slot_role || 'dps',
+          is_placeholder: !!e.placeholder_text,
+          is_player_placeholder: !!e.discord_user_id && !e.character_id,
+          placeholder_text: e.placeholder_text || null,
+          discord_user_id: e.discord_user_id || null,
+          display_label: e.display_label || null,
+          character: e.character_id ? {
+            char_name: e.char_name,
+            char_class: e.char_class,
+            spec: e.spec,
+            discord_user_id: e.discord_user_id,
+            status: e.status,
+          } : null
+        };
+        if (groups[entry.slot_role]) groups[entry.slot_role].push(entry);
       }
-    } catch (err) {
-      console.error('[comp_label] rename failed:', err);
+
+      combinedHtml += renderDiscordPreview(RAID_DATA, groups, cn, COMP_NUMBERS_ALL.length, COMP_LABELS, EMOJIS);
     }
-    const finalLabel = COMP_LABELS[CURRENT_COMP] || ('Raid ' + CURRENT_COMP);
-    tab.replaceChildren(...buildTabDOM(finalLabel));
-  }
+    combinedHtml += '</div>';
 
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-    if (e.key === 'Escape') { tab.replaceChildren(...buildTabDOM(currentLabel)); }
-  });
-  input.addEventListener('blur', () => {
-    // Only commit if the input is still present (not already replaced by Escape)
-    if (document.getElementById('tabRenameInput')) commitRename();
-  });
-}
+    summaryEl.innerHTML = combinedHtml;
 
-/* ── Placeholder Preset Management ─────────────────────────────────── */
-
-let _presetModalInstance = null;
-let _presetWarnModalInstance = null;
-let _pendingPresetSlots = null; // preset slots waiting for user confirmation
-
-function openPresetModal() {
-  if (!_presetModalInstance) {
-    _presetModalInstance = new bootstrap.Modal(document.getElementById('presetModal'));
-  }
-  document.getElementById('presetNameInput').value = '';
-  document.getElementById('presetSaveMsg').textContent = '';
-  loadPresetList();
-  _presetModalInstance.show();
-}
-
-function loadPresetList() {
-  const listEl = document.getElementById('presetList');
-  listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">Loading…</p>';
-  fetch('/raids/presets')
-    .then(r => r.json())
-    .then(data => {
-      if (!data.ok) { listEl.innerHTML = '<p class="text-danger">Failed to load presets.</p>'; return; }
-      if (data.presets.length === 0) {
-        listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">No presets yet. Save the current layout to create one.</p>';
-        return;
-      }
-      listEl.innerHTML = '';
-      for (const preset of data.presets) {
-        const row = document.createElement('div');
-        row.className = 'd-flex align-items-center justify-content-between gap-2 mb-2';
-
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'flex-grow-1';
-        nameSpan.style.fontSize = '0.9rem';
-        nameSpan.textContent = preset.name;
-
-        const loadBtn = document.createElement('button');
-        loadBtn.type = 'button';
-        loadBtn.className = 'btn btn-primary btn-sm';
-        loadBtn.textContent = '▶ Load';
-        loadBtn.onclick = () => initiateLoadPreset(preset.slots);
-
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'btn btn-outline-danger btn-sm';
-        delBtn.textContent = '✕';
-        delBtn.title = 'Delete preset';
-        delBtn.onclick = () => deletePreset(preset.id, row);
-
-        row.appendChild(nameSpan);
-        row.appendChild(loadBtn);
-        row.appendChild(delBtn);
-        listEl.appendChild(row);
-      }
-    })
-    .catch(() => { listEl.innerHTML = '<p class="text-danger">Failed to load presets.</p>'; });
-}
-
-function saveCurrentAsPreset() {
-  const name = document.getElementById('presetNameInput').value.trim();
-  const msgEl = document.getElementById('presetSaveMsg');
-  if (!name) { msgEl.textContent = '⚠️ Please enter a preset name.'; msgEl.style.color = '#ffc107'; return; }
-
-  // Collect only placeholder-filled slots
-  const slots = [];
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (!assignedDiv) return;
-    const placeholder = assignedDiv.dataset.placeholder;
-    if (!placeholder) return;
-    slots.push({
-      role_slot: slotCard.dataset.slot,
-      slot_role: slotCard.dataset.slotRole || 'dps',
-      placeholder_text: placeholder,
-    });
-  });
-
-  if (slots.length === 0) {
-    msgEl.textContent = '⚠️ No placeholder slots to save. Drag some placeholders onto the roster first.';
-    msgEl.style.color = '#ffc107';
-    return;
-  }
-
-  fetch('/raids/presets', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, slots }),
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.ok) {
-      msgEl.textContent = `✓ Preset "${data.name}" saved (${slots.length} slot(s)).`;
-      msgEl.style.color = '#198754';
-      document.getElementById('presetNameInput').value = '';
-      loadPresetList();
+    if (COMP_NUMBERS_ALL.length > 1) {
+      document.getElementById('postConfirmBtn').style.display = 'none';
+      document.getElementById('postCurrentBtn').style.display = '';
+      document.getElementById('postAllBtn').textContent = `📋 Post All Comps (${COMP_NUMBERS_ALL.length})`;
+      document.getElementById('postAllBtn').style.display = '';
     } else {
-      msgEl.textContent = '⚠️ ' + (data.error || 'Failed to save preset.');
-      msgEl.style.color = '#dc3545';
+      document.getElementById('postConfirmBtn').style.display = '';
+      document.getElementById('postCurrentBtn').style.display = 'none';
+      document.getElementById('postAllBtn').style.display = 'none';
     }
-  })
-  .catch(() => { msgEl.textContent = '⚠️ Failed to save preset.'; msgEl.style.color = '#dc3545'; });
-}
 
-function deletePreset(id, rowEl) {
-  fetch(`/raids/presets/${id}`, { method: 'DELETE' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.ok) {
-        rowEl.remove();
-        const listEl = document.getElementById('presetList');
-        if (!listEl.querySelector('.d-flex')) {
-          listEl.innerHTML = '<p class="text-muted text-center" style="font-size:0.85rem;">No presets yet. Save the current layout to create one.</p>';
-        }
-      } else {
-        alert('Failed to delete preset: ' + (data.error || 'Unknown error'));
-      }
-    })
-    .catch(() => { alert('Failed to delete preset. Please try again.'); });
-}
-
-function initiateLoadPreset(slots) {
-  // Count how many slots are currently filled with real players (not placeholders)
-  let playerCount = 0;
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (assignedDiv && assignedDiv.dataset.charId) playerCount++;
-  });
-
-  if (playerCount > 0) {
-    // Show warning modal
-    _pendingPresetSlots = slots;
-    document.getElementById('warnPlayerCount').textContent = playerCount;
-    if (!_presetWarnModalInstance) {
-      _presetWarnModalInstance = new bootstrap.Modal(document.getElementById('presetWarnModal'));
-    }
-    _presetWarnModalInstance.show();
-  } else {
-    applyPresetSlots(slots);
+  } catch (err) {
+    console.error('Failed to fetch comp data for preview:', err);
+    summaryEl.innerHTML = '<div class="alert alert-danger">Error generating preview. Please try saving first.</div>';
   }
 }
-
-async function updateRaidSize(newSize) {
-  const resp = await fetch(`${RAID_URL}/size`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ max_size: newSize }),
-  });
-  return await resp.json();
-}
-
-function increaseRaidSize() {
-  const newSize = MAX_SIZE + 5;
-  updateRaidSize(newSize).then(data => {
-    if (data.ok) {
-      window.location.reload();
-    } else {
-      alert('Error increasing raid size: ' + (data.error || 'Unknown error'));
-    }
-  });
-}
-
-function applyPresetSlots(slots) {
-  // Close the preset modal first
-  if (_presetModalInstance) _presetModalInstance.hide();
-
-  // Find max slot required by the preset
-  let requiredSize = 0;
-  for (const s of slots) {
-    const m = s.role_slot.match(/slot_(\d+)/);
-    if (m) {
-      const num = parseInt(m[1]);
-      if (num > requiredSize) requiredSize = num;
-    }
-  }
-
-  // If preset needs more slots than current MAX_SIZE, resize and reload
-  if (requiredSize > MAX_SIZE) {
-    sessionStorage.setItem('shouldApplyPreset', 'true');
-    sessionStorage.setItem('pendingPreset', JSON.stringify(slots));
-    updateRaidSize(requiredSize).then(data => {
-      if (data.ok) {
-        window.location.reload();
-      } else {
-        alert('Error increasing raid size for preset: ' + (data.error || 'Unknown error'));
-        sessionStorage.removeItem('shouldApplyPreset');
-        sessionStorage.removeItem('pendingPreset');
-      }
-    });
-    return;
-  }
-
-  // Clear all slots
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (!assignedDiv) return;
-    if (assignedDiv.dataset.charId || assignedDiv.dataset.placeholder) {
-      clearAssigned(assignedDiv);
-    }
-  });
-
-  // Build a map of role_slot -> preset entry for quick lookup
-  const presetMap = {};
-  for (const entry of slots) presetMap[entry.role_slot] = entry;
-
-  // Apply preset placeholders to matching slots
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const slot = slotCard.dataset.slot;
-    const entry = presetMap[slot];
-    if (!entry || !entry.placeholder_text) return;
-
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (!assignedDiv) return;
-
-    assignedDiv.innerHTML = '';
-    const label = document.createElement('span');
-    label.className = 'slot-placeholder-text placeholder-colored';
-    label.textContent = entry.placeholder_text;
-    const color = colorForPlaceholder(entry.placeholder_text);
-    if (color) label.style.color = color;
-    assignedDiv.appendChild(label);
-    assignedDiv.dataset.placeholder = entry.placeholder_text;
-    delete assignedDiv.dataset.charId;
-    delete assignedDiv.dataset.discordUserId;
-    delete assignedDiv.dataset.charClass;
-    applySlotTint(slotCard, null);
-
-    // Set slot role from preset
-    const slotRole = entry.slot_role || 'dps';
-    setSlotRole(slotCard, slotRole, true);
-
-    addDirtyChange(slot, { slot_role: slotRole, placeholder_text: entry.placeholder_text });
-  });
-
-  updateBuffPanel();
-  updateCharInCompStatus();
-  clearTimeout(saveTimer);
-  autoSave();
-}
-
-// Initialise everything once DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  applyPlaceholderColors();
-  applyInitialTints();
-  updateCharInCompStatus();
-
-  // Auto-apply preset after reload if requested
-  if (sessionStorage.getItem('shouldApplyPreset') === 'true') {
-    const slots = JSON.parse(sessionStorage.getItem('pendingPreset'));
-    sessionStorage.removeItem('shouldApplyPreset');
-    sessionStorage.removeItem('pendingPreset');
-    if (slots) {
-      // Small delay to ensure everything is ready
-      setTimeout(() => applyPresetSlots(slots), 100);
-    }
-  }
-
-  // Start polling every 1 second; resume immediately when tab becomes visible
-  setInterval(pollRemoteState, 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRemoteState(); });
-  // Seed the initial version immediately
-  pollRemoteState();
-
-  // Initialise Bootstrap tooltips for sign-up note icons.
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-    new bootstrap.Tooltip(el);
-  });
-
-  document.getElementById('postConfirmBtn')?.addEventListener('click', () => {
-    document.getElementById('postForm').submit();
-  });
-
-  document.getElementById('postCurrentBtn')?.addEventListener('click', () => {
-    document.getElementById('postForm').submit();
-  });
-
-  document.getElementById('postAllBtn')?.addEventListener('click', () => {
-    const form = document.getElementById('postForm');
-    form.action = `${RAID_URL}/post_comp`;
-    form.submit();
-  });
-
-  document.getElementById('presetWarnConfirmBtn')?.addEventListener('click', () => {
-    if (_presetWarnModalInstance) _presetWarnModalInstance.hide();
-    if (_pendingPresetSlots) {
-      applyPresetSlots(_pendingPresetSlots);
-      _pendingPresetSlots = null;
-    }
-  });
-
-  // Render buff panel on initial load (needed for non-editors where the buffs
-  // tab is already active but renderBuffPanel() has not been called yet).
-  updateBuffPanel();
-});

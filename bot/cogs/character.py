@@ -162,7 +162,6 @@ class CharacterCog(commands.Cog):
 
                     char.gearscore = gs
                     char.char_class = normalize_class(char_class)
-                    char.is_deleted = False
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
                     saved_ids.append(char.id)
@@ -215,7 +214,6 @@ class CharacterCog(commands.Cog):
                 q = session.query(Character).filter(
                     Character.discord_user_id == discord_user_id,
                     Character.char_name.ilike(name),
-                    Character.is_deleted == False,  # noqa: E712
                 )
                 if spec:
                     q = q.filter(Character.spec.ilike(spec))
@@ -223,7 +221,7 @@ class CharacterCog(commands.Cog):
                 if not chars:
                     return 0
                 for c in chars:
-                    c.is_deleted = True
+                    session.delete(c)
                 session.commit()
                 return len(chars)
             finally:
@@ -259,7 +257,7 @@ class CharacterCog(commands.Cog):
             try:
                 return (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
+                    .filter_by(discord_user_id=discord_user_id)
                     .all()
                 )
             finally:

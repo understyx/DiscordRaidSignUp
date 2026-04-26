@@ -316,7 +316,7 @@ router.post('/suggest-character-change', express.urlencoded({ extended: false })
 
   try {
     const [[char]] = await pool.query(
-      'SELECT c.*, du.username FROM characters c JOIN discord_users du ON c.discord_user_id = du.discord_user_id WHERE c.id = ? AND c.is_deleted = 0',
+      'SELECT c.*, du.username FROM characters c JOIN discord_users du ON c.discord_user_id = du.discord_user_id WHERE c.id = ?',
       [charId]
     );
 
