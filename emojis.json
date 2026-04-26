@@ -1,0 +1,91 @@
+{
+    "Death Knight": {
+        "emoji": "<:deathknight:1498052105250934796>",
+        "specs": {
+            "Blood": "<:blood:1498052347421655162>",
+            "Frost": "<:frost:1498052368665808977>",
+            "Unholy": "<:unholy:1498052383018844442>"
+        }
+    },
+    "Druid": {
+        "emoji": "<:druid:1498052124792066235>",
+        "specs": {
+            "Balance": "<:balance:1498052404342554765>",
+            "Feral": "<:feral:1498052415998529749>",
+            "Guardian": "<:guardian:1498052428581310574>",
+            "Restoration": "<:restoration:1498052442724503672>"
+        }
+    },
+    "Hunter": {
+        "emoji": "<:hunter:1498052141502169200>",
+        "specs": {
+            "Beast Mastery": "<:beastmastery:1498052490682175548>",
+            "Marksmanship": "<:marksman:1498052503600762910>",
+            "Survival": "<:survival:1498052520868581577>"
+        }
+    },
+    "Mage": {
+        "emoji": "<:mage:1498052157977395453>",
+        "specs": {
+            "Arcane": "<:arcane:1498052547900997642>",
+            "Fire": "<:fire:1498052564430618744>",
+            "Frost": "<:frost:1498052578242465883>"
+        }
+    },
+    "Monk": {
+        "emoji": "<:monk:1498052187736244424>",
+        "specs": {
+            "Brewmaster": "<:brewmaster:1498052601546277105>",
+            "Mistweaver": "<:mistweaver:1498052617266401502>",
+            "Windwalker": "<:windwalker:1498052631317446818>"
+        }
+    },
+    "Paladin": {
+        "emoji": "<:paladin:1498052171822927902>",
+        "specs": {
+            "Holy": "<:holy:1498052657363812372>",
+            "Protection": "<:protection:1498052674527039659>",
+            "Retribution": "<:retribution:1498052687403679886>"
+        }
+    },
+    "Priest": {
+        "emoji": "<:priest:1498052203670147232>",
+        "specs": {
+            "Discipline": "<:discipline:1498052716679921845>",
+            "Holy": "<:holy:1498052730361479269>",
+            "Shadow": "<:shadow:1498052743955353842>"
+        }
+    },
+    "Rogue": {
+        "emoji": "<:rogue:1498052221810774136>",
+        "specs": {
+            "Assassination": "<:assassination:1498052768831897838>",
+            "Combat": "<:combat:1498052786284400701>",
+            "Subtlety": "<:subtlety:1498052800909672570>"
+        }
+    },
+    "Shaman": {
+        "emoji": "<:shaman:1498052251661631610>",
+        "specs": {
+            "Enhancement": "<:enhancement:1498052828265185320>",
+            "Elemental": "<:elemental:1498052840906555472>",
+            "Restoration": "<:restoration:1498052854986969380>"
+        }
+    },
+    "Warlock": {
+        "emoji": "<:warlock:1498052268996694156>",
+        "specs": {
+            "Affliction": "<:affliction:1498052930639630346>",
+            "Demonology": "<:demonology:1498052945382477834>",
+            "Destruction": "<:destruction:1498052957990686810>"
+        }
+    },
+    "Warrior": {
+        "emoji": "<:warrior:1498052302894796821>",
+        "specs": {
+            "Arms": "<:arms:1498052983567417506>",
+            "Fury": "<:fury:1498052997077401742>",
+            "Protection": "<:protection:1498053012961230998>"
+        }
+    }
+}
