@@ -357,3 +357,31 @@
   border: 1px solid rgba(255, 204, 0, 0.35);
   white-space: nowrap;
 }
+
+/* ── Add Slots button ────────────────────────────────────────────────── */
+.add-slots-row {
+  display: flex;
+  justify-content: center;
+}
+.add-slots-btn {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px dashed var(--border-dim);
+  border-radius: 6px;
+  padding: 8px;
+  color: #8a95b0;
+  transition: all 0.15s ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.add-slots-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--wow-gold);
+  color: var(--wow-gold);
+}
+.add-slots-btn .plus-icon {
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 300;
+}

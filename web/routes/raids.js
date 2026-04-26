@@ -898,6 +898,28 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   res.redirect(raidUrl);
 });
 
+// POST /raids/:raid_number/size — update max size of the raid
+router.post('/:raid_number/size', express.json(), async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const maxSize = parseInt(req.body.max_size);
+  if (isNaN(maxSize) || maxSize < 1 || maxSize > 100) {
+    return res.status(400).json({ ok: false, error: 'Invalid max_size (must be 1-100)' });
+  }
+
+  try {
+    await pool.query('UPDATE raids SET max_size = ? WHERE id = ?', [maxSize, raid.id]);
+    res.json({ ok: true, max_size: maxSize });
+  } catch (err) {
+    console.error('[size] Failed to update raid size:', err.message);
+    res.status(500).json({ ok: false, error: 'Database error' });
+  }
+});
+
 // POST /raids/:raid_number/withdraw
 router.post('/:raid_number/withdraw', async (req, res) => {
   if (!requireLogin(req, res)) return;
