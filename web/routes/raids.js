@@ -61,6 +61,77 @@ async function fetchCompLabels(raidId) {
   return map;
 }
 
+async function fetchSpecAliases() {
+  const [rows] = await pool.query(
+    'SELECT char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
+  );
+  const map = {};
+  for (const { char_class, alias, canonical } of rows) {
+    const clsKey = char_class.toLowerCase().replace(/-/g, ' ').trim();
+    if (!map[clsKey]) map[clsKey] = {};
+    map[clsKey][alias.toLowerCase().trim()] = canonical;
+  }
+  return map;
+}
+
+function normalizeSpec(charClass, specText, specAliasesMap) {
+  if (!specText) return null;
+  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
+  const firstSpec = specText.split(',')[0].trim();
+  const s = firstSpec.toLowerCase();
+
+  const clsMap = specAliasesMap ? specAliasesMap[cls] : null;
+  if (clsMap) {
+    if (clsMap[s]) return clsMap[s];
+    for (const [alias, canonical] of Object.entries(clsMap)) {
+      if (s.includes(alias)) return canonical;
+    }
+  }
+  return firstSpec.charAt(0).toUpperCase() + firstSpec.slice(1);
+}
+
+function getEmojiSpecKey(charClass, canonicalSpec) {
+  if (!canonicalSpec) return null;
+  if (charClass === 'Druid') {
+    if (canonicalSpec === 'Feral (Cat)') return 'Feral';
+    if (canonicalSpec === 'Feral (Bear)') return 'Guardian';
+  }
+  return canonicalSpec;
+}
+
+function getRoleBasedSpec(charClass, role) {
+  if (!charClass || !role) return null;
+  const cls = charClass.toLowerCase().replace(/-/g, ' ').trim();
+
+  if (role === 'tank') {
+    if (cls === 'death knight') return 'Blood';
+    if (cls === 'druid') return 'Feral (Bear)';
+    if (cls === 'paladin') return 'Protection';
+    if (cls === 'warrior') return 'Protection';
+    // Monk for later expansions
+    if (cls === 'monk') return 'Brewmaster';
+  }
+
+  if (role === 'healer') {
+    if (cls === 'druid') return 'Restoration';
+    if (cls === 'paladin') return 'Holy';
+    if (cls === 'priest') return 'Holy'; // could be Discipline too, but we just need an emoji
+    if (cls === 'shaman') return 'Restoration';
+    if (cls === 'monk') return 'Mistweaver';
+  }
+
+  if (role === 'dps' || role === 'mdps' || role === 'rdps') {
+    if (cls === 'hunter') return 'Beast Mastery'; // any DPS works for emoji
+    if (cls === 'mage') return 'Arcane';
+    if (cls === 'rogue') return 'Assassination';
+    if (cls === 'warlock') return 'Affliction';
+    // For hybrids we might guess:
+    if (cls === 'priest') return 'Shadow';
+  }
+
+  return null;
+}
+
 function compTabLabel(compNumber, compLabels) {
   return (compLabels && compLabels[compNumber]) || `Raid ${compNumber}`;
 }
@@ -86,7 +157,7 @@ function collectUniqueUserIds(groups) {
   return ids;
 }
 
-function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
+function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAliasesMap) {
   const label = compTabLabel(compNumber, compLabels);
   const compLabel = totalComps > 1 ? ` – ${label}` : '';
   const unixTs = Math.floor(new Date(raid.date).getTime() / 1000);
@@ -124,9 +195,21 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels) {
         if (c.char_class && EMOJIS[c.char_class]) {
           const classData = EMOJIS[c.char_class];
           let specToLookup = c.spec;
-          if (c.char_class === 'Druid' && typeof c.spec === 'string' && c.spec.startsWith('Feral')) {
-            specToLookup = 'Feral';
+
+          // Try to normalize the spec
+          if (specToLookup) {
+            specToLookup = normalizeSpec(c.char_class, specToLookup, specAliasesMap);
           }
+          // If no spec, or we need to infer it from role:
+          if (!specToLookup) {
+             specToLookup = getRoleBasedSpec(c.char_class, e.slot_role || c.role);
+          }
+
+          // Map to emoji key (e.g. Feral (Cat) -> Feral)
+          if (specToLookup) {
+            specToLookup = getEmojiSpecKey(c.char_class, specToLookup);
+          }
+
           if (specToLookup && classData.specs && classData.specs[specToLookup]) {
             emoji = classData.specs[specToLookup];
           } else if (classData.emoji) {
@@ -1568,6 +1651,8 @@ router.post('/:raid_number/post_comp', async (req, res) => {
     // Fetch custom comp labels for embed titles
     const compLabels = await fetchCompLabels(raidId);
 
+    const specAliasesMap = await fetchSpecAliases();
+
     // Post the final composition to the main raid channel (not the log thread)
     const discordTargetId = raid.discord_channel_id;
 
@@ -1610,7 +1695,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
           if (groups[roleKey]) groups[roleKey].push(entry);
         }
 
-        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length, compLabels);
+        const payload = buildCompEmbed(raid, groups, cn, allCompNumbers.length, compLabels, specAliasesMap);
         const result = await postToDiscordChannel(String(discordTargetId), payload);
         if (!result.ok) {
           allPosted = false;
