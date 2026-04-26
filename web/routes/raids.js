@@ -649,7 +649,7 @@ router.get('/:raid_number', async (req, res) => {
   raid.signup_count = player_count;
 
   const [userChars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ?',
+    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0',
     [userId]
   );
 
@@ -840,7 +840,7 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   if (characterIds.length > 0) {
     const placeholders = characterIds.map(() => '?').join(', ');
     const [owned] = await pool.query(
-      `SELECT id FROM characters WHERE id IN (${placeholders}) AND discord_user_id = ?`,
+      `SELECT id FROM characters WHERE id IN (${placeholders}) AND discord_user_id = ? AND is_deleted = 0`,
       [...characterIds, userId]
     );
     if (owned.length !== characterIds.length) {
@@ -852,7 +852,7 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   // Fetch character details for the log message before deleting existing signups
   const charPlaceholders = characterIds.map(() => '?').join(', ');
   const [charRows] = await pool.query(
-    `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${charPlaceholders})`,
+    `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${charPlaceholders}) AND is_deleted = 0`,
     characterIds
   );
   const charById = {};
@@ -945,7 +945,7 @@ router.get('/:raid_number/manage', async (req, res) => {
      FROM signups s
      JOIN characters c ON s.character_id = c.id
      LEFT JOIN discord_users du ON du.discord_user_id = s.discord_user_id
-     WHERE s.raid_id = ?`,
+     WHERE s.raid_id = ? AND c.is_deleted = 0`,
     [raidId]
   );
 
@@ -1239,7 +1239,7 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
     const charIds = charEntries.map(e => parseInt(e.character_id));
     const placeholders = charIds.map(() => '?').join(', ');
     const [chars] = await pool.query(
-      `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders})`,
+      `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
       charIds
     );
     const seenUsers = new Set();
