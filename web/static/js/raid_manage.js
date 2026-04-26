@@ -4,6 +4,7 @@
 
 let CAN_EDIT = false;
 let CURRENT_COMP = 1;
+let MAX_SIZE = 25;
 let RAID_URL = '';
 let COMP_NUMBERS_ALL = [];
 let COMP_SUMMARIES = {};
@@ -17,6 +18,7 @@ if (configEl) {
     const config = JSON.parse(configEl.textContent);
     CAN_EDIT = config.CAN_EDIT;
     CURRENT_COMP = config.CURRENT_COMP;
+    MAX_SIZE = config.MAX_SIZE || 25;
     RAID_URL = config.RAID_URL;
     COMP_NUMBERS_ALL = config.COMP_NUMBERS_ALL;
     COMP_SUMMARIES = config.COMP_SUMMARIES;
@@ -1148,9 +1150,55 @@ function initiateLoadPreset(slots) {
   }
 }
 
+async function updateRaidSize(newSize) {
+  const resp = await fetch(`${RAID_URL}/size`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_size: newSize }),
+  });
+  return await resp.json();
+}
+
+function increaseRaidSize() {
+  const newSize = MAX_SIZE + 5;
+  updateRaidSize(newSize).then(data => {
+    if (data.ok) {
+      window.location.reload();
+    } else {
+      alert('Error increasing raid size: ' + (data.error || 'Unknown error'));
+    }
+  });
+}
+
 function applyPresetSlots(slots) {
   // Close the preset modal first
   if (_presetModalInstance) _presetModalInstance.hide();
+
+  // Find max slot required by the preset
+  let requiredSize = 0;
+  for (const s of slots) {
+    const m = s.role_slot.match(/slot_(\d+)/);
+    if (m) {
+      const num = parseInt(m[1]);
+      if (num > requiredSize) requiredSize = num;
+    }
+  }
+
+  // If preset needs more slots than current MAX_SIZE, resize and reload
+  if (requiredSize > MAX_SIZE) {
+    sessionStorage.setItem('shouldApplyPreset', 'true');
+    sessionStorage.setItem('pendingPreset', JSON.stringify(slots));
+    updateRaidSize(requiredSize).then(data => {
+      if (data.ok) {
+        window.location.reload();
+      } else {
+        alert('Error increasing raid size for preset: ' + (data.error || 'Unknown error'));
+        sessionStorage.removeItem('shouldApplyPreset');
+        sessionStorage.removeItem('pendingPreset');
+      }
+    });
+    return;
+  }
 
   // Clear all slots
   document.querySelectorAll('.slot-card').forEach(slotCard => {
@@ -1205,6 +1253,17 @@ document.addEventListener('DOMContentLoaded', () => {
   applyPlaceholderColors();
   applyInitialTints();
   updateCharInCompStatus();
+
+  // Auto-apply preset after reload if requested
+  if (sessionStorage.getItem('shouldApplyPreset') === 'true') {
+    const slots = JSON.parse(sessionStorage.getItem('pendingPreset'));
+    sessionStorage.removeItem('shouldApplyPreset');
+    sessionStorage.removeItem('pendingPreset');
+    if (slots) {
+      // Small delay to ensure everything is ready
+      setTimeout(() => applyPresetSlots(slots), 100);
+    }
+  }
 
   // Start polling every 1 second; resume immediately when tab becomes visible
   setInterval(pollRemoteState, 1000);
