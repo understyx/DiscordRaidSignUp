@@ -733,7 +733,7 @@ function showPostConfirmModal() {
       const total = (s.tank || 0) + (s.healer || 0) + dpsTotal;
       const isCurrent = cn === CURRENT_COMP;
       html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
-      html += `<td>${compTabLabel(cn)}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
+      html += `<td>${escapeHtml(compTabLabel(cn))}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
       html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${dpsTotal}</td><td><strong>${total}</strong></td>`;
       html += '</tr>';
     }
