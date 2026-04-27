@@ -58,7 +58,6 @@
             <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if c.status == 'tentative' %} [?]{% endif %}</span>
             <small class="cls-{{ cls_key }} d-block" style="opacity:0.8;">{{ c.spec or "?" }}</small>
             <small class="text-muted d-block" style="font-size:0.7rem;">GS {{ c.gearscore | gsformat }}</small>
-            <small class="text-muted d-block" style="font-size:0.7rem;">{{ c.role | capitalize if c.role else "No role" }}</small>
           </div>
           {% endif %}
         </div>

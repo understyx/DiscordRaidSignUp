@@ -95,7 +95,7 @@
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
-            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}<br><small class="text-muted" style="font-size:0.75rem;">{{ userGroup.guild_role if userGroup.guild_role else "No role" }}</small></span>
             {% if userGroup.is_tentative %}<span class="badge-tentative">❓</span>{% endif %}
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
@@ -123,7 +123,6 @@
                       data-bs-placement="top"
                       data-bs-title="{{ charGroup.note }}"
                       style="position:absolute; bottom:4px; right:6px; cursor:default; font-size:0.85rem; line-height:1;">📝</span>{% endif %}
-                <small class="text-muted d-block">{{ firstSpec.role | capitalize if firstSpec.role else "No role" }}</small>
                 <div class="mt-1 d-flex flex-wrap gap-1" onclick="event.stopPropagation()">
                   {% for s in charGroup.specs %}
                   <button type="button" draggable="false"
@@ -192,8 +191,7 @@
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                     <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
                       <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
-                      <small class="text-muted d-block">{{ c.spec or "?" }}</small>
-                      <small class="text-muted d-block">{{ c.role | capitalize if c.role else "No role" }}</small>
+                      <small class="text-muted">{{ c.spec or "?" }}</small>
                     </div>
                   {% else %}
                   <div class="assigned-char text-muted small">

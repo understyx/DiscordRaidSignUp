@@ -113,6 +113,60 @@ function compTabLabel(compNumber, compLabels) {
 }
 
 /**
+ * Fetch the top Discord guild role name for each of the given user IDs.
+ * Returns a map of userId (string) → role name (string) | null.
+ * Gracefully returns an empty map on any error.
+ */
+async function fetchUserGuildRoles(guildId, userIds) {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!guildId || !botToken || !userIds.length) return {};
+
+  try {
+    // Fetch guild roles once to build a map of roleId → {name, position}
+    const rolesResp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (!rolesResp.ok) return {};
+    const allRoles = await rolesResp.json();
+    const roleMap = {};
+    for (const r of allRoles) {
+      roleMap[r.id] = { name: r.name, position: r.position };
+    }
+
+    // Fetch each member's role list in parallel
+    const memberResults = await Promise.all(
+      userIds.map(async userId => {
+        try {
+          const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+            headers: { Authorization: `Bot ${botToken}` },
+          });
+          if (!resp.ok) return [userId, null];
+          const member = await resp.json();
+          // Filter out @everyone (its id equals the guildId) and find the highest-positioned role
+          const memberRoleIds = (member.roles || []).filter(rid => rid !== guildId);
+          if (!memberRoleIds.length) return [userId, null];
+          const topRoleId = memberRoleIds.reduce((best, rid) => {
+            const pos = roleMap[rid]?.position ?? -1;
+            const bestPos = roleMap[best]?.position ?? -1;
+            return pos > bestPos ? rid : best;
+          });
+          return [userId, roleMap[topRoleId]?.name || null];
+        } catch (_) {
+          return [userId, null];
+        }
+      })
+    );
+
+    const result = {};
+    for (const [uid, role] of memberResults) result[uid] = role;
+    return result;
+  } catch (err) {
+    console.warn('[manage] Failed to fetch Discord guild roles:', err.message || err);
+    return {};
+  }
+}
+
+/**
  * Collect unique Discord user IDs (in order of appearance) from all role groups.
  */
 function collectUniqueUserIds(groups) {
@@ -1086,6 +1140,13 @@ router.get('/:raid_number/manage', async (req, res) => {
     if (aPrio !== bPrio) return aPrio ? -1 : 1;
     return 0;
   });
+
+  // Fetch each signed-up user's top Discord guild role for display in the sidebar
+  const signedUpUserIds = signupsByUser.map(u => u.discord_user_id);
+  const userGuildRoles = await fetchUserGuildRoles(raidGuildId, signedUpUserIds);
+  for (const userGroup of signupsByUser) {
+    userGroup.guild_role = userGuildRoles[userGroup.discord_user_id] || null;
+  }
 
   // Determine which comp numbers already exist for this raid
   const [existingCompNums] = await pool.query(
