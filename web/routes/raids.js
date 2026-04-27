@@ -147,10 +147,10 @@ async function fetchUserGuildRoles(guildId, userIds) {
           if (!memberRoleIds.length) return [userId, null];
           const topRoleId = memberRoleIds.reduce((best, rid) => {
             const pos = roleMap[rid]?.position ?? -1;
-            const bestPos = roleMap[best]?.position ?? -1;
+            const bestPos = best !== null ? (roleMap[best]?.position ?? -1) : -Infinity;
             return pos > bestPos ? rid : best;
-          });
-          return [userId, roleMap[topRoleId]?.name || null];
+          }, null);
+          return [userId, topRoleId ? (roleMap[topRoleId]?.name || null) : null];
         } catch (_) {
           return [userId, null];
         }
