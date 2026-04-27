@@ -219,6 +219,13 @@
           </div>
           {% endfor %}
         </div>
+        {% if can_edit %}
+        <div class="add-slots-row mt-3">
+          <button type="button" class="add-slots-btn" onclick="increaseRaidSize()" title="Add 5 more slots (1 group)">
+            <span class="plus-icon">+</span>
+          </button>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -386,6 +393,7 @@
     "COMP_NUMBERS_ALL": {{ comp_numbers | tojson | safe }},
     "COMP_SUMMARIES": {{ comp_summaries | tojson | safe }},
     "COMP_LABELS": {{ comp_labels | tojson | safe }},
+    "MAX_SIZE": {{ raid.max_size }},
     "CHARS_IN_COMPS": {{ chars_in_comps | tojson | safe }},
     "WOTLK_RAID_BUFFS": {{ wotlk_buffs | tojson | safe }}, "EMOJIS": {{ emojis | tojson | safe }}, "RAID": {{ raid | tojson | safe }}
   }
