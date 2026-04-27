@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import re
 from typing import Optional
@@ -72,6 +73,21 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
             display_name=display,
             updated_at=datetime.datetime.now(datetime.timezone.utc),
         ))
+
+
+def _get_member_roles_json(user: discord.User | discord.Member) -> str | None:
+    """Return a JSON-encoded list of guild role names (highest position first).
+
+    Returns ``None`` for plain :class:`discord.User` objects (DMs) or members
+    with no non-everyone roles.
+    """
+    if not isinstance(user, discord.Member):
+        return None
+    roles = [r for r in user.roles if not r.is_default()]
+    if not roles:
+        return None
+    roles.sort(key=lambda r: r.position, reverse=True)
+    return json.dumps([r.name for r in roles])
 
 # ---------------------------------------------------------------------------
 # Chat message parser helpers
@@ -606,6 +622,7 @@ async def process_text_signup(
 
     # 2. Save and signup
     discord_user_id = user.id
+    discord_roles_json = _get_member_roles_json(user)
     loop = asyncio.get_event_loop()
 
     def _save_and_signup_db():
@@ -655,6 +672,7 @@ async def process_text_signup(
                         status=signup_status,
                         is_saved=entry["is_saved"],
                         note=entry.get("note") or None,
+                        discord_roles=discord_roles_json,
                     )
                 )
 
@@ -949,6 +967,7 @@ class SignupPrioritySelectView(discord.ui.View):
         discord_user_id = interaction.user.id
         raid_id = self.raid_id
         signup_status = self.signup_status
+        discord_roles_json = _get_member_roles_json(interaction.user)
         loop = asyncio.get_event_loop()
 
         def _upsert_all():
@@ -975,6 +994,7 @@ class SignupPrioritySelectView(discord.ui.View):
                         existing.signup_type = signup_type
                         existing.status = signup_status
                         existing.note = char_note
+                        existing.discord_roles = discord_roles_json
                     else:
                         session.add(
                             Signup(
@@ -984,6 +1004,7 @@ class SignupPrioritySelectView(discord.ui.View):
                                 signup_type=signup_type,
                                 status=signup_status,
                                 note=char_note,
+                                discord_roles=discord_roles_json,
                             )
                         )
                 session.commit()

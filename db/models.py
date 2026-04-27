@@ -83,6 +83,7 @@ class Signup(Base):
     status = Column(Enum(SignupStatus), default=SignupStatus.signed)
     is_saved = Column(Boolean, default=False)  # character is ID-locked / already saved this lockout
     note = Column(String(500), nullable=True)  # optional free-text note from the sign-up line
+    discord_roles = Column(Text, nullable=True)  # JSON array of role names (highest position first)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="signups")
     character = relationship("Character", back_populates="signups")

@@ -113,56 +113,43 @@ function compTabLabel(compNumber, compLabels) {
 }
 
 /**
- * Fetch the top Discord guild role name for each of the given user IDs.
- * Returns a map of userId (string) → role name (string) | null.
- * Gracefully returns an empty map on any error.
+ * Fetch and serialize a single guild member's role names as a JSON string.
+ * Roles are ordered by position (highest first); @everyone is excluded.
+ * Returns null on any error or if the member has no non-everyone roles.
+ * Requires two Discord API calls (guild roles + member), so call only at
+ * sign-up time — not on every page load.
  */
-async function fetchUserGuildRoles(guildId, userIds) {
+async function fetchMemberRolesJson(guildId, userId) {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!guildId || !botToken || !userIds.length) return {};
+  if (!guildId || !botToken || !userId) return null;
 
   try {
-    // Fetch guild roles once to build a map of roleId → {name, position}
-    const rolesResp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!rolesResp.ok) return {};
-    const allRoles = await rolesResp.json();
+    const [rolesResp, memberResp] = await Promise.all([
+      fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      }),
+      fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      }),
+    ]);
+
+    if (!rolesResp.ok || !memberResp.ok) return null;
+
+    const [allRoles, member] = await Promise.all([rolesResp.json(), memberResp.json()]);
+
     const roleMap = {};
     for (const r of allRoles) {
       roleMap[r.id] = { name: r.name, position: r.position };
     }
 
-    // Fetch each member's role list in parallel
-    const memberResults = await Promise.all(
-      userIds.map(async userId => {
-        try {
-          const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
-            headers: { Authorization: `Bot ${botToken}` },
-          });
-          if (!resp.ok) return [userId, null];
-          const member = await resp.json();
-          // Filter out @everyone (its id equals the guildId) and find the highest-positioned role
-          const memberRoleIds = (member.roles || []).filter(rid => rid !== guildId);
-          if (!memberRoleIds.length) return [userId, null];
-          const topRoleId = memberRoleIds.reduce((best, rid) => {
-            const pos = roleMap[rid]?.position ?? -1;
-            const bestPos = best !== null ? (roleMap[best]?.position ?? -1) : -Infinity;
-            return pos > bestPos ? rid : best;
-          }, null);
-          return [userId, topRoleId ? (roleMap[topRoleId]?.name || null) : null];
-        } catch (_) {
-          return [userId, null];
-        }
-      })
-    );
+    const memberRoleIds = (member.roles || []).filter(rid => rid !== guildId && roleMap[rid]);
+    if (!memberRoleIds.length) return null;
 
-    const result = {};
-    for (const [uid, role] of memberResults) result[uid] = role;
-    return result;
+    memberRoleIds.sort((a, b) => (roleMap[b]?.position ?? 0) - (roleMap[a]?.position ?? 0));
+    return JSON.stringify(memberRoleIds.map(rid => roleMap[rid].name));
   } catch (err) {
-    console.warn('[manage] Failed to fetch Discord guild roles:', err.message || err);
-    return {};
+    console.warn('[signup] Failed to fetch member roles for saving:', err.message || err);
+    return null;
   }
 }
 
@@ -826,7 +813,8 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   const raidId = raid.id;
   const raidUrl = raidBaseUrl(raid);
 
-  // Enforce per-guild signup restrictions
+  // Enforce per-guild signup restrictions and capture member roles for storage
+  let discordRolesJson = null;
   if (guildId) {
     const [[guildSettings]] = await pool.query(
       'SELECT signup_restriction, signup_role_id FROM guild_settings WHERE guild_id = ?',
@@ -868,6 +856,12 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
         }
       }
     }
+
+    // Fetch and persist guild roles for the signed-up user (best-effort, non-blocking)
+    discordRolesJson = await fetchMemberRolesJson(guildId, userId).catch(err => {
+      console.warn('[signup] Failed to save member roles:', err.message || err);
+      return null;
+    });
   }
 
   // Support multi-select: character_ids[] and priority_ids[]
@@ -919,8 +913,8 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     const stype = prioritySet.has(charId) ? 'prio_character' : 'fill';
     const sstatus = isTentative ? 'tentative' : 'signed';
     await pool.query(
-      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status) VALUES (?, ?, ?, ?, ?)",
-      [raidId, userId, charId, stype, sstatus]
+      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, discord_roles) VALUES (?, ?, ?, ?, ?, ?)",
+      [raidId, userId, charId, stype, sstatus, discordRolesJson]
     );
   }
 
@@ -1141,9 +1135,22 @@ router.get('/:raid_number/manage', async (req, res) => {
     return 0;
   });
 
-  // Fetch each signed-up user's top Discord guild role for display in the sidebar
-  const signedUpUserIds = signupsByUser.map(u => u.discord_user_id);
-  const userGuildRoles = await fetchUserGuildRoles(raidGuildId, signedUpUserIds);
+  // Build per-user top guild role from the discord_roles stored at sign-up time
+  const userGuildRoles = {};
+  for (const s of signups) {
+    const uid = String(s.discord_user_id);
+    if (userGuildRoles[uid] !== undefined) continue;
+    if (s.discord_roles) {
+      try {
+        const roles = JSON.parse(s.discord_roles);
+        userGuildRoles[uid] = Array.isArray(roles) && roles.length ? roles[0] : null;
+      } catch (_) {
+        userGuildRoles[uid] = null;
+      }
+    } else {
+      userGuildRoles[uid] = null;
+    }
+  }
   for (const userGroup of signupsByUser) {
     userGroup.guild_role = userGuildRoles[userGroup.discord_user_id] || null;
   }
