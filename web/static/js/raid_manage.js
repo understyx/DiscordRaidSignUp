@@ -26,7 +26,9 @@ if (configEl) {
     COMP_SUMMARIES = config.COMP_SUMMARIES;
     COMP_LABELS = config.COMP_LABELS;
     CHARS_IN_COMPS = config.CHARS_IN_COMPS;
-    WOTLK_RAID_BUFFS = config.WOTLK_RAID_BUFFS; EMOJIS = config.EMOJIS || {}; RAID_DATA = config.RAID || {}; EMOJIS = config.EMOJIS || {}; RAID_DATA = config.RAID || {}; EMOJIS = config.EMOJIS || {}; RAID_DATA = config.RAID || {};
+    WOTLK_RAID_BUFFS = config.WOTLK_RAID_BUFFS;
+    EMOJIS = config.EMOJIS || {};
+    RAID_DATA = config.RAID || {};
   } catch (e) {
     console.error('Failed to parse roster configuration', e);
   }
@@ -719,7 +721,218 @@ function compTabLabel(cn) {
   return COMP_LABELS[cn] || ('Raid ' + cn);
 }
 
-/* ── Discord Embed Preview Rendering ──────────────────────────────── */
+function showPostConfirmModal() {
+  if (COMP_NUMBERS_ALL.length > 1) {
+    // Multi-comp: show summary table for all comps and offer "post current" vs "post all"
+    let html = '<p class="mb-2">Which composition(s) do you want to post to Discord?</p>';
+    html += '<table class="table table-sm table-dark mb-2">';
+    html += '<thead><tr><th>Comp</th><th>🛡️ Tanks</th><th>💚 Healers</th><th>⚔️ DPS</th><th>Total</th></tr></thead><tbody>';
+    for (const cn of COMP_NUMBERS_ALL) {
+      const s = COMP_SUMMARIES[cn] || { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
+      const dpsTotal = (s.mdps || 0) + (s.rdps || 0) + (s.dps || 0);
+      const total = (s.tank || 0) + (s.healer || 0) + dpsTotal;
+      const isCurrent = cn === CURRENT_COMP;
+      html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
+      html += `<td>${escapeHtml(compTabLabel(cn))}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
+      html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${dpsTotal}</td><td><strong>${total}</strong></td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    html += `<p class="text-muted mb-0" style="font-size:0.85rem;">Each comp will be posted as a separate Discord message.</p>`;
+    document.getElementById('postConfirmSummary').innerHTML = html;
+    document.getElementById('postConfirmBtn').style.display = 'none';
+    document.getElementById('postCurrentBtn').style.display = '';
+    document.getElementById('postAllBtn').textContent = `📋 Post All Comps (${COMP_NUMBERS_ALL.length})`;
+    document.getElementById('postAllBtn').style.display = '';
+  } else {
+    // Single comp: existing behaviour
+    let tanks = 0, healers = 0, dpsTotal = 0, placeholders = 0;
+    document.querySelectorAll('.slot-card').forEach(card => {
+      const assignedDiv = card.querySelector('.assigned-char');
+      const charId      = assignedDiv && assignedDiv.dataset.charId;
+      const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
+      if (!charId && !placeholder) return;
+      const role = card.dataset.slotRole || 'dps';
+      if (role === 'tank') tanks++;
+      else if (role === 'healer') healers++;
+      else dpsTotal++;
+      if (placeholder) placeholders++;
+    });
+    const total = tanks + healers + dpsTotal;
+
+    document.getElementById('postConfirmSummary').innerHTML =
+      `<table class="table table-sm table-dark mb-0">` +
+      `<tr><td>🛡️ Tanks</td><td><strong>${tanks}</strong></td></tr>` +
+      `<tr><td>💚 Healers</td><td><strong>${healers}</strong></td></tr>` +
+      `<tr><td>⚔️ DPS</td><td><strong>${dpsTotal}</strong></td></tr>` +
+      `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td></tr>` +
+      `</table>` +
+      (placeholders > 0
+        ? (() => {
+            const pl = placeholders !== 1;
+            return `<p class="text-warning mt-2 mb-0"><small>⚠️ ${placeholders} slot${pl ? 's' : ''} still ${pl ? 'have' : 'has'} placeholder assignment${pl ? 's' : ''}.</small></p>`;
+          })()
+        : '');
+    document.getElementById('postConfirmBtn').style.display = '';
+    document.getElementById('postCurrentBtn').style.display = 'none';
+    document.getElementById('postAllBtn').style.display = 'none';
+  }
+
+  new bootstrap.Modal(document.getElementById('postConfirmModal')).show();
+}
+
+/* ── Right-panel tab switching ────────────────────────────────────── */
+function switchRightTab(tab) {
+  const isBuffs = tab === 'buffs';
+  document.getElementById('panelPlaceholders').style.display = isBuffs ? 'none' : '';
+  document.getElementById('panelBuffs').style.display = isBuffs ? '' : 'none';
+  document.getElementById('tabBtnPlaceholders').classList.toggle('active', !isBuffs);
+  document.getElementById('tabBtnBuffs').classList.toggle('active', isBuffs);
+  if (isBuffs) renderBuffPanel();
+}
+
+// Map from predefined placeholder text → { cls: CSS-key, spec: Canonical Spec }
+const PLACEHOLDER_CLASS_SPEC = {
+  '🛡️ Tank':           { cls: null,            spec: null },
+  '🛡️ Prot Paladin':   { cls: 'paladin',       spec: 'Protection' },
+  '🛡️ Prot Warrior':   { cls: 'warrior',       spec: 'Protection' },
+  '🛡️ Blood DK':       { cls: 'death-knight',  spec: 'Blood' },
+  '🛡️ Feral (Bear)':   { cls: 'druid',         spec: 'Feral (Bear)' },
+  '💚 Healer':          { cls: null,            spec: null },
+  '💚 Holy Paladin':    { cls: 'paladin',       spec: 'Holy' },
+  '💚 Holy Priest':     { cls: 'priest',        spec: 'Holy' },
+  '💚 Disc Priest':     { cls: 'priest',        spec: 'Discipline' },
+  '💚 Resto Druid':     { cls: 'druid',         spec: 'Restoration' },
+  '💚 Resto Shaman':    { cls: 'shaman',        spec: 'Restoration' },
+  '⚔️ DPS':             { cls: null,            spec: null }, // Legacy fallback
+  '🗡️ Melee DPS':       { cls: null,            spec: null },
+  '🗡️ Arms Warrior':    { cls: 'warrior',       spec: 'Arms' },
+  '🗡️ Fury Warrior':    { cls: 'warrior',       spec: 'Fury' },
+  '🗡️ Ret Paladin':     { cls: 'paladin',       spec: 'Retribution' },
+  '🗡️ Feral (Cat)':     { cls: 'druid',         spec: 'Feral (Cat)' },
+  '🗡️ Combat Rogue':    { cls: 'rogue',         spec: 'Combat' },
+  '🗡️ Mutilate Rogue':  { cls: 'rogue',         spec: 'Assassination' },
+  '🗡️ Enha Shaman':     { cls: 'shaman',        spec: 'Enhancement' },
+  '🗡️ Frost DK':        { cls: 'death-knight',  spec: 'Frost' },
+  '🗡️ Unholy DK':       { cls: 'death-knight',  spec: 'Unholy' },
+  '🗡️ Blood DK DPS':   { cls: 'death-knight',  spec: 'Blood' },
+  '🏹 Ranged DPS':      { cls: null,            spec: null },
+  '🏹 Shadow Priest':   { cls: 'priest',        spec: 'Shadow' },
+  '🏹 Balance Druid':   { cls: 'druid',         spec: 'Balance' },
+  '🏹 MM Hunter':       { cls: 'hunter',        spec: 'Marksmanship' },
+  '🏹 BM Hunter':       { cls: 'hunter',        spec: 'Beast Mastery' },
+  '🏹 SV Hunter':       { cls: 'hunter',        spec: 'Survival' },
+  '🏹 Arcane Mage':     { cls: 'mage',          spec: 'Arcane' },
+  '🏹 Fire Mage':       { cls: 'mage',          spec: 'Fire' },
+  '🏹 Frost Mage':      { cls: 'mage',          spec: 'Frost' },
+  '🏹 Ele Shaman':      { cls: 'shaman',        spec: 'Elemental' },
+  '🏹 Affli Warlock':   { cls: 'warlock',       spec: 'Affliction' },
+  '🏹 Destro Warlock':  { cls: 'warlock',       spec: 'Destruction' },
+  '🏹 Demo Warlock':    { cls: 'warlock',       spec: 'Demonology' },
+};
+
+// Returns true if (charClass CSS-key, canonicalSpec) matches a buff provider entry.
+function specMatchesProvider(charClassCss, spec, provider) {
+  // charClassCss: 'death-knight', 'paladin', etc.
+  // provider.cls: 'death knight', 'paladin', etc.
+  const cls = (charClassCss || '').replace(/-/g, ' ').toLowerCase();
+  const provCls = (provider.cls || '').toLowerCase().replace(/-/g, ' ');
+  if (cls !== provCls) return false;
+  if (provider.spec === null) return true; // any spec of this class
+  // Both sides should be canonical spec names from normalizeSpec() — compare exactly.
+  return (spec || '').toLowerCase() === (provider.spec || '').toLowerCase();
+}
+
+// Returns { preferred: Set<id>, canBring: Set<id> } for a given charClass (CSS key) + spec text.
+function getBuffTiersFromEntry(charClassCss, specText) {
+  const spec     = normalizeSpec(charClassCss, specText);
+  const preferred = new Set();
+  const canBring  = new Set();
+  for (const buff of WOTLK_RAID_BUFFS) {
+    let matchedPref = false;
+    for (const p of (buff.preferred || [])) {
+      if (specMatchesProvider(charClassCss, spec, p)) { matchedPref = true; break; }
+    }
+    if (matchedPref) { preferred.add(buff.id); continue; }
+    for (const p of (buff.can_bring || [])) {
+      if (specMatchesProvider(charClassCss, spec, p)) { canBring.add(buff.id); break; }
+    }
+  }
+  return { preferred, canBring };
+}
+
+// Collect buff tiers from all filled roster slots.
+// Returns { preferred: Set, canBring: Set, placeholder: Set }
+// preferred/canBring  = covered by a real assigned character
+// placeholder         = covered only by a placeholder slot
+function collectRosterBuffs() {
+  const charPref = new Set();
+  const charCb   = new Set();
+  const phSet    = new Set();
+
+  document.querySelectorAll('.slot-card').forEach(slotCard => {
+    const assignedDiv = slotCard.querySelector('.assigned-char');
+    if (!assignedDiv) return;
+
+    const charId      = assignedDiv.dataset.charId || null;
+    const charClass   = assignedDiv.dataset.charClass || null; // CSS key
+    const placeholder = assignedDiv.dataset.placeholder || null;
+
+    if (charId && charClass) {
+      const specEl  = assignedDiv.querySelector('small');
+      const rawSpec = specEl ? specEl.textContent.trim() : '';
+      const { preferred, canBring } = getBuffTiersFromEntry(charClass, rawSpec);
+      preferred.forEach(id => charPref.add(id));
+      canBring.forEach(id => charCb.add(id));
+    } else if (placeholder) {
+      const info = PLACEHOLDER_CLASS_SPEC[placeholder];
+      if (info && info.cls) {
+        const { preferred, canBring } = getBuffTiersFromEntry(info.cls, info.spec || '');
+        preferred.forEach(id => phSet.add(id));
+        canBring.forEach(id => phSet.add(id));
+      }
+    }
+  });
+
+  return { preferred: charPref, canBring: charCb, placeholder: phSet };
+}
+
+// Render (or re-render) the buff panel HTML from scratch.
+function renderBuffPanel() {
+  const { preferred: prefIds, canBring: cbIds, placeholder: phIds } = collectRosterBuffs();
+  const categories = [];
+  const catMap = {};
+  for (const buff of WOTLK_RAID_BUFFS) {
+    if (!catMap[buff.cat]) { catMap[buff.cat] = []; categories.push(buff.cat); }
+    catMap[buff.cat].push(buff);
+  }
+
+  // Legend
+  let html = '<div class="buff-legend">' +
+    '<span class="buff-legend-item buff-legend-active">● Covered</span>' +
+    '<span class="buff-legend-item buff-legend-canbring">● Can bring</span>' +
+    '<span class="buff-legend-item buff-legend-ph">◌ Placeholder</span>' +
+    '<span class="buff-legend-item buff-legend-missing">● Missing</span>' +
+    '</div>';
+
+  for (const cat of categories) {
+    html += `<div class="buff-category-label">${escapeHtml(cat)}</div>`;
+    for (const buff of catMap[cat]) {
+      const hasPref = prefIds.has(buff.id);
+      const hasCb   = cbIds.has(buff.id);
+      const hasPh   = phIds.has(buff.id);
+      const cls = hasPref ? 'buff-active' : hasCb ? 'buff-can-bring' : hasPh ? 'buff-placeholder' : 'buff-missing';
+      html += `<div class="buff-item ${cls}" data-buff-id="${escapeHtml(buff.id)}" title="${escapeHtml(buff.desc)}">` +
+              `<span class="buff-dot"></span>` +
+              `<span class="buff-name">${escapeHtml(buff.name)}</span>` +
+              `</div>`;
+    }
+  }
+
+  document.getElementById('buffPanelContent').innerHTML = html;
+}
+
+
 
 function discordEmojiToHtml(emojiStr) {
   if (!emojiStr) return '';
