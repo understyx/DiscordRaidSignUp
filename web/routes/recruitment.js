@@ -945,7 +945,7 @@ router.get('/:form_id/applications/:app_id', requireAdmin, async (req, res) => {
   if (allCharIds.length > 0) {
     const placeholders = allCharIds.map(() => '?').join(',');
     const [charRows] = await pool.query(
-      `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
+      `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders})`,
       allCharIds
     );
     for (const c of charRows) charsById[c.id] = c;
@@ -1389,7 +1389,7 @@ router.get('/:form_id/edit', async (req, res) => {
           if (missingIds.length > 0) {
             const placeholders = missingIds.map(() => '?').join(',');
             [extraChars] = await pool.query(
-              `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
+              `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders})`,
               missingIds
             );
             for (const c of extraChars) charsById[c.id] = c;

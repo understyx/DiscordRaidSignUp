@@ -639,7 +639,6 @@ async def process_text_signup(
                 char.char_class = entry["char_class"]
                 char.spec = entry["spec"]
                 char.gearscore = entry["gearscore"]
-                char.is_deleted = False
                 char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                 session.flush()
 
@@ -1666,7 +1665,6 @@ class SignupCog(commands.Cog):
                     char.char_class = entry["char_class"]
                     char.spec = entry["spec"]
                     char.gearscore = entry["gearscore"]
-                    char.is_deleted = False
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
 

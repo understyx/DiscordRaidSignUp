@@ -83,6 +83,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
         required=False,
         max_length=500,
     )
+    max_size = discord.ui.TextInput(label="Max Size", default="25", max_length=3)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -95,7 +96,10 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             )
             return
 
-        size = 10
+        try:
+            size = int(self.max_size.value.strip())
+        except ValueError:
+            size = 25
 
         discord_user_id = interaction.user.id
         loop = asyncio.get_running_loop()
