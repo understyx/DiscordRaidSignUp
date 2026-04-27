@@ -4,6 +4,7 @@
 
 let CAN_EDIT = false;
 let CURRENT_COMP = 1;
+let MAX_SIZE = 25;
 let RAID_URL = '';
 let COMP_NUMBERS_ALL = [];
 let COMP_SUMMARIES = {};
@@ -19,6 +20,7 @@ if (configEl) {
     const config = JSON.parse(configEl.textContent);
     CAN_EDIT = config.CAN_EDIT;
     CURRENT_COMP = config.CURRENT_COMP;
+    MAX_SIZE = config.MAX_SIZE || 25;
     RAID_URL = config.RAID_URL;
     COMP_NUMBERS_ALL = config.COMP_NUMBERS_ALL;
     COMP_SUMMARIES = config.COMP_SUMMARIES;
@@ -932,217 +934,152 @@ function renderBuffPanel() {
 
 
 
-  const modal = new bootstrap.Modal(document.getElementById('postConfirmModal'));
-  modal.show();
+function discordEmojiToHtml(emojiStr) {
+  if (!emojiStr) return '';
+  const customMatch = emojiStr.match(/<a?:[a-zA-Z0-9_]+:([0-9]+)>/);
+  if (customMatch) {
+    const id = customMatch[1];
+    return `<img src="https://cdn.discordapp.com/emojis/${id}.webp?size=44&quality=lossless" class="discord-emoji" alt="emoji">`;
+  }
+  return emojiStr;
+}
 
-  const compsToFetch = (COMP_NUMBERS_ALL.length > 1) ? COMP_NUMBERS_ALL : [CURRENT_COMP];
+function getRoleBasedSpecFrontend(charClass, role) {
+  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
+  if (role === 'tank') {
+    if (cls === 'paladin') return 'Protection';
+    if (cls === 'druid') return 'Guardian';
+    if (cls === 'warrior') return 'Protection';
+    if (cls === 'death knight') return 'Blood';
+  } else if (role === 'healer') {
+    if (cls === 'paladin') return 'Holy';
+    if (cls === 'priest') return 'Holy';
+    if (cls === 'shaman') return 'Restoration';
+    if (cls === 'druid') return 'Restoration';
+  }
+  return null;
+}
 
-  try {
-    const compDataResults = await Promise.all(compsToFetch.map(async (cn) => {
-      const resp = await fetch(`${RAID_URL}/manage/json?comp=${cn}`);
-      const data = await resp.json();
-      return { cn, entries: data.entries || [] };
-    }));
+function getCanonicalSpecFrontend(charClass, specText) {
+  if (!specText) return null;
+  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
+  const firstSpec = specText.split(',')[0].trim();
+  const s = firstSpec.toLowerCase();
+  const clsMap = (typeof SPEC_ALIASES !== 'undefined') ? SPEC_ALIASES[cls] : null;
+  if (clsMap) {
+    if (clsMap[s]) return clsMap[s];
+    for (const [alias, canonical] of Object.entries(clsMap)) {
+      if (s.includes(alias)) return canonical;
+    }
+  }
+  return firstSpec.charAt(0).toUpperCase() + firstSpec.slice(1);
+}
 
-    let combinedHtml = '<div class="discord-preview-scroll-wrap">';
+function renderDiscordPreview(raid, groups, compNumber, totalComps, compLabels, emojis) {
+  const label = compTabLabel(compNumber);
+  const compLabel = totalComps > 1 ? ` – ${label}` : '';
+  const dateStr = `<span style="color:#adb1b4;">${new Date(raid.date).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short', timeZone: 'UTC' })} UTC</span>`;
 
-    for (const { cn, entries } of compDataResults) {
-      const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
-      for (const e of entries) {
-        const entry = {
-          slot_role: e.slot_role || 'dps',
-          is_placeholder: !!e.placeholder_text,
-          is_player_placeholder: !!e.discord_user_id && !e.character_id,
-          placeholder_text: e.placeholder_text || null,
-          discord_user_id: e.discord_user_id || null,
-          display_label: e.display_label || null,
-          character: e.character_id ? {
-            char_name: e.char_name,
-            char_class: e.char_class,
-            spec: e.spec,
-            discord_user_id: e.discord_user_id,
-            status: e.status,
-          } : null
-        };
-        if (groups[entry.slot_role]) groups[entry.slot_role].push(entry);
+  const sections = [
+    { label: '🛡️ Tanks', keys: ['tank'] },
+    { label: '💚 Healers', keys: ['healer'] },
+    { label: '⚔️ DPS', keys: ['mdps', 'rdps', 'dps'] },
+  ];
+
+  let fieldsHtml = '';
+  const seenUserIds = new Set();
+  const userIdsForPings = [];
+
+  const getEmojiData = (ems, className) => {
+    if (!className) return null;
+    const normalized = className.toLowerCase().replace(/-/g, ' ');
+    for (const key of Object.keys(ems)) {
+      if (key.toLowerCase().replace(/-/g, ' ') === normalized) return ems[key];
+    }
+    return null;
+  };
+
+  for (const section of sections) {
+    const entries = [];
+    for (const key of section.keys) {
+      if (groups[key]) entries.push(...groups[key]);
+    }
+    if (entries.length === 0) continue;
+
+    const lines = entries.map(e => {
+      let emoji = getRoleEmoji(e.slot_role);
+      const uid = e.discord_user_id || (e.character && e.character.discord_user_id);
+      if (uid && !seenUserIds.has(String(uid))) {
+        seenUserIds.add(String(uid));
+        userIdsForPings.push({ id: String(uid), label: e.display_label || (e.character && e.character.char_name) || 'user' });
       }
 
-      combinedHtml += renderDiscordPreview(RAID_DATA, groups, cn, COMP_NUMBERS_ALL.length, COMP_LABELS, EMOJIS);
-    }
-    combinedHtml += '</div>';
+      if (!e.is_placeholder && !e.is_player_placeholder && e.character) {
+        const c = e.character;
+        const classData = getEmojiData(emojis, c.char_class);
+        if (classData) {
+          let specToLookup = null;
+          if (c.spec && classData.specs && classData.specs[c.spec]) {
+            specToLookup = c.spec;
+          }
+          if (!specToLookup) {
+            const canonical = getCanonicalSpecFrontend(c.char_class, c.spec);
+            if (canonical && classData.specs && classData.specs[canonical]) specToLookup = canonical;
+          }
+          if (!specToLookup) {
+            const roleBased = getRoleBasedSpecFrontend(c.char_class, e.slot_role);
+            if (roleBased && classData.specs && classData.specs[roleBased]) specToLookup = roleBased;
+          }
 
-    summaryEl.innerHTML = combinedHtml;
-
-    if (COMP_NUMBERS_ALL.length > 1) {
-      document.getElementById('postConfirmBtn').style.display = 'none';
-      document.getElementById('postCurrentBtn').style.display = '';
-      document.getElementById('postAllBtn').textContent = `📋 Post All Comps (${COMP_NUMBERS_ALL.length})`;
-      document.getElementById('postAllBtn').style.display = '';
-    } else {
-      document.getElementById('postConfirmBtn').style.display = '';
-      document.getElementById('postCurrentBtn').style.display = 'none';
-      document.getElementById('postAllBtn').style.display = 'none';
-    }
-
-  } catch (err) {
-    console.error('Failed to fetch comp data for preview:', err);
-    summaryEl.innerHTML = '<div class="alert alert-danger">Error generating preview. Please try saving first.</div>';
-  }
-}
-
-/* ── Right-panel tab switching ────────────────────────────────────── */
-function switchRightTab(tab) {
-  const isBuffs = tab === 'buffs';
-  document.getElementById('panelPlaceholders').style.display = isBuffs ? 'none' : '';
-  document.getElementById('panelBuffs').style.display = isBuffs ? '' : 'none';
-  document.getElementById('tabBtnPlaceholders').classList.toggle('active', !isBuffs);
-  document.getElementById('tabBtnBuffs').classList.toggle('active', isBuffs);
-  if (isBuffs) renderBuffPanel();
-}
-
-// Map from predefined placeholder text → { cls: CSS-key, spec: Canonical Spec }
-const PLACEHOLDER_CLASS_SPEC = {
-  '🛡️ Tank':           { cls: null,            spec: null },
-  '🛡️ Prot Paladin':   { cls: 'paladin',       spec: 'Protection' },
-  '🛡️ Prot Warrior':   { cls: 'warrior',       spec: 'Protection' },
-  '🛡️ Blood DK':       { cls: 'death-knight',  spec: 'Blood' },
-  '🛡️ Feral (Bear)':   { cls: 'druid',         spec: 'Feral (Bear)' },
-  '💚 Healer':          { cls: null,            spec: null },
-  '💚 Holy Paladin':    { cls: 'paladin',       spec: 'Holy' },
-  '💚 Holy Priest':     { cls: 'priest',        spec: 'Holy' },
-  '💚 Disc Priest':     { cls: 'priest',        spec: 'Discipline' },
-  '💚 Resto Druid':     { cls: 'druid',         spec: 'Restoration' },
-  '💚 Resto Shaman':    { cls: 'shaman',        spec: 'Restoration' },
-  '⚔️ DPS':             { cls: null,            spec: null }, // Legacy fallback
-  '🗡️ Melee DPS':       { cls: null,            spec: null },
-  '🗡️ Arms Warrior':    { cls: 'warrior',       spec: 'Arms' },
-  '🗡️ Fury Warrior':    { cls: 'warrior',       spec: 'Fury' },
-  '🗡️ Ret Paladin':     { cls: 'paladin',       spec: 'Retribution' },
-  '🗡️ Feral (Cat)':     { cls: 'druid',         spec: 'Feral (Cat)' },
-  '🗡️ Combat Rogue':    { cls: 'rogue',         spec: 'Combat' },
-  '🗡️ Mutilate Rogue':  { cls: 'rogue',         spec: 'Assassination' },
-  '🗡️ Enha Shaman':     { cls: 'shaman',        spec: 'Enhancement' },
-  '🗡️ Frost DK':        { cls: 'death-knight',  spec: 'Frost' },
-  '🗡️ Unholy DK':       { cls: 'death-knight',  spec: 'Unholy' },
-  '🗡️ Blood DK DPS':   { cls: 'death-knight',  spec: 'Blood' },
-  '🏹 Ranged DPS':      { cls: null,            spec: null },
-  '🏹 Shadow Priest':   { cls: 'priest',        spec: 'Shadow' },
-  '🏹 Balance Druid':   { cls: 'druid',         spec: 'Balance' },
-  '🏹 MM Hunter':       { cls: 'hunter',        spec: 'Marksmanship' },
-  '🏹 BM Hunter':       { cls: 'hunter',        spec: 'Beast Mastery' },
-  '🏹 SV Hunter':       { cls: 'hunter',        spec: 'Survival' },
-  '🏹 Arcane Mage':     { cls: 'mage',          spec: 'Arcane' },
-  '🏹 Fire Mage':       { cls: 'mage',          spec: 'Fire' },
-  '🏹 Frost Mage':      { cls: 'mage',          spec: 'Frost' },
-  '🏹 Ele Shaman':      { cls: 'shaman',        spec: 'Elemental' },
-  '🏹 Affli Warlock':   { cls: 'warlock',       spec: 'Affliction' },
-  '🏹 Destro Warlock':  { cls: 'warlock',       spec: 'Destruction' },
-  '🏹 Demo Warlock':    { cls: 'warlock',       spec: 'Demonology' },
-};
-
-// Returns true if (charClass CSS-key, canonicalSpec) matches a buff provider entry.
-function specMatchesProvider(charClassCss, spec, provider) {
-  // charClassCss: 'death-knight', 'paladin', etc.
-  // provider.cls: 'death knight', 'paladin', etc.
-  const cls = (charClassCss || '').replace(/-/g, ' ').toLowerCase();
-  const provCls = (provider.cls || '').toLowerCase().replace(/-/g, ' ');
-  if (cls !== provCls) return false;
-  if (provider.spec === null) return true; // any spec of this class
-  // Both sides should be canonical spec names from normalizeSpec() — compare exactly.
-  return (spec || '').toLowerCase() === (provider.spec || '').toLowerCase();
-}
-
-// Returns { preferred: Set<id>, canBring: Set<id> } for a given charClass (CSS key) + spec text.
-function getBuffTiersFromEntry(charClassCss, specText) {
-  const spec     = normalizeSpec(charClassCss, specText);
-  const preferred = new Set();
-  const canBring  = new Set();
-  for (const buff of WOTLK_RAID_BUFFS) {
-    let matchedPref = false;
-    for (const p of (buff.preferred || [])) {
-      if (specMatchesProvider(charClassCss, spec, p)) { matchedPref = true; break; }
-    }
-    if (matchedPref) { preferred.add(buff.id); continue; }
-    for (const p of (buff.can_bring || [])) {
-      if (specMatchesProvider(charClassCss, spec, p)) { canBring.add(buff.id); break; }
-    }
-  }
-  return { preferred, canBring };
-}
-
-// Collect buff tiers from all filled roster slots.
-// Returns { preferred: Set, canBring: Set, placeholder: Set }
-// preferred/canBring  = covered by a real assigned character
-// placeholder         = covered only by a placeholder slot
-function collectRosterBuffs() {
-  const charPref = new Set();
-  const charCb   = new Set();
-  const phSet    = new Set();
-
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (!assignedDiv) return;
-
-    const charId      = assignedDiv.dataset.charId || null;
-    const charClass   = assignedDiv.dataset.charClass || null; // CSS key
-    const placeholder = assignedDiv.dataset.placeholder || null;
-
-    if (charId && charClass) {
-      const specEl  = assignedDiv.querySelector('small');
-      const rawSpec = specEl ? specEl.textContent.trim() : '';
-      const { preferred, canBring } = getBuffTiersFromEntry(charClass, rawSpec);
-      preferred.forEach(id => charPref.add(id));
-      canBring.forEach(id => charCb.add(id));
-    } else if (placeholder) {
-      const info = PLACEHOLDER_CLASS_SPEC[placeholder];
-      if (info && info.cls) {
-        const { preferred, canBring } = getBuffTiersFromEntry(info.cls, info.spec || '');
-        preferred.forEach(id => phSet.add(id));
-        canBring.forEach(id => phSet.add(id));
+          if (specToLookup && classData.specs && classData.specs[specToLookup]) {
+            emoji = classData.specs[specToLookup];
+          } else if (classData.emoji) {
+            emoji = classData.emoji;
+          }
+        }
       }
-    }
-  });
 
-  return { preferred: charPref, canBring: charCb, placeholder: phSet };
-}
+      const emojiHtml = discordEmojiToHtml(emoji);
+      if (e.is_placeholder) {
+        const text = e.placeholder_text || '?';
+        const startsWithEmoji = /^\p{Emoji}/u.test(text);
+        return `<div>${startsWithEmoji ? '' : emojiHtml + ' '}<em>${escapeHtml(text)}</em></div>`;
+      }
+      if (e.is_player_placeholder) {
+        const mention = e.discord_user_id ? ` <span class="discord-mention">@${escapeHtml(e.display_label || 'User')}</span>` : '';
+        return `<div>${emojiHtml} <strong>Any Character</strong>${mention}</div>`;
+      }
+      const c = e.character;
+      const mention = c.discord_user_id ? ` <span class="discord-mention">@${escapeHtml(e.display_label || c.char_name)}</span>` : '';
+      const tentative = c.status === 'tentative' ? ' <span style="color:#8a95b0;">[:question:]</span>' : '';
+      return `<div>${emojiHtml} <strong>${escapeHtml(c.char_name)}</strong>${mention}${tentative}</div>`;
+    });
 
-// Render (or re-render) the buff panel HTML from scratch.
-function renderBuffPanel() {
-  const { preferred: prefIds, canBring: cbIds, placeholder: phIds } = collectRosterBuffs();
-  const categories = [];
-  const catMap = {};
-  for (const buff of WOTLK_RAID_BUFFS) {
-    if (!catMap[buff.cat]) { catMap[buff.cat] = []; categories.push(buff.cat); }
-    catMap[buff.cat].push(buff);
+    fieldsHtml += `
+      <div class="discord-embed-field">
+        <div class="discord-embed-field-name">${section.label} [${entries.length}]</div>
+        <div class="discord-embed-field-value">${lines.join('')}</div>
+      </div>`;
   }
 
-  // Legend
-  let html = '<div class="buff-legend">' +
-    '<span class="buff-legend-item buff-legend-active">● Covered</span>' +
-    '<span class="buff-legend-item buff-legend-canbring">● Can bring</span>' +
-    '<span class="buff-legend-item buff-legend-ph">◌ Placeholder</span>' +
-    '<span class="buff-legend-item buff-legend-missing">● Missing</span>' +
-    '</div>';
+  const pingsHtml = userIdsForPings.length > 0
+    ? `<div class="discord-content-pings">${userIdsForPings.map(u => `<span class="discord-mention">@${escapeHtml(u.label)}</span>`).join(' ')}</div>`
+    : '';
 
-  for (const cat of categories) {
-    html += `<div class="buff-category-label">${escapeHtml(cat)}</div>`;
-    for (const buff of catMap[cat]) {
-      const hasPref = prefIds.has(buff.id);
-      const hasCb   = cbIds.has(buff.id);
-      const hasPh   = phIds.has(buff.id);
-      const cls = hasPref ? 'buff-active' : hasCb ? 'buff-can-bring' : hasPh ? 'buff-placeholder' : 'buff-missing';
-      html += `<div class="buff-item ${cls}" data-buff-id="${escapeHtml(buff.id)}" title="${escapeHtml(buff.desc)}">` +
-              `<span class="buff-dot"></span>` +
-              `<span class="buff-name">${escapeHtml(buff.name)}</span>` +
-              `</div>`;
-    }
-  }
-
-  document.getElementById('buffPanelContent').innerHTML = html;
+  return `
+    <div class="discord-preview-item mb-4">
+      ${pingsHtml}
+      <div class="discord-embed">
+        <div class="discord-embed-title">📋 ${escapeHtml(raid.name)}${escapeHtml(compLabel)}</div>
+        <div class="discord-embed-description"><strong>${escapeHtml(raid.raid_instance)}</strong> | ${dateStr}</div>
+        ${fieldsHtml}
+        <div style="font-size:0.75rem; color:#8a95b0; margin-top:0.5rem;">Raid ID: ${raid.id}</div>
+      </div>
+    </div>`;
 }
 
-// Lightweight DOM-safe HTML escaper for use in innerHTML construction above.
 function escapeHtml(str) {
+  if (!str) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -1363,9 +1300,55 @@ function initiateLoadPreset(slots) {
   }
 }
 
+async function updateRaidSize(newSize) {
+  const resp = await fetch(`${RAID_URL}/size`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_size: newSize }),
+  });
+  return await resp.json();
+}
+
+function increaseRaidSize() {
+  const newSize = MAX_SIZE + 5;
+  updateRaidSize(newSize).then(data => {
+    if (data.ok) {
+      window.location.reload();
+    } else {
+      alert('Error increasing raid size: ' + (data.error || 'Unknown error'));
+    }
+  });
+}
+
 function applyPresetSlots(slots) {
   // Close the preset modal first
   if (_presetModalInstance) _presetModalInstance.hide();
+
+  // Find max slot required by the preset
+  let requiredSize = 0;
+  for (const s of slots) {
+    const m = s.role_slot.match(/slot_(\d+)/);
+    if (m) {
+      const num = parseInt(m[1]);
+      if (num > requiredSize) requiredSize = num;
+    }
+  }
+
+  // If preset needs more slots than current MAX_SIZE, resize and reload
+  if (requiredSize > MAX_SIZE) {
+    sessionStorage.setItem('shouldApplyPreset', 'true');
+    sessionStorage.setItem('pendingPreset', JSON.stringify(slots));
+    updateRaidSize(requiredSize).then(data => {
+      if (data.ok) {
+        window.location.reload();
+      } else {
+        alert('Error increasing raid size for preset: ' + (data.error || 'Unknown error'));
+        sessionStorage.removeItem('shouldApplyPreset');
+        sessionStorage.removeItem('pendingPreset');
+      }
+    });
+    return;
+  }
 
   // Clear all slots
   document.querySelectorAll('.slot-card').forEach(slotCard => {
@@ -1421,6 +1404,17 @@ document.addEventListener('DOMContentLoaded', () => {
   applyInitialTints();
   updateCharInCompStatus();
 
+  // Auto-apply preset after reload if requested
+  if (sessionStorage.getItem('shouldApplyPreset') === 'true') {
+    const slots = JSON.parse(sessionStorage.getItem('pendingPreset'));
+    sessionStorage.removeItem('shouldApplyPreset');
+    sessionStorage.removeItem('pendingPreset');
+    if (slots) {
+      // Small delay to ensure everything is ready
+      setTimeout(() => applyPresetSlots(slots), 100);
+    }
+  }
+
   // Start polling every 1 second; resume immediately when tab becomes visible
   setInterval(pollRemoteState, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRemoteState(); });
@@ -1458,159 +1452,3 @@ document.addEventListener('DOMContentLoaded', () => {
   // tab is already active but renderBuffPanel() has not been called yet).
   updateBuffPanel();
 });
-
-/* ── Discord Embed Preview Rendering ──────────────────────────────── */
-
-function discordEmojiToHtml(emojiStr) {
-  if (!emojiStr) return '';
-  const customMatch = emojiStr.match(/<a?:[a-zA-Z0-9_]+:([0-9]+)>/);
-  if (customMatch) {
-    const id = customMatch[1];
-    return `<img src="https://cdn.discordapp.com/emojis/${id}.webp?size=44&quality=lossless" class="discord-emoji" alt="emoji">`;
-  }
-  return emojiStr;
-}
-
-function getRoleBasedSpecFrontend(charClass, role) {
-  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
-  if (role === 'tank') {
-    if (cls === 'paladin') return 'Protection';
-    if (cls === 'druid') return 'Guardian';
-    if (cls === 'warrior') return 'Protection';
-    if (cls === 'death knight') return 'Blood';
-  } else if (role === 'healer') {
-    if (cls === 'paladin') return 'Holy';
-    if (cls === 'priest') return 'Holy';
-    if (cls === 'shaman') return 'Restoration';
-    if (cls === 'druid') return 'Restoration';
-  }
-  return null;
-}
-
-function getCanonicalSpecFrontend(charClass, specText) {
-  if (!specText) return null;
-  const cls = (charClass || '').toLowerCase().replace(/-/g, ' ').trim();
-  const firstSpec = specText.split(',')[0].trim();
-  const s = firstSpec.toLowerCase();
-  const clsMap = (typeof SPEC_ALIASES !== 'undefined') ? SPEC_ALIASES[cls] : null;
-  if (clsMap) {
-    if (clsMap[s]) return clsMap[s];
-    for (const [alias, canonical] of Object.entries(clsMap)) {
-      if (s.includes(alias)) return canonical;
-    }
-  }
-  return firstSpec.charAt(0).toUpperCase() + firstSpec.slice(1);
-}
-
-function renderDiscordPreview(raid, groups, compNumber, totalComps, compLabels, emojis) {
-  const label = compTabLabel(compNumber);
-  const compLabel = totalComps > 1 ? ` – ${label}` : '';
-  const dateStr = `<span style="color:#adb1b4;">${new Date(raid.date).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short', timeZone: 'UTC' })} UTC</span>`;
-
-  const sections = [
-    { label: '🛡️ Tanks', keys: ['tank'] },
-    { label: '💚 Healers', keys: ['healer'] },
-    { label: '⚔️ DPS', keys: ['mdps', 'rdps', 'dps'] },
-  ];
-
-  let fieldsHtml = '';
-  const seenUserIds = new Set();
-  const userIdsForPings = [];
-
-  const getEmojiData = (ems, className) => {
-    if (!className) return null;
-    const normalized = className.toLowerCase().replace(/-/g, ' ');
-    for (const key of Object.keys(ems)) {
-      if (key.toLowerCase().replace(/-/g, ' ') === normalized) return ems[key];
-    }
-    return null;
-  };
-
-  for (const section of sections) {
-    const entries = [];
-    for (const key of section.keys) {
-      if (groups[key]) entries.push(...groups[key]);
-    }
-    if (entries.length === 0) continue;
-
-    const lines = entries.map(e => {
-      let emoji = getRoleEmoji(e.slot_role);
-      const uid = e.discord_user_id || (e.character && e.character.discord_user_id);
-      if (uid && !seenUserIds.has(String(uid))) {
-        seenUserIds.add(String(uid));
-        userIdsForPings.push({ id: String(uid), label: e.display_label || (e.character && e.character.char_name) || 'user' });
-      }
-
-      if (!e.is_placeholder && !e.is_player_placeholder && e.character) {
-        const c = e.character;
-        const classData = getEmojiData(emojis, c.char_class);
-        if (classData) {
-          let specToLookup = null;
-          if (c.spec && classData.specs && classData.specs[c.spec]) {
-            specToLookup = c.spec;
-          }
-          if (!specToLookup) {
-            const canonical = getCanonicalSpecFrontend(c.char_class, c.spec);
-            if (canonical && classData.specs && classData.specs[canonical]) specToLookup = canonical;
-          }
-          if (!specToLookup) {
-            const roleBased = getRoleBasedSpecFrontend(c.char_class, e.slot_role);
-            if (roleBased && classData.specs && classData.specs[roleBased]) specToLookup = roleBased;
-          }
-
-          if (specToLookup && classData.specs && classData.specs[specToLookup]) {
-            emoji = classData.specs[specToLookup];
-          } else if (classData.emoji) {
-            emoji = classData.emoji;
-          }
-        }
-      }
-
-      const emojiHtml = discordEmojiToHtml(emoji);
-      if (e.is_placeholder) {
-        const text = e.placeholder_text || '?';
-        const startsWithEmoji = /^\p{Emoji}/u.test(text);
-        return `<div>${startsWithEmoji ? '' : emojiHtml + ' '}<em>${escapeHtml(text)}</em></div>`;
-      }
-      if (e.is_player_placeholder) {
-        const mention = e.discord_user_id ? ` <span class="discord-mention">@${escapeHtml(e.display_label || 'User')}</span>` : '';
-        return `<div>${emojiHtml} <strong>Any Character</strong>${mention}</div>`;
-      }
-      const c = e.character;
-      const mention = c.discord_user_id ? ` <span class="discord-mention">@${escapeHtml(e.display_label || c.char_name)}</span>` : '';
-      const tentative = c.status === 'tentative' ? ' <span style="color:#8a95b0;">[:question:]</span>' : '';
-      return `<div>${emojiHtml} <strong>${escapeHtml(c.char_name)}</strong>${mention}${tentative}</div>`;
-    });
-
-    fieldsHtml += `
-      <div class="discord-embed-field">
-        <div class="discord-embed-field-name">${section.label} [${entries.length}]</div>
-        <div class="discord-embed-field-value">${lines.join('')}</div>
-      </div>`;
-  }
-
-  const pingsHtml = userIdsForPings.length > 0
-    ? `<div class="discord-content-pings">${userIdsForPings.map(u => `<span class="discord-mention">@${escapeHtml(u.label)}</span>`).join(' ')}</div>`
-    : '';
-
-  return `
-    <div class="discord-preview-item mb-4">
-      ${pingsHtml}
-      <div class="discord-embed">
-        <div class="discord-embed-title">📋 ${escapeHtml(raid.name)}${escapeHtml(compLabel)}</div>
-        <div class="discord-embed-description"><strong>${escapeHtml(raid.raid_instance)}</strong> | ${dateStr}</div>
-        ${fieldsHtml}
-        <div style="font-size:0.75rem; color:#8a95b0; margin-top:0.5rem;">Raid ID: ${raid.id}</div>
-      </div>
-    </div>`;
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
