@@ -1438,7 +1438,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1480,7 +1480,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, compNumber]
@@ -1507,6 +1507,70 @@ router.get('/:raid_number/manage/json', async (req, res) => {
   }));
 
   res.json({ ok: true, version: version || '', entries });
+});
+
+// GET /raids/:raid_number/comp_preview — returns full composition data for Discord embed preview
+router.get('/:raid_number/comp_preview', async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+  const previewGuildId = req.session.active_guild_id || null;
+  if (!await resolveIsAdmin(req.session.user_id, previewGuildId)) return res.status(403).json({ ok: false, error: 'Forbidden' });
+
+  const raidNumber = parseInt(req.params.raid_number);
+  const raid = await getRaidByUrlParams(previewGuildId, raidNumber);
+  if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+  const raidId = raid.id;
+
+  const [existingCompNums] = await pool.query(
+    'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
+    [raidId]
+  );
+  const allCompNumbers = existingCompNums.map(r => r.comp_number);
+  if (allCompNumbers.length === 0) allCompNumbers.push(1);
+
+  const compLabels = await fetchCompLabels(raidId);
+
+  const compsResult = {};
+  for (const cn of allCompNumbers) {
+    const [rows] = await pool.query(
+      `SELECT co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
+              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+              s.status AS signup_status,
+              du.username AS du_username, du.display_name AS du_display_name
+       FROM compositions co
+       LEFT JOIN characters c ON co.character_id = c.id
+       LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+       LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
+       WHERE co.raid_id = ? AND co.comp_number = ?
+       ORDER BY co.role_slot`,
+      [raidId, cn]
+    );
+
+    const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
+    for (const comp of rows) {
+      const entry = {
+        slot_role: comp.slot_role || 'dps',
+        is_placeholder: !comp.character_id && !comp.discord_user_id,
+        is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
+        placeholder_text: comp.placeholder_text || null,
+        discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
+        display_label: comp.du_display_name || comp.du_username || null,
+        character: comp.character_id ? {
+          char_name: comp.char_name,
+          char_class: comp.char_class,
+          spec: comp.spec,
+          discord_user_id: comp.char_discord_user_id ? String(comp.char_discord_user_id) : null,
+          status: comp.signup_status,
+        } : null,
+      };
+      const roleKey = comp.slot_role || 'dps';
+      if (groups[roleKey]) groups[roleKey].push(entry);
+    }
+
+    compsResult[cn] = { label: compTabLabel(cn, compLabels), groups };
+  }
+
+  res.json({ ok: true, allCompNumbers, comps: compsResult });
 });
 
 // PUT /raids/:raid_number/comp_label — set or clear a custom label for a comp tab
@@ -1566,7 +1630,7 @@ router.get('/:raid_number/comp', async (req, res) => {
      FROM compositions co
      LEFT JOIN characters c ON co.character_id = c.id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?
      ORDER BY co.role_slot`,
     [raidId, currentComp]
@@ -1672,7 +1736,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
            FROM compositions co
            LEFT JOIN characters c ON co.character_id = c.id
            LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-           LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
+           LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
            WHERE co.raid_id = ? AND co.comp_number = ?
            ORDER BY co.role_slot`,
           [raidId, cn]

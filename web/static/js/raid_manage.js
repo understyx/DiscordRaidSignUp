@@ -722,63 +722,61 @@ function compTabLabel(cn) {
 }
 
 function showPostConfirmModal() {
-  if (COMP_NUMBERS_ALL.length > 1) {
-    // Multi-comp: show summary table for all comps and offer "post current" vs "post all"
-    let html = '<p class="mb-2">Which composition(s) do you want to post to Discord?</p>';
-    html += '<table class="table table-sm table-dark mb-2">';
-    html += '<thead><tr><th>Comp</th><th>🛡️ Tanks</th><th>💚 Healers</th><th>⚔️ DPS</th><th>Total</th></tr></thead><tbody>';
-    for (const cn of COMP_NUMBERS_ALL) {
-      const s = COMP_SUMMARIES[cn] || { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
-      const dpsTotal = (s.mdps || 0) + (s.rdps || 0) + (s.dps || 0);
-      const total = (s.tank || 0) + (s.healer || 0) + dpsTotal;
-      const isCurrent = cn === CURRENT_COMP;
-      html += `<tr${isCurrent ? ' class="table-warning"' : ''}>`;
-      html += `<td>${escapeHtml(compTabLabel(cn))}${isCurrent ? ' <small class="text-muted">(current)</small>' : ''}</td>`;
-      html += `<td>${s.tank || 0}</td><td>${s.healer || 0}</td><td>${dpsTotal}</td><td><strong>${total}</strong></td>`;
-      html += '</tr>';
-    }
-    html += '</tbody></table>';
-    html += `<p class="text-muted mb-0" style="font-size:0.85rem;">Each comp will be posted as a separate Discord message.</p>`;
-    document.getElementById('postConfirmSummary').innerHTML = html;
-    document.getElementById('postConfirmBtn').style.display = 'none';
-    document.getElementById('postCurrentBtn').style.display = '';
-    document.getElementById('postAllBtn').textContent = `📋 Post All Comps (${COMP_NUMBERS_ALL.length})`;
-    document.getElementById('postAllBtn').style.display = '';
-  } else {
-    // Single comp: existing behaviour
-    let tanks = 0, healers = 0, dpsTotal = 0, placeholders = 0;
-    document.querySelectorAll('.slot-card').forEach(card => {
-      const assignedDiv = card.querySelector('.assigned-char');
-      const charId      = assignedDiv && assignedDiv.dataset.charId;
-      const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
-      if (!charId && !placeholder) return;
-      const role = card.dataset.slotRole || 'dps';
-      if (role === 'tank') tanks++;
-      else if (role === 'healer') healers++;
-      else dpsTotal++;
-      if (placeholder) placeholders++;
-    });
-    const total = tanks + healers + dpsTotal;
+  const summaryEl = document.getElementById('postConfirmSummary');
+  const postConfirmBtn  = document.getElementById('postConfirmBtn');
+  const postCurrentBtn  = document.getElementById('postCurrentBtn');
+  const postAllBtn      = document.getElementById('postAllBtn');
 
-    document.getElementById('postConfirmSummary').innerHTML =
-      `<table class="table table-sm table-dark mb-0">` +
-      `<tr><td>🛡️ Tanks</td><td><strong>${tanks}</strong></td></tr>` +
-      `<tr><td>💚 Healers</td><td><strong>${healers}</strong></td></tr>` +
-      `<tr><td>⚔️ DPS</td><td><strong>${dpsTotal}</strong></td></tr>` +
-      `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td></tr>` +
-      `</table>` +
-      (placeholders > 0
-        ? (() => {
-            const pl = placeholders !== 1;
-            return `<p class="text-warning mt-2 mb-0"><small>⚠️ ${placeholders} slot${pl ? 's' : ''} still ${pl ? 'have' : 'has'} placeholder assignment${pl ? 's' : ''}.</small></p>`;
-          })()
-        : '');
-    document.getElementById('postConfirmBtn').style.display = '';
-    document.getElementById('postCurrentBtn').style.display = 'none';
-    document.getElementById('postAllBtn').style.display = 'none';
-  }
+  // Show loading state immediately and open the modal
+  summaryEl.innerHTML = '<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview…</div>';
+  postConfirmBtn.style.display  = 'none';
+  postCurrentBtn.style.display  = 'none';
+  postAllBtn.style.display      = 'none';
 
   new bootstrap.Modal(document.getElementById('postConfirmModal')).show();
+
+  // Fetch full composition data for the preview
+  fetch(`${RAID_URL}/comp_preview`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) {
+        summaryEl.innerHTML = `<p class="text-danger">Failed to load preview: ${escapeHtml(data.error || 'Unknown error')}</p>`;
+        return;
+      }
+
+      const allCompNums = data.allCompNumbers || [];
+      const isMultiComp = allCompNums.length > 1;
+
+      // Build Discord embed previews.
+      // renderDiscordPreview escapes all user-supplied content via escapeHtml,
+      // so assigning the generated HTML to innerHTML is safe.
+      let previewHtml = '';
+      for (const cn of allCompNums) {
+        const compData = data.comps[cn];
+        if (!compData) continue;
+        previewHtml += renderDiscordPreview(RAID_DATA, compData.groups, cn, allCompNums.length, null, EMOJIS);
+      }
+
+      if (isMultiComp) {
+        // Safe: fixed literal prefix + previewHtml generated by renderDiscordPreview (escapeHtml throughout)
+        summaryEl.innerHTML =  // lgtm[js/xss-through-dom]
+          `<p class="mb-2 text-muted" style="font-size:0.85rem;">Which composition(s) do you want to post to Discord? Each comp will be posted as a separate message.</p>` +
+          `<div class="discord-preview-scroll-wrap">${previewHtml}</div>`;
+        postCurrentBtn.textContent = `📋 Post ${escapeHtml(compTabLabel(CURRENT_COMP))} Only`;
+        postCurrentBtn.style.display = '';
+        postAllBtn.textContent = `📋 Post All Comps (${allCompNums.length})`;
+        postAllBtn.style.display = '';
+      } else {
+        // Safe: fixed literal wrapper + previewHtml generated by renderDiscordPreview (escapeHtml throughout)
+        summaryEl.innerHTML = `<div class="discord-preview-scroll-wrap">${previewHtml}</div>`; // lgtm[js/xss-through-dom]
+        postConfirmBtn.style.display = '';
+      }
+    })
+    .catch(err => {
+      summaryEl.innerHTML = `<p class="text-danger">Failed to load preview: ${escapeHtml(err.message)}</p>`;
+      // Fall back to showing the confirm button so the user can still post
+      postConfirmBtn.style.display = '';
+    });
 }
 
 /* ── Right-panel tab switching ────────────────────────────────────── */

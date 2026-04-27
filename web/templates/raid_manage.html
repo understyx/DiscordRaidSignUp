@@ -312,19 +312,18 @@
 
 {# ── Post confirmation modal ─────────────────────────────────────────── #}
 <div class="modal fade" id="postConfirmModal" tabindex="-1" aria-labelledby="postConfirmModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content" style="background:#151b28; border:1px solid var(--border-dim);">
       <div class="modal-header">
         <h5 class="modal-title" id="postConfirmModalLabel">📋 Confirm: Finalize &amp; Post</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="mb-2">Post this composition to Discord?</p>
         <div id="postConfirmSummary"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-info" id="postConfirmBtn">📋 Confirm &amp; Post</button>
+        <button type="button" class="btn btn-info" id="postConfirmBtn" style="display:none">📋 Confirm &amp; Post</button>
         <button type="button" class="btn btn-outline-info" id="postCurrentBtn" style="display:none">📋 Post Raid {{ current_comp }} Only</button>
         <button type="button" class="btn btn-info" id="postAllBtn" style="display:none">📋 Post All Comps</button>
       </div>
