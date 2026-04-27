@@ -717,6 +717,7 @@ function pollRemoteState() {
 
 function compTabLabel(cn) {
   return COMP_LABELS[cn] || ('Raid ' + cn);
+}
 
 /* ── Discord Embed Preview Rendering ──────────────────────────────── */
 
