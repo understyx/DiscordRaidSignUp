@@ -70,16 +70,18 @@ router.get('/characters', async (req, res) => {
     [userId]
   );
 
-  // Group rows by char_name so the template can render merged rows
+  // Group rows by name+realm so characters with same name on different realms are distinct.
+  // This matches the template's expectation of merged rows for multi-spec characters.
   const charGroups = [];
-  const nameMap = {};
+  const groupMap = {}; // key: "Name|Realm"
   for (const c of chars) {
-    if (!nameMap[c.char_name]) {
+    const key = `${c.char_name}|${c.realm}`;
+    if (!groupMap[key]) {
       const group = { name: c.char_name, realm: c.realm, char_class: c.char_class, rows: [c] };
-      nameMap[c.char_name] = group;
+      groupMap[key] = group;
       charGroups.push(group);
     } else {
-      nameMap[c.char_name].rows.push(c);
+      groupMap[key].rows.push(c);
     }
   }
 
