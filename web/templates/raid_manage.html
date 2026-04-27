@@ -95,7 +95,7 @@
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
-            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}</span>
+            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}<br><small class="text-muted" style="font-size:0.75rem;">{{ userGroup.guild_role if userGroup.guild_role else "No role" }}</small></span>
             {% if userGroup.is_tentative %}<span class="badge-tentative">❓</span>{% endif %}
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
