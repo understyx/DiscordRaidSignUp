@@ -192,8 +192,8 @@
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                     <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
                       <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
-                      <small class="text-muted">{{ c.spec or "?" }}</small>
-                      <small class="text-muted">{{ c.role | capitalize if c.role else "No role" }}</small>
+                      <small class="text-muted d-block">{{ c.spec or "?" }}</small>
+                      <small class="text-muted d-block">{{ c.role | capitalize if c.role else "No role" }}</small>
                     </div>
                   {% else %}
                   <div class="assigned-char text-muted small">
