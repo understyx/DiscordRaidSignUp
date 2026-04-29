@@ -15,6 +15,27 @@ from db.models import Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
 
+_DISCORD_MSG_LIMIT = 2000
+
+
+def _split_text(text: str, limit: int = _DISCORD_MSG_LIMIT) -> list[str]:
+    """Split *text* into chunks of at most *limit* characters, breaking on paragraph boundaries."""
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for paragraph in text.split("\n\n"):
+        block = paragraph + "\n\n"
+        if len(current) + len(block) > limit:
+            if current:
+                chunks.append(current.rstrip("\n"))
+            current = block
+        else:
+            current += block
+    if current:
+        chunks.append(current.rstrip("\n"))
+    return chunks
+
 
 @dataclass
 class _RaidEmbed:
@@ -176,7 +197,8 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                 name="📖 How to Sign Up",
                 auto_archive_duration=10080,  # 7 days in minutes
             )
-            await howto_thread.send(_HOWTO_TEXT)
+            for chunk in _split_text(_HOWTO_TEXT):
+                await howto_thread.send(chunk)
 
             channel = interaction.channel
             log_thread_name = f"📋 {name} – Sign-Up Log"[:100]
@@ -204,7 +226,8 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                 raid_id,
             )
             try:
-                await interaction.followup.send(_HOWTO_TEXT, ephemeral=True)
+                for chunk in _split_text(_HOWTO_TEXT):
+                    await interaction.followup.send(chunk, ephemeral=True)
             except Exception:
                 logger.warning("Failed to send ephemeral how-to for raid %s", raid_id, exc_info=True)
         except Exception:
