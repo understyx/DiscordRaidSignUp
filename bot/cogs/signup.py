@@ -16,33 +16,6 @@ from db.models import BotGuild, Character, DiscordUser, Raid, RaidStatus, Signup
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# "How to Sign Up" guide – shared between the raid-creation thread post,
-# the ephemeral button reply, and the fallback officer DM.
-# ---------------------------------------------------------------------------
-HOWTO_TEXT = (
-    "**How to Sign Up for the Raid**\n\n"
-    "**1. Via Website**\n"
-    "Click **🌐 Sign Up on Website** on the raid message to get the link, then log in with Discord.\n\n"
-    "**2. Via Slash Command & Button**\n"
-    "1. Register: `/addcharacter name:<name> char_class:<class> spec1:<spec> gs1:<GS>`\n"
-    "2. Click **✅ Sign Up** (or **❓ Tentative**) on the raid message.\n"
-    "3. Select characters and confirm. Use **📝 Add Note to Character** if needed.\n\n"
-    "**3. Via Text Message in this channel OR using Text Sign Up button**\n"
-    "Post one character per line to **register & sign up** automatically:\n"
-    "```\nCharName / Class / Spec / GS\n```\n"
-    "• *GS formats:* `6200`, `6.2k`, or `BiS`.\n"
-    "• *Multi-spec:* `Name / Class / Spec1 / GS / Spec2 / GS`\n\n"
-    "**4. Via Bot DM**\n"
-    "DM the bot using the text format above. ⚠️ *This only registers the character.* You must still click **✅ Sign Up** on the raid message.\n\n"
-    "**Text Sign-Up Modifiers (Methods 3 & 4)**\n"
-    "• **Tentative:** Write `tentative` on the very first line of your message.\n"
-    "• **Preferred (⭐):** Add ⭐ after a spec name, or at the end of the line for *all* specs.\n"
-    "• **Saved (❌):** Add ❌ anywhere in the line if already saved this lockout.\n"
-    "• **Notes:** Append `Note:` or `N:` at the end of the line (e.g., `... / 6400 N: 10 mins late`).\n\n"
-    "*Messages are auto-deleted. A summary will be posted in the log thread.*"
-)
-
 
 def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
     """Upsert Discord username/display_name into discord_users table."""
@@ -448,6 +421,45 @@ async def _post_to_raid_log(bot: discord.Client, raid_id: int, log_message: str)
         logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
 
 
+async def _create_log_thread(
+    channel: discord.abc.Messageable,
+    raid_id: int,
+    raid_name: str,
+) -> Optional[int]:
+    """Attempt to create a sign-up log thread for a raid and persist its ID.
+
+    Returns the new thread ID on success, or None if creation failed.
+    """
+    try:
+        log_thread_name = f"📋 {raid_name} – Sign-Up Log"[:100]
+        thread = await channel.create_thread(
+            name=log_thread_name,
+            auto_archive_duration=10080,  # 7 days in minutes
+            type=discord.ChannelType.public_thread,
+        )
+        await thread.send(f"📋 **Sign-Up Log for {raid_name}**\nPlayer sign-ups will be recorded here.")
+        new_thread_id = thread.id
+
+        loop = asyncio.get_event_loop()
+
+        def _save():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                if raid:
+                    raid.discord_log_thread_id = new_thread_id
+                    session.commit()
+            finally:
+                session.close()
+
+        await loop.run_in_executor(None, _save)
+        logger.info("Created log thread %s for raid %s", new_thread_id, raid_id)
+        return new_thread_id
+    except Exception:
+        logger.warning("Failed to create log thread for raid %s", raid_id, exc_info=True)
+        return None
+
+
 def _chars_to_dicts(characters) -> list[dict]:
     """Serialize Character ORM objects to plain dicts (safe to use after session close)."""
     return [
@@ -709,6 +721,9 @@ async def process_text_signup(
         except Exception:
             pass
 
+    if not log_thread_id:
+        log_thread_id = await _create_log_thread(channel, raid_id, raid_name)
+
     if log_thread_id:
         try:
             thread = bot.get_channel(log_thread_id)
@@ -718,7 +733,7 @@ async def process_text_signup(
         except Exception:
             logger.warning("Failed to post to log thread %s for raid %s", log_thread_id, raid_id, exc_info=True)
     else:
-        logger.warning("No log thread configured for raid %s; skipping log message", raid_id)
+        logger.warning("No log thread available for raid %s; skipping log message", raid_id)
 
     if interaction:
         success_msg = f"✅ Sign-up processed for **{raid_name}**!"
@@ -1460,16 +1475,6 @@ class SignupView(discord.ui.View):
             f"🌐 Sign up for this raid on the website: {url}",
             ephemeral=True,
         )
-
-    @discord.ui.button(
-        label="How to Sign Up",
-        style=discord.ButtonStyle.secondary,
-        custom_id="signup:howto",
-        emoji="❓",
-        row=1,
-    )
-    async def btn_howto(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(HOWTO_TEXT, ephemeral=True)
 
     @discord.ui.button(
         label="Text Sign Up",
