@@ -179,8 +179,9 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             await howto_thread.send(_HOWTO_TEXT)
 
             channel = interaction.channel
+            log_thread_name = f"📋 {name} – Sign-Up Log"[:100]
             log_thread = await channel.create_thread(
-                name=f"📋 {name} – Sign-Up Log",
+                name=log_thread_name,
                 auto_archive_duration=10080,  # 7 days in minutes
                 type=discord.ChannelType.public_thread,
             )
@@ -208,6 +209,14 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                 logger.warning("Failed to send ephemeral how-to for raid %s", raid_id, exc_info=True)
         except Exception:
             logger.warning("Failed to create raid threads for raid %s", raid_id, exc_info=True)
+            try:
+                await interaction.followup.send(
+                    "⚠️ Raid created, but sign-up log threads could not be created. "
+                    "Please ensure the bot has **Create Public Threads** permission in this channel.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         logger.exception("Unhandled error in CreateRaidModal", exc_info=error)
