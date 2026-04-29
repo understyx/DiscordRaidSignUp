@@ -599,9 +599,9 @@ async def process_text_signup(
                 await interaction.response.send_message(error_text, ephemeral=True)
         else:
             try:
-                await channel.send(error_text)
+                await user.send(error_text)
             except Exception:
-                pass
+                logger.warning("Failed to DM sign-up error to user %s", user.id, exc_info=True)
         return False
 
     # 2. Save and signup
@@ -729,16 +729,9 @@ async def process_text_signup(
                 thread = await bot.fetch_channel(log_thread_id)
             await thread.send(log_message)
         except Exception:
-            logger.warning("Failed to post to log thread, falling back to channel")
-            try:
-                await channel.send(log_message)
-            except Exception:
-                pass
+            logger.warning("Failed to post to log thread %s for raid %s", log_thread_id, raid_id, exc_info=True)
     else:
-        try:
-            await channel.send(log_message)
-        except Exception:
-            pass
+        logger.warning("No log thread configured for raid %s; skipping log message", raid_id)
 
     if interaction:
         success_msg = f"✅ Sign-up processed for **{raid_name}**!"
