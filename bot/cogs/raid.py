@@ -174,7 +174,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
         try:
             howto_thread = await msg.create_thread(
                 name="📖 How to Sign Up",
-                auto_archive_duration=10080,  # 7 days in minutes
+                auto_archive_duration=1440,  # 1 day in minutes (available on all servers)
             )
             await howto_thread.send(_HOWTO_TEXT)
 
@@ -182,7 +182,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             log_thread_name = f"📋 {name} – Sign-Up Log"[:100]
             log_thread = await channel.create_thread(
                 name=log_thread_name,
-                auto_archive_duration=10080,  # 7 days in minutes
+                auto_archive_duration=1440,  # 1 day in minutes (available on all servers)
                 type=discord.ChannelType.public_thread,
             )
             await log_thread.send(f"📋 **Sign-Up Log for {name}**\nPlayer sign-ups will be recorded here.")
