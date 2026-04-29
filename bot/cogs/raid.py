@@ -15,27 +15,6 @@ from db.models import Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
 
-_DISCORD_MSG_LIMIT = 2000
-
-
-def _split_text(text: str, limit: int = _DISCORD_MSG_LIMIT) -> list[str]:
-    """Split *text* into chunks of at most *limit* characters, breaking on paragraph boundaries."""
-    if len(text) <= limit:
-        return [text]
-    chunks: list[str] = []
-    current = ""
-    for paragraph in text.split("\n\n"):
-        block = paragraph + "\n\n"
-        if len(current) + len(block) > limit:
-            if current:
-                chunks.append(current.rstrip("\n"))
-            current = block
-        else:
-            current += block
-    if current:
-        chunks.append(current.rstrip("\n"))
-    return chunks
-
 
 @dataclass
 class _RaidEmbed:
@@ -164,7 +143,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             max_size=max_size,
         )
 
-        from bot.cogs.signup import SignupView, HOWTO_TEXT as _HOWTO_TEXT
+        from bot.cogs.signup import SignupView
 
         embed = _build_signup_embed(fake, [])  # type: ignore[arg-type]
         view = SignupView()
@@ -189,17 +168,8 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
         except Exception:
             logger.warning("Failed to store discord_message_id for raid %s", raid_id, exc_info=True)
 
-        # Create "How to Sign Up" thread on the raid embed message and a standalone log thread.
-        # If the bot lacks thread-creation permissions, fall back to sending the how-to guide
-        # as an ephemeral message visible only to the officer who created the raid.
+        # Create a standalone log thread for sign-up activity.
         try:
-            howto_thread = await msg.create_thread(
-                name="📖 How to Sign Up",
-                auto_archive_duration=10080,  # 7 days in minutes
-            )
-            for chunk in _split_text(_HOWTO_TEXT):
-                await howto_thread.send(chunk)
-
             channel = interaction.channel
             log_thread_name = f"📋 {name} – Sign-Up Log"[:100]
             log_thread = await channel.create_thread(
@@ -221,20 +191,12 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
 
             await loop.run_in_executor(None, _store_log_thread)
         except discord.Forbidden:
-            logger.info(
-                "No permission to create threads for raid %s; sending how-to guide ephemerally",
-                raid_id,
-            )
-            try:
-                for chunk in _split_text(_HOWTO_TEXT):
-                    await interaction.followup.send(chunk, ephemeral=True)
-            except Exception:
-                logger.warning("Failed to send ephemeral how-to for raid %s", raid_id, exc_info=True)
+            logger.info("No permission to create log thread for raid %s", raid_id)
         except Exception:
-            logger.warning("Failed to create raid threads for raid %s", raid_id, exc_info=True)
+            logger.warning("Failed to create log thread for raid %s", raid_id, exc_info=True)
             try:
                 await interaction.followup.send(
-                    "⚠️ Raid created, but sign-up log threads could not be created. "
+                    "⚠️ Raid created, but the sign-up log thread could not be created. "
                     "Please check that the bot has **Create Public Threads** permission "
                     "in this channel and try again.",
                     ephemeral=True,
