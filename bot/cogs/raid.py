@@ -212,7 +212,8 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             try:
                 await interaction.followup.send(
                     "⚠️ Raid created, but sign-up log threads could not be created. "
-                    "Please ensure the bot has **Create Public Threads** permission in this channel.",
+                    "Please check that the bot has **Create Public Threads** permission "
+                    "in this channel and try again.",
                     ephemeral=True,
                 )
             except Exception:

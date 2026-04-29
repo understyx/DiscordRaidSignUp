@@ -731,7 +731,7 @@ async def process_text_signup(
         except Exception:
             logger.warning("Failed to post to log thread %s for raid %s", log_thread_id, raid_id, exc_info=True)
     else:
-        logger.debug("No log thread configured for raid %s; skipping log message", raid_id)
+        logger.warning("No log thread configured for raid %s; skipping log message", raid_id)
 
     if interaction:
         success_msg = f"✅ Sign-up processed for **{raid_name}**!"
