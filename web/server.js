@@ -142,6 +142,7 @@ app.use(async (req, res, next) => {
   if (!baseDomain) return next();
 
   const host = req.hostname; // e.g. "my-guild.example.com"
+  if (!host) return next();
   const suffix = '.' + baseDomain; // e.g. ".example.com"
 
   if (!host.endsWith(suffix)) return next();
