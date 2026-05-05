@@ -273,7 +273,7 @@ app.post('/select-guild', express.urlencoded({ extended: false }), async (req, r
   try {
     req.session.is_admin = await resolveIsAdmin(req.session.user_id, chosenId);
   } catch (_err) {
-    req.session.is_admin = true;
+    req.session.is_admin = false;
   }
 
   const nextUrl = req.session.post_guild_select_url || '/raids';

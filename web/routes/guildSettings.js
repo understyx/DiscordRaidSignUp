@@ -14,6 +14,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../db');
+const { requireAdmin, popFlash, currentUser } = require('./helpers');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const VALID_RESTRICTIONS = ['all', 'guild_member', 'role'];
@@ -21,34 +22,6 @@ const VALID_RESTRICTIONS = ['all', 'guild_member', 'role'];
 const router = express.Router();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function requireAdmin(req, res) {
-  if (!req.session.user_id) {
-    req.session.next_url = req.originalUrl;
-    res.redirect('/auth/login');
-    return false;
-  }
-  if (req.session.is_admin === false) {
-    req.session.flash = '❌ You do not have permission to perform this action.';
-    res.redirect('/raids');
-    return false;
-  }
-  return true;
-}
-
-function popFlash(req) {
-  const msg = req.session.flash || null;
-  delete req.session.flash;
-  return msg;
-}
-
-function currentUser(req) {
-  return {
-    id: req.session.user_id,
-    username: req.session.username,
-    is_admin: req.session.is_admin !== false,
-  };
-}
 
 /**
  * Fetch guild roles from Discord API.

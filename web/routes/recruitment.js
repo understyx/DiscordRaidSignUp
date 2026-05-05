@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
 const pool = require('../db');
+const { BIS_GS, parseGS, popFlash, currentUser } = require('./helpers');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const DISCORD_OAUTH_URL = 'https://discord.com/api/oauth2/authorize';
@@ -44,23 +45,9 @@ router.use(express.urlencoded({ extended: true }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Sentinel value stored in the database to represent "Best in Slot".
-const BIS_GS = 99999;
-
-/**
- * Parse a gearscore string into a number (or null).
- * Accepts plain numbers, "k" shorthand, and "bis" (case-insensitive).
- * Returns null when the input is empty or unrecognisable.
- */
-function parseGS(raw) {
-  const s = (raw || '').trim();
-  if (s === '') return null;
-  if (s.toLowerCase() === 'bis') return BIS_GS;
-  const v = parseFloat(s);
-  if (isNaN(v)) return null;
-  return v;
-}
-
+// requireAdmin for recruitment uses middleware style (calls next()) and also
+// enforces that an active guild is selected, so it differs from the shared
+// sync variant in helpers.js and is kept local to this module.
 function requireAdmin(req, res, next) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
@@ -75,21 +62,6 @@ function requireAdmin(req, res, next) {
     return res.redirect('/select-guild');
   }
   next();
-}
-
-function popFlash(req) {
-  const msg = req.session.flash || null;
-  delete req.session.flash;
-  return msg;
-}
-
-function currentUser(req) {
-  if (!req.session.user_id) return null;
-  return {
-    id: req.session.user_id,
-    username: req.session.username,
-    is_admin: req.session.is_admin !== false,
-  };
 }
 
 /**
