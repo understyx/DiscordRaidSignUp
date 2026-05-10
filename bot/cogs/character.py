@@ -186,9 +186,7 @@ class CharacterCog(commands.Cog):
         )
         embed.set_footer(text="Use /my_characters to see all your characters.")
 
-        # Offer role selection for the first (primary) spec
-        role_view = RoleSelectView(char_ids[0])
-        await interaction.followup.send(embed=embed, view=role_view, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /remove_character ──────────────────────────────────────────────────
     @app_commands.command(
