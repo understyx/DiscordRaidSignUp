@@ -12,42 +12,9 @@ from discord.ext import commands
 from bot.db import get_session
 from bot.class_utils import normalize_class
 from bot.cogs.signup import parse_gs, format_gs
-from db.models import Character, CharacterRole, CharacterSuggestion, SuggestionStatus
+from db.models import Character, CharacterSuggestion, SuggestionStatus
 
 logger = logging.getLogger(__name__)
-
-class RoleSelectView(discord.ui.View):
-    def __init__(self, character_id: int):
-        super().__init__(timeout=120)
-        self.character_id = character_id
-
-    @discord.ui.select(
-        placeholder="Choose your role…",
-        options=[
-            discord.SelectOption(label="Tank", value="tank", emoji="🛡️"),
-            discord.SelectOption(label="Healer", value="healer", emoji="💚"),
-            discord.SelectOption(label="DPS", value="dps", emoji="⚔️"),
-        ],
-    )
-    async def role_select(self, interaction: discord.Interaction, select: discord.ui.Select):
-        role_value = select.values[0]
-        loop = asyncio.get_event_loop()
-
-        def _update():
-            session = get_session()
-            try:
-                char = session.get(Character, self.character_id)
-                if char:
-                    char.role = CharacterRole(role_value)
-                    session.commit()
-            finally:
-                session.close()
-
-        await loop.run_in_executor(None, _update)
-        await interaction.response.edit_message(
-            content=f"✅ Role set to **{role_value.capitalize()}**!", view=None
-        )
-
 
 class CharacterCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -186,9 +153,7 @@ class CharacterCog(commands.Cog):
         )
         embed.set_footer(text="Use /my_characters to see all your characters.")
 
-        # Offer role selection for the first (primary) spec
-        role_view = RoleSelectView(char_ids[0])
-        await interaction.followup.send(embed=embed, view=role_view, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /remove_character ──────────────────────────────────────────────────
     @app_commands.command(
