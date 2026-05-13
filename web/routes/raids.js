@@ -67,7 +67,8 @@ async function updateRaidSignupEmbed(raidId) {
   );
   const uniquePlayers = Number(countRow?.player_count || 0);
   const status = raid.status || 'open';
-  const statusEmoji = status === 'locked' ? '🔒' : '🟢';
+  const statusEmoji = status === 'locked' ? '🔒' : status === 'open' ? '🟢' : '⚪';
+  const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
   const isOpen = status === 'open';
   const unixTs = Math.floor(new Date(raid.date).getTime() / 1000);
 
@@ -80,7 +81,7 @@ async function updateRaidSignupEmbed(raidId) {
         fields: [
           { name: '📍 Instance', value: raid.raid_instance, inline: true },
           { name: '📅 Date', value: `<t:${unixTs}:F>`, inline: true },
-          { name: 'Status', value: `${statusEmoji} ${String(status).charAt(0).toUpperCase()}${String(status).slice(1)}`, inline: true },
+          { name: 'Status', value: `${statusEmoji} ${statusLabel}`, inline: true },
           { name: '👥 Players Signed Up', value: `${uniquePlayers} / ${raid.max_size}`, inline: false },
         ],
         footer: { text: `Raid ID: ${raid.id}` },
