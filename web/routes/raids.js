@@ -296,6 +296,8 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
   };
 }
 
+const { requireLogin, popFlash, currentUser } = require('./helpers');
+
 const router = express.Router();
 
 // Re-evaluate admin status on every request so that role changes take effect
@@ -312,15 +314,9 @@ router.use(async (req, res, next) => {
   next();
 });
 
-function requireLogin(req, res) {
-  if (!req.session.user_id) {
-    req.session.next_url = req.originalUrl;
-    res.redirect('/auth/login');
-    return false;
-  }
-  return true;
-}
-
+// NOTE: requireAdmin in this router is async and re-calls resolveIsAdmin for
+// stronger security guarantees on admin actions.  It intentionally does not use
+// the shared sync variant from helpers.js.
 async function requireAdmin(req, res) {
   if (!req.session.user_id) {
     req.session.next_url = req.originalUrl;
@@ -335,20 +331,6 @@ async function requireAdmin(req, res) {
     return false;
   }
   return true;
-}
-
-function popFlash(req) {
-  const msg = req.session.flash || null;
-  delete req.session.flash;
-  return msg;
-}
-
-function currentUser(req) {
-  return {
-    id: req.session.user_id,
-    username: req.session.username,
-    is_admin: req.session.is_admin !== false,
-  };
 }
 
 /**

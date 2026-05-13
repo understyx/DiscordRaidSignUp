@@ -227,7 +227,7 @@ router.get('/callback', async (req, res) => {
     try {
       req.session.is_admin = await resolveIsAdmin(userData.id, activeGuildId);
     } catch (_adminErr) {
-      req.session.is_admin = true; // fail open on error
+      req.session.is_admin = false; // fail closed: re-evaluated on first /raids request
     }
 
     const nextUrl = req.session.next_url;

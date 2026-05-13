@@ -1,47 +1,8 @@
 const express = require('express');
 const pool = require('../db');
+const { BIS_GS, parseGS, requireLogin, popFlash, currentUser } = require('./helpers');
 
 const router = express.Router();
-
-// Sentinel value stored in the database to represent "Best in Slot".
-const BIS_GS = 99999;
-
-/**
- * Parse a gearscore string into a number (or null).
- * Accepts plain numbers, "k" shorthand, and "bis" (case-insensitive).
- * Returns null when the input is empty or unrecognisable.
- */
-function parseGS(raw) {
-  const s = (raw || '').trim();
-  if (s === '') return null;
-  if (s.toLowerCase() === 'bis') return BIS_GS;
-  const v = parseFloat(s);
-  if (isNaN(v)) return null;
-  return v;
-}
-
-function requireLogin(req, res) {
-  if (!req.session.user_id) {
-    req.session.next_url = req.originalUrl;
-    res.redirect('/auth/login');
-    return false;
-  }
-  return true;
-}
-
-function popFlash(req) {
-  const msg = req.session.flash || null;
-  delete req.session.flash;
-  return msg;
-}
-
-function currentUser(req) {
-  return {
-    id: req.session.user_id,
-    username: req.session.username,
-    is_admin: req.session.is_admin !== false,
-  };
-}
 
 // Instances that share the same weekly lockout are collapsed to a single
 // canonical name — mirrors LOCKOUT_CANONICAL in bot/cogs/saves.py.

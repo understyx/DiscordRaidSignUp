@@ -1,6 +1,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../db');
+const { requireAdmin, popFlash } = require('./helpers');
 
 const router = express.Router();
 
@@ -82,20 +83,6 @@ function _randomFakeId(usedIds) {
   }
 }
 
-function requireAdmin(req, res) {
-  if (!req.session.user_id) {
-    req.session.next_url = req.originalUrl;
-    res.redirect('/auth/login');
-    return false;
-  }
-  if (req.session.is_admin === false) {
-    req.session.flash = '❌ You do not have permission to perform this action.';
-    res.redirect('/raids');
-    return false;
-  }
-  return true;
-}
-
 // lowercase class names used for spec aliases management
 const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
 
@@ -119,8 +106,7 @@ router.get('/spec-aliases', async (req, res) => {
     byClass[row.char_class].push(row);
   }
 
-  const flash = req.session.flash;
-  delete req.session.flash;
+  const flash = popFlash(req);
 
   const isAdmin = req.session.user_id ? req.session.is_admin === true : false;
 
@@ -283,8 +269,7 @@ router.get('/all-characters', async (req, res) => {
     byUser[userId].characters.push(row);
   }
 
-  const flash = req.session.flash;
-  delete req.session.flash;
+  const flash = popFlash(req);
 
   res.render('admin_all_characters.html', {
     users: Object.values(byUser),
