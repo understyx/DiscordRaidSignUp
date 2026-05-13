@@ -59,7 +59,14 @@ async function updateRaidSignupEmbed(raidId) {
     [raidId]
   );
   const raid = rows[0];
-  if (!raid || !raid.discord_channel_id || !raid.discord_message_id) return;
+  if (!raid) {
+    console.warn(`[embed-sync] Raid ${raidId} not found while trying to refresh embed.`);
+    return;
+  }
+  if (!raid.discord_channel_id || !raid.discord_message_id) {
+    console.warn(`[embed-sync] Skipping embed refresh for raid ${raidId}: missing discord channel/message id.`);
+    return;
+  }
 
   const [[countRow]] = await pool.query(
     'SELECT COUNT(DISTINCT discord_user_id) AS player_count FROM signups WHERE raid_id = ?',
@@ -90,7 +97,10 @@ async function updateRaidSignupEmbed(raidId) {
   };
 
   const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) return;
+  if (!token) {
+    console.warn(`[embed-sync] Skipping embed refresh for raid ${raidId}: DISCORD_BOT_TOKEN is not set.`);
+    return;
+  }
 
   try {
     const resp = await fetch(
