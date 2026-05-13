@@ -51,6 +51,67 @@ async function postToRaidLogThread(raidId, message) {
   }
 }
 
+async function updateRaidSignupEmbed(raidId) {
+  const [rows] = await pool.query(
+    `SELECT id, name, date, raid_instance, description, max_size, status, discord_message_id, discord_channel_id
+     FROM raids
+     WHERE id = ?`,
+    [raidId]
+  );
+  const raid = rows[0];
+  if (!raid || !raid.discord_channel_id || !raid.discord_message_id) return;
+
+  const [[countRow]] = await pool.query(
+    'SELECT COUNT(DISTINCT discord_user_id) AS player_count FROM signups WHERE raid_id = ?',
+    [raidId]
+  );
+  const uniquePlayers = Number(countRow?.player_count || 0);
+  const status = raid.status || 'open';
+  const statusEmoji = status === 'locked' ? '🔒' : '🟢';
+  const isOpen = status === 'open';
+  const unixTs = Math.floor(new Date(raid.date).getTime() / 1000);
+
+  const payload = {
+    embeds: [
+      {
+        title: `⚔️ ${raid.name}`,
+        description: raid.description || '',
+        color: isOpen ? 0xF1C40F : 0xE74C3C,
+        fields: [
+          { name: '📍 Instance', value: raid.raid_instance, inline: true },
+          { name: '📅 Date', value: `<t:${unixTs}:F>`, inline: true },
+          { name: 'Status', value: `${statusEmoji} ${String(status).charAt(0).toUpperCase()}${String(status).slice(1)}`, inline: true },
+          { name: '👥 Players Signed Up', value: `${uniquePlayers} / ${raid.max_size}`, inline: false },
+        ],
+        footer: { text: `Raid ID: ${raid.id}` },
+      },
+    ],
+  };
+
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+
+  try {
+    const resp = await fetch(
+      `${DISCORD_API}/channels/${raid.discord_channel_id}/messages/${raid.discord_message_id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bot ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      console.warn(`[embed-sync] Failed to update raid embed for raid ${raidId}: Discord API ${resp.status}: ${text}`);
+    }
+  } catch (err) {
+    console.warn(`[embed-sync] Failed to update raid embed for raid ${raidId}: ${err.message || err}`);
+  }
+}
+
 async function fetchSpecAliases() {
   const [rows] = await pool.query(
     'SELECT char_class, alias, canonical FROM spec_aliases'
@@ -929,6 +990,9 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   postToRaidLogThread(raidId, logMsg).catch(err => {
     console.warn('[log-thread] Failed to post signup log:', err.message || err);
   });
+  updateRaidSignupEmbed(raidId).catch(err => {
+    console.warn('[embed-sync] Failed to refresh embed after website signup:', err.message || err);
+  });
 
   req.session.flash = isTentative ? '❓ Signed up as tentative!' : '✅ Signed up!';
   res.redirect(raidUrl);
@@ -975,6 +1039,9 @@ router.post('/:raid_number/withdraw', async (req, res) => {
     req.session.flash = '✅ Withdrawn from raid.';
     postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid.`).catch(err => {
       console.warn('[log-thread] Failed to post withdraw log:', err.message || err);
+    });
+    updateRaidSignupEmbed(raid.id).catch(err => {
+      console.warn('[embed-sync] Failed to refresh embed after website withdraw:', err.message || err);
     });
   } else {
     req.session.flash = 'You were not signed up.';
