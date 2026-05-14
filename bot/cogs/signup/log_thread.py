@@ -152,6 +152,18 @@ async def _do_post_to_raid_log(
 
         await loop.run_in_executor(None, _save)
 
+    async def _safe_save_log_ref(message_id: int):
+        try:
+            await _save_log_ref(message_id)
+        except Exception:
+            logger.warning(
+                "Edited/sent raid log message %s but failed to save mapping for raid %s user %s",
+                message_id,
+                raid_id,
+                discord_user_id,
+                exc_info=True,
+            )
+
     try:
         thread = bot.get_channel(thread_id)
         if thread is None:
@@ -159,7 +171,7 @@ async def _do_post_to_raid_log(
         if discord_user_id and stored_message_id:
             try:
                 edited = await thread.get_partial_message(stored_message_id).edit(content=log_message)
-                await _save_log_ref(edited.id)
+                await _safe_save_log_ref(edited.id)
                 return
             except discord.NotFound:
                 pass
@@ -171,18 +183,19 @@ async def _do_post_to_raid_log(
                 allow_new_post = False
         if discord_user_id:
             token = _user_log_identity_token(raid_id, discord_user_id)
+            bot_user_id = bot.user.id if bot.user else None
             async for msg in thread.history(limit=_RAID_LOG_HISTORY_SCAN_LIMIT):
-                if bot.user and msg.author.id != bot.user.id:
+                if bot_user_id and msg.author.id != bot_user_id:
                     continue
                 if token not in msg.content:
                     continue
                 await msg.edit(content=log_message)
-                await _save_log_ref(msg.id)
+                await _safe_save_log_ref(msg.id)
                 return
         if not allow_new_post:
             return
         sent = await thread.send(log_message)
-        await _save_log_ref(sent.id)
+        await _safe_save_log_ref(sent.id)
     except Exception as e:
         logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
 
