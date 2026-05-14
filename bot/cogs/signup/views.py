@@ -617,7 +617,15 @@ class EditNotesModal(discord.ui.Modal):
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
                     .all()
                 )
-                has_tentative = any(signup.status == SignupStatus.tentative for signup in signups)
+                statuses = {signup.status for signup in signups}
+                if statuses == {SignupStatus.tentative}:
+                    log_status = SignupStatus.tentative
+                elif statuses:
+                    # If data is mixed, prefer signed so we don't incorrectly
+                    # downgrade the visible status to tentative.
+                    log_status = SignupStatus.signed
+                else:
+                    log_status = None
                 for signup in signups:
                     char = signup.character
                     if char is None:
@@ -652,12 +660,18 @@ class EditNotesModal(discord.ui.Modal):
                     bullets.append(
                         f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
                     )
-                return (raid.name if raid else None), bullets, has_tentative
+                return (raid.name if raid else None), bullets, log_status
             finally:
                 session.close()
 
-        raid_name, bullets, has_tentative = await loop.run_in_executor(None, _save)
-        if has_tentative:
+        raid_name, bullets, log_status = await loop.run_in_executor(None, _save)
+        if log_status is None:
+            await interaction.response.send_message(
+                "❌ You are not signed up for this raid.",
+                ephemeral=True,
+            )
+            return
+        if log_status == SignupStatus.tentative:
             log_emoji = "❓"
             log_action = "is tentative"
         else:
