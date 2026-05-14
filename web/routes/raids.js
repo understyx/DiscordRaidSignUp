@@ -15,6 +15,8 @@ const EMOJIS = JSON.parse(
 );
 
 const DISCORD_API = 'https://discord.com/api/v10';
+const RAID_LOG_HISTORY_SCAN_LIMIT = 1000;
+let CACHED_BOT_USER_ID = null;
 
 async function postToDiscordChannel(channelId, payload) {
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -40,14 +42,119 @@ async function postToDiscordChannel(channelId, payload) {
   }
 }
 
-async function postToRaidLogThread(raidId, message) {
+async function editDiscordMessage(channelId, messageId, payload) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !channelId || !messageId) return { ok: false, reason: 'missing token/channel/message' };
+
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages/${messageId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bot ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      return { ok: false, reason: `Discord API ${resp.status}: ${text}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
+async function fetchDiscordMessagesPage(channelId, limit, before = null) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !channelId) return { ok: false, reason: 'missing token or channel', messages: [] };
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
+  const qs = new URLSearchParams({ limit: String(safeLimit) });
+  if (before) qs.set('before', String(before));
+
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages?${qs.toString()}`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      return { ok: false, reason: `Discord API ${resp.status}: ${text}`, messages: [] };
+    }
+    const messages = await resp.json();
+    return { ok: true, messages: Array.isArray(messages) ? messages : [] };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}`, messages: [] };
+  }
+}
+
+async function fetchDiscordBotUserId() {
+  if (CACHED_BOT_USER_ID) return CACHED_BOT_USER_ID;
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+  try {
+    const resp = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    CACHED_BOT_USER_ID = data && data.id ? String(data.id) : null;
+    return CACHED_BOT_USER_ID;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
+  const mentionA = `<@${discordUserId}>`;
+  const mentionB = `<@!${discordUserId}>`;
+  const botUserId = await fetchDiscordBotUserId();
+  if (!botUserId) return null;
+  let before = null;
+  let scannedBotMessages = 0;
+
+  while (scannedBotMessages < RAID_LOG_HISTORY_SCAN_LIMIT) {
+    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scannedBotMessages);
+    const page = await fetchDiscordMessagesPage(threadId, pageSize, before);
+    if (!page.ok) {
+      console.warn(`[log-thread] Failed to read thread history ${threadId}: ${page.reason}`);
+      return null;
+    }
+    const msgs = page.messages || [];
+    if (msgs.length === 0) break;
+
+    for (const msg of msgs) {
+      if (!msg.author || String(msg.author.id) !== botUserId) continue;
+      scannedBotMessages += 1;
+      const content = String(msg.content || '');
+      if (!content.includes(mentionA) && !content.includes(mentionB)) continue;
+      return msg.id;
+    }
+    before = msgs[msgs.length - 1].id;
+  }
+  return null;
+}
+
+async function postToRaidLogThread(raidId, message, discordUserId = null) {
   const [rows] = await pool.query('SELECT discord_log_thread_id FROM raids WHERE id = ?', [raidId]);
   const raid = rows[0];
   const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
   if (!threadId) return;
-  const result = await postToDiscordChannel(threadId, { content: message });
-  if (!result.ok) {
-    console.warn(`[log-thread] Failed to post to log thread ${threadId}: ${result.reason}`);
+
+  if (discordUserId) {
+    const existingMessageId = await findExistingRaidUserLogMessageId(threadId, discordUserId);
+    if (existingMessageId) {
+      const editResult = await editDiscordMessage(threadId, existingMessageId, { content: message });
+      if (!editResult.ok) {
+        console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
+      }
+      return;
+    }
+  }
+
+  const postResult = await postToDiscordChannel(threadId, { content: message });
+  if (!postResult.ok) {
+    console.warn(`[log-thread] Failed to post to log thread ${threadId}: ${postResult.reason}`);
   }
 }
 
@@ -926,7 +1033,7 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   const logEmoji = isTentative ? '❓' : '✅';
   const logAction = isTentative ? 'tentatively signed up' : 'signed up';
   const logMsg = `${logEmoji} <@${userId}> ${logAction} for **${raid.name}**:\n${bullets.join('\n')}`;
-  postToRaidLogThread(raidId, logMsg).catch(err => {
+  postToRaidLogThread(raidId, logMsg, userId).catch(err => {
     console.warn('[log-thread] Failed to post signup log:', err.message || err);
   });
 
@@ -973,7 +1080,7 @@ router.post('/:raid_number/withdraw', async (req, res) => {
 
   if (result.affectedRows > 0) {
     req.session.flash = '✅ Withdrawn from raid.';
-    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid.`).catch(err => {
+    postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid.`, userId).catch(err => {
       console.warn('[log-thread] Failed to post withdraw log:', err.message || err);
     });
   } else {
