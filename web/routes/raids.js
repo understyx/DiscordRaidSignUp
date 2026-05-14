@@ -171,7 +171,6 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
     if (storedMessageId) {
       const editStoredResult = await editDiscordMessage(threadId, storedMessageId, { content: message });
       if (editStoredResult.ok) {
-        await upsertRaidUserLogMessageId(raidId, discordUserId, threadId, storedMessageId);
         return;
       }
       console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);

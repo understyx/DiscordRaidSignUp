@@ -470,7 +470,6 @@ async def _post_to_raid_log(
             try:
                 existing_msg = await thread.fetch_message(stored_message_id)
                 await existing_msg.edit(content=log_message)
-                await _save_log_ref(existing_msg.id)
                 return
             except discord.NotFound:
                 pass
