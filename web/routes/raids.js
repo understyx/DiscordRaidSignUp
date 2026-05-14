@@ -114,7 +114,8 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
   let scannedMessages = 0;
 
   while (scannedMessages < RAID_LOG_HISTORY_SCAN_LIMIT) {
-    const page = await fetchDiscordMessagesPage(threadId, 100, before);
+    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scannedMessages);
+    const page = await fetchDiscordMessagesPage(threadId, pageSize, before);
     if (!page.ok) {
       console.warn(`[log-thread] Failed to read thread history ${threadId}: ${page.reason}`);
       return null;
@@ -122,6 +123,7 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
     const msgs = page.messages || [];
     if (msgs.length === 0) break;
     scannedMessages += msgs.length;
+    if (scannedMessages >= RAID_LOG_HISTORY_SCAN_LIMIT) break;
 
     for (const msg of msgs) {
       if (!msg.author || String(msg.author.id) !== botUserId) continue;
