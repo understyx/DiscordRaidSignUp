@@ -474,8 +474,10 @@ async def _post_to_raid_log(
                 pass
             except discord.Forbidden as e:
                 logger.warning(f"Missing access to edit raid log message {stored_message_id}: {e}")
+                return
             except Exception as e:
                 logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
+                return
         if discord_user_id and bot.user:
             # Mentions may appear as either <@id> or <@!id> depending on context/client.
             mention_a = f"<@{discord_user_id}>"

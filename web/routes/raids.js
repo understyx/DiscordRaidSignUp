@@ -174,6 +174,9 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
         return;
       }
       console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);
+      if (!String(editStoredResult.reason || '').startsWith('Discord API 404:')) {
+        return;
+      }
     }
 
     const existingMessageId = await findExistingRaidUserLogMessageId(threadId, discordUserId);
@@ -181,6 +184,9 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       const editResult = await editDiscordMessage(threadId, existingMessageId, { content: message });
       if (!editResult.ok) {
         console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
+        if (!String(editResult.reason || '').startsWith('Discord API 404:')) {
+          return;
+        }
       } else {
         await upsertRaidUserLogMessageId(raidId, discordUserId, threadId, existingMessageId);
         return;
