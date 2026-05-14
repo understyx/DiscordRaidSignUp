@@ -59,12 +59,16 @@ async function editDiscordMessage(channelId, messageId, payload) {
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      return { ok: false, reason: `Discord API ${resp.status}: ${text}` };
+      return { ok: false, status: resp.status, reason: `Discord API ${resp.status}: ${text}` };
     }
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: `Network error: ${err.message}` };
   }
+}
+
+function isDiscordNotFound(result) {
+  return Boolean(result && !result.ok && Number(result.status) === 404);
 }
 
 async function fetchDiscordMessagesPage(channelId, limit, before = null) {
@@ -174,7 +178,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
         return;
       }
       console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);
-      if (!String(editStoredResult.reason || '').startsWith('Discord API 404:')) {
+      if (!isDiscordNotFound(editStoredResult)) {
         return;
       }
     }
@@ -184,7 +188,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       const editResult = await editDiscordMessage(threadId, existingMessageId, { content: message });
       if (!editResult.ok) {
         console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
-        if (!String(editResult.reason || '').startsWith('Discord API 404:')) {
+        if (!isDiscordNotFound(editResult)) {
           return;
         }
       } else {
