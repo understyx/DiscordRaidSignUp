@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 import discord
-from sqlalchemy import text
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from bot.db import get_session
 from db.models import Raid, RaidLogMessage
@@ -135,26 +135,17 @@ async def _do_post_to_raid_log(
         def _save():
             session = get_session()
             try:
-                session.execute(
-                    text(
-                        """
-                        INSERT INTO raid_log_messages (
-                            raid_id, discord_user_id, discord_thread_id, discord_message_id
-                        ) VALUES (
-                            :raid_id, :discord_user_id, :discord_thread_id, :discord_message_id
-                        )
-                        ON DUPLICATE KEY UPDATE
-                            discord_thread_id = VALUES(discord_thread_id),
-                            discord_message_id = VALUES(discord_message_id)
-                        """
-                    ),
-                    {
-                        "raid_id": raid_id,
-                        "discord_user_id": discord_user_id,
-                        "discord_thread_id": thread_id,
-                        "discord_message_id": message_id,
-                    },
+                stmt = mysql_insert(RaidLogMessage.__table__).values(
+                    raid_id=raid_id,
+                    discord_user_id=discord_user_id,
+                    discord_thread_id=thread_id,
+                    discord_message_id=message_id,
                 )
+                stmt = stmt.on_duplicate_key_update(
+                    discord_thread_id=stmt.inserted.discord_thread_id,
+                    discord_message_id=stmt.inserted.discord_message_id,
+                )
+                session.execute(stmt)
                 session.commit()
             finally:
                 session.close()
@@ -167,8 +158,8 @@ async def _do_post_to_raid_log(
             thread = await bot.fetch_channel(thread_id)
         if discord_user_id and stored_message_id:
             try:
-                await thread.get_partial_message(stored_message_id).edit(content=log_message)
-                await _save_log_ref(stored_message_id)
+                edited = await thread.get_partial_message(stored_message_id).edit(content=log_message)
+                await _save_log_ref(edited.id)
                 return
             except discord.NotFound:
                 pass
