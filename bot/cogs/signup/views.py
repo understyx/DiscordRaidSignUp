@@ -627,6 +627,12 @@ class EditNotesModal(discord.ui.Modal):
                     # downgrade the visible status to tentative.
                     log_status = SignupStatus.signed
                 else:
+                    logger.warning(
+                        "Unexpected signup statuses for raid %s user %s: %s; defaulting log status to signed",
+                        raid_id,
+                        discord_user_id,
+                        statuses,
+                    )
                     # Fallback for unexpected status values; preserve a non-tentative display.
                     log_status = SignupStatus.signed
                 for signup in signups:
@@ -677,9 +683,6 @@ class EditNotesModal(discord.ui.Modal):
         if log_status == SignupStatus.tentative:
             log_emoji = "❓"
             log_action = "is tentative"
-        elif log_status == SignupStatus.signed:
-            log_emoji = "✅"
-            log_action = "is coming"
         else:
             log_emoji = "✅"
             log_action = "is coming"
