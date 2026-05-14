@@ -15,7 +15,7 @@ const EMOJIS = JSON.parse(
 );
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const RAID_LOG_HISTORY_SCAN_LIMIT = 1000;
+const RAID_LOG_HISTORY_SCAN_LIMIT = 10000;
 let CACHED_BOT_USER_ID = null;
 
 async function postToDiscordChannel(channelId, payload) {
@@ -111,10 +111,10 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
   const botUserId = await fetchDiscordBotUserId();
   if (!botUserId) return null;
   let before = null;
-  let scannedBotMessages = 0;
+  let scannedMessages = 0;
 
-  while (scannedBotMessages < RAID_LOG_HISTORY_SCAN_LIMIT) {
-    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scannedBotMessages);
+  while (scannedMessages < RAID_LOG_HISTORY_SCAN_LIMIT) {
+    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scannedMessages);
     const page = await fetchDiscordMessagesPage(threadId, pageSize, before);
     if (!page.ok) {
       console.warn(`[log-thread] Failed to read thread history ${threadId}: ${page.reason}`);
@@ -122,10 +122,11 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
     }
     const msgs = page.messages || [];
     if (msgs.length === 0) break;
+    scannedMessages += msgs.length;
+    if (scannedMessages >= RAID_LOG_HISTORY_SCAN_LIMIT) break;
 
     for (const msg of msgs) {
       if (!msg.author || String(msg.author.id) !== botUserId) continue;
-      scannedBotMessages += 1;
       const content = String(msg.content || '');
       if (!content.includes(mentionA) && !content.includes(mentionB)) continue;
       return msg.id;

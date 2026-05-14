@@ -72,9 +72,8 @@ BIS_GS = 99999.0
 # Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
 _TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
 
-# Maximum number of recent log-thread messages to scan for an existing per-user entry.
-_RAID_LOG_HISTORY_SCAN_LIMIT = 1000
-
+# Maximum number of log-thread messages to scan for an existing per-user entry.
+_RAID_LOG_HISTORY_SCAN_LIMIT = 10000
 
 def _is_tentative_message(text: str) -> bool:
     """Return True if the first non-empty line of *text* is a tentative keyword."""
