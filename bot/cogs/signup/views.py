@@ -617,10 +617,8 @@ class EditNotesModal(discord.ui.Modal):
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
                     .all()
                 )
-                has_tentative = False
+                has_tentative = any(signup.status == SignupStatus.tentative for signup in signups)
                 for signup in signups:
-                    if signup.status == SignupStatus.tentative:
-                        has_tentative = True
                     char = signup.character
                     if char is None:
                         continue
