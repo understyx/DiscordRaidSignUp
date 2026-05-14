@@ -397,25 +397,43 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
 
 
-async def _post_to_raid_log(bot: discord.Client, raid_id: int, log_message: str):
-    """Post a message to the raid's sign-up log thread, if one exists."""
+async def _post_to_raid_log(
+    bot: discord.Client,
+    raid_id: int,
+    log_message: str,
+    *,
+    discord_user_id: Optional[int] = None,
+    thread_id: Optional[int] = None,
+):
+    """Post to the raid log thread, editing an existing per-user message when possible."""
     loop = asyncio.get_event_loop()
 
-    def _get_thread_id():
-        session = get_session()
-        try:
-            raid = session.get(Raid, raid_id)
-            return raid.discord_log_thread_id if raid else None
-        finally:
-            session.close()
+    if thread_id is None:
+        def _get_thread_id():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                return raid.discord_log_thread_id if raid else None
+            finally:
+                session.close()
 
-    thread_id = await loop.run_in_executor(None, _get_thread_id)
+        thread_id = await loop.run_in_executor(None, _get_thread_id)
     if not thread_id:
         return
     try:
         thread = bot.get_channel(thread_id)
         if thread is None:
             thread = await bot.fetch_channel(thread_id)
+        if discord_user_id and bot.user:
+            mention_a = f"<@{discord_user_id}>"
+            mention_b = f"<@!{discord_user_id}>"
+            async for msg in thread.history(limit=200):
+                if msg.author.id != bot.user.id:
+                    continue
+                if mention_a not in msg.content and mention_b not in msg.content:
+                    continue
+                await msg.edit(content=log_message)
+                return
         await thread.send(log_message)
     except Exception as e:
         logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
@@ -725,13 +743,13 @@ async def process_text_signup(
         log_thread_id = await _create_log_thread(channel, raid_id, raid_name)
 
     if log_thread_id:
-        try:
-            thread = bot.get_channel(log_thread_id)
-            if thread is None:
-                thread = await bot.fetch_channel(log_thread_id)
-            await thread.send(log_message)
-        except Exception:
-            logger.warning("Failed to post to log thread %s for raid %s", log_thread_id, raid_id, exc_info=True)
+        await _post_to_raid_log(
+            bot,
+            raid_id,
+            log_message,
+            discord_user_id=discord_user_id,
+            thread_id=log_thread_id,
+        )
     else:
         logger.warning("No log thread available for raid %s; skipping log message", raid_id)
 
@@ -1037,7 +1055,12 @@ class SignupPrioritySelectView(discord.ui.View):
             f"{log_emoji} {interaction.user.mention} {log_action}{raid_name_str}:\n"
             + "\n".join(bullets)
         )
-        await _post_to_raid_log(interaction.client, raid_id, log_message)
+        await _post_to_raid_log(
+            interaction.client,
+            raid_id,
+            log_message,
+            discord_user_id=interaction.user.id,
+        )
         await update_raid_embed(interaction.client, raid_id)
 
 
@@ -1568,7 +1591,12 @@ class SignupView(discord.ui.View):
         if removed:
             await interaction.response.send_message("✅ Withdrawn from the raid.", ephemeral=True)
             log_message = f"❌ {interaction.user.mention} withdrew from the raid."
-            await _post_to_raid_log(interaction.client, raid_id, log_message)
+            await _post_to_raid_log(
+                interaction.client,
+                raid_id,
+                log_message,
+                discord_user_id=interaction.user.id,
+            )
             await update_raid_embed(interaction.client, raid_id)
         else:
             await interaction.response.send_message(
