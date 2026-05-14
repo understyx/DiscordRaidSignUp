@@ -611,7 +611,11 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   for (let i = 0; i < Math.min(noteIds.length, noteValues.length); i++) {
     const charId = parseInt(noteIds[i]);
     if (isNaN(charId)) continue;
-    const note = String(noteValues[i] || '').trim().slice(0, SIGNUP_NOTE_MAX_LENGTH);
+    const note = String(noteValues[i] || '').trim();
+    if (note.length > SIGNUP_NOTE_MAX_LENGTH) {
+      req.session.flash = `❌ Notes must be ${SIGNUP_NOTE_MAX_LENGTH} characters or fewer.`;
+      return res.redirect(raidUrl);
+    }
     if (!note) continue;
     noteByCharId.set(charId, note);
   }
