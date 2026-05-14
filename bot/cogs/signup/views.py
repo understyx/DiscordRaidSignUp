@@ -617,6 +617,24 @@ class EditNotesModal(discord.ui.Modal):
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
                     .all()
                 )
+                statuses = {signup.status for signup in signups}
+                if not statuses:
+                    log_status = None
+                elif statuses == {SignupStatus.tentative}:
+                    log_status = SignupStatus.tentative
+                elif SignupStatus.signed in statuses:
+                    # If data is mixed, prefer signed so we don't incorrectly
+                    # downgrade the visible status to tentative.
+                    log_status = SignupStatus.signed
+                else:
+                    logger.warning(
+                        "Unexpected signup statuses for raid %s user %s: %s; defaulting log status to signed",
+                        raid_id,
+                        discord_user_id,
+                        statuses,
+                    )
+                    # Fallback for unexpected status values; preserve a non-tentative display.
+                    log_status = SignupStatus.signed
                 for signup in signups:
                     char = signup.character
                     if char is None:
@@ -651,17 +669,29 @@ class EditNotesModal(discord.ui.Modal):
                     bullets.append(
                         f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
                     )
-                return (raid.name if raid else None), bullets
+                return (raid.name if raid else None), bullets, log_status
             finally:
                 session.close()
 
-        raid_name, bullets = await loop.run_in_executor(None, _save)
+        raid_name, bullets, log_status = await loop.run_in_executor(None, _save)
+        if log_status is None:
+            await interaction.response.send_message(
+                "❌ You are not signed up for this raid.",
+                ephemeral=True,
+            )
+            return
+        if log_status == SignupStatus.tentative:
+            log_emoji = "❓"
+            log_action = "is tentative"
+        else:
+            log_emoji = "✅"
+            log_action = "is coming"
         log_message = format_user_raid_log_message(
             raid_id=raid_id,
             discord_user_id=discord_user_id,
             user_mention=interaction.user.mention,
-            emoji="📝",
-            action="updated notes",
+            emoji=log_emoji,
+            action=log_action,
             raid_name=raid_name,
             detail_lines=bullets,
         )
