@@ -638,6 +638,8 @@ class EditNotesModal(discord.ui.Modal):
                             "specs": [],
                             "note": signup.note or "",
                         }
+                    elif not grouped[key]["note"] and signup.note:
+                        grouped[key]["note"] = signup.note
                     star = " ⭐" if signup.signup_type == SignupType.prio_character else ""
                     grouped[key]["specs"].append(
                         f"{char.spec or '?'}{star} GS {format_gs(char.gearscore or 0.0)}"
