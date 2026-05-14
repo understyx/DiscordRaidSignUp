@@ -611,6 +611,7 @@ class EditNotesModal(discord.ui.Modal):
         def _save():
             session = get_session()
             try:
+                raid = session.get(Raid, raid_id)
                 signups = (
                     session.query(Signup)
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
@@ -624,9 +625,51 @@ class EditNotesModal(discord.ui.Modal):
                     if key in updates:
                         signup.note = updates[key]
                 session.commit()
+                grouped: dict[str, dict] = {}
+                for signup in signups:
+                    char = signup.character
+                    if char is None:
+                        continue
+                    key = char.char_name.lower()
+                    if key not in grouped:
+                        grouped[key] = {
+                            "char_name": char.char_name,
+                            "char_class": char.char_class or "?",
+                            "specs": [],
+                            "note": signup.note or None,
+                        }
+                    elif not grouped[key]["note"] and signup.note:
+                        grouped[key]["note"] = signup.note
+                    star = " ⭐" if signup.signup_type == SignupType.prio_character else ""
+                    grouped[key]["specs"].append(
+                        f"{char.spec or '?'}{star} GS {format_gs(char.gearscore or 0.0)}"
+                    )
+
+                bullets = []
+                for d in grouped.values():
+                    note_str = f" 💬 *{d['note']}*" if d["note"] else ""
+                    bullets.append(
+                        f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
+                    )
+                return (raid.name if raid else None), bullets
             finally:
                 session.close()
 
-        await loop.run_in_executor(None, _save)
+        raid_name, bullets = await loop.run_in_executor(None, _save)
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=discord_user_id,
+            user_mention=interaction.user.mention,
+            emoji="📝",
+            action="updated notes",
+            raid_name=raid_name,
+            detail_lines=bullets,
+        )
+        await _post_to_raid_log(
+            interaction.client,
+            raid_id,
+            log_message,
+            discord_user_id=discord_user_id,
+        )
         await update_raid_embed(interaction.client, raid_id)
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
