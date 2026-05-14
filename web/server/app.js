@@ -134,6 +134,7 @@ function createApp() {
   app.use((req, res, next) => {
     res.locals.dev_mode = process.env.DEV_MODE === 'true';
     res.locals.dev_user_id = process.env.DEV_USER_ID || '';
+    res.locals.dev_full_admin = String(process.env.DEV_FULL_ADMIN || '').toLowerCase() === 'true';
     res.locals.active_guild_id = req.session.active_guild_id || null;
     res.locals.active_guild_name = req.session.active_guild_name || null;
     res.locals.has_any_guild = !!(

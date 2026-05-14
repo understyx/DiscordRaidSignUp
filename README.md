@@ -326,5 +326,5 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 | `BASE_DOMAIN`                     | Root domain for per-guild subdomains (e.g. `example.com`). Leave blank if not using subdomains. | – |
 | `COOKIE_DOMAIN`                   | Dot-prefixed root domain so the session cookie is shared across subdomains (e.g. `.example.com`). Required together with `BASE_DOMAIN`. | – |
 | `DEV_USER_ID`                     | Discord user ID of the developer/admin account — grants access to `/admin/spec-aliases` | – |
-| `DEV_FULL_ADMIN`                  | Set to `true` to treat `DEV_USER_ID` as raid-admin in every guild/server (bot + web) | `false` |
+| `DEV_FULL_ADMIN`                  | Set to `true` to treat `DEV_USER_ID` as raid-admin in every guild/server on the website (also toggleable live from Dev Tools) | `false` |
 | `DEV_MODE`                        | Set to `true` to enable fake-data seeding buttons for UI testing            | `false`                               |

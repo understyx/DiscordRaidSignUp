@@ -13,4 +13,3 @@ OFFICER_ROLE_NAME: str = os.environ.get("OFFICER_ROLE_NAME", "Officer")
 WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "http://localhost:8000")
 BASE_DOMAIN: str = os.environ.get("BASE_DOMAIN", "")
 DEV_USER_ID: str = os.environ.get("DEV_USER_ID", "")
-DEV_FULL_ADMIN: bool = os.environ.get("DEV_FULL_ADMIN", "false").strip().lower() == "true"

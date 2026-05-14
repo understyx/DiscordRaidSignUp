@@ -16,10 +16,33 @@ const router = express.Router();
 // lowercase class names used for spec aliases management
 const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
 
+function isDeveloper(req) {
+  const devUserId = process.env.DEV_USER_ID || '';
+  return !!devUserId && !!req.session.user_id && req.session.user_id === devUserId;
+}
+
+// POST /admin/dev-full-admin/toggle — developer-only live runtime toggle (web process)
+router.post('/dev-full-admin/toggle', express.urlencoded({ extended: false }), (req, res) => {
+  if (!isDeveloper(req)) {
+    req.session.flash = '❌ Access denied.';
+    return res.redirect('/raids');
+  }
+
+  const current = String(process.env.DEV_FULL_ADMIN || '').toLowerCase() === 'true';
+  const next = !current;
+  process.env.DEV_FULL_ADMIN = next ? 'true' : 'false';
+  req.session.flash = `✅ Developer full-admin is now ${next ? 'enabled' : 'disabled'} (website runtime).`;
+
+  const returnTo = String(req.body.return_to || '/raids');
+  if (returnTo.startsWith('/') && !returnTo.startsWith('//') && !/[\r\n]/.test(returnTo)) {
+    return res.redirect(returnTo);
+  }
+  return res.redirect('/raids');
+});
+
 // GET /admin/spec-aliases — viewable by developers only
 router.get('/spec-aliases', async (req, res) => {
-  const devUserId = process.env.DEV_USER_ID || '';
-  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+  if (!isDeveloper(req)) {
     req.session.flash = '❌ Access denied. This page is only available to developers.';
     return res.redirect('/raids');
   }
@@ -53,8 +76,7 @@ router.get('/spec-aliases', async (req, res) => {
 
 // POST /admin/spec-aliases/add
 router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async (req, res) => {
-  const devUserId = process.env.DEV_USER_ID || '';
-  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+  if (!isDeveloper(req)) {
     req.session.flash = '❌ Access denied.';
     return res.redirect('/raids');
   }
@@ -93,8 +115,7 @@ router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async 
 
 // POST /admin/spec-aliases/delete
 router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), async (req, res) => {
-  const devUserId = process.env.DEV_USER_ID || '';
-  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+  if (!isDeveloper(req)) {
     req.session.flash = '❌ Access denied.';
     return res.redirect('/raids');
   }
@@ -169,8 +190,7 @@ router.post('/seed-fake-players', async (req, res) => {
 
 // GET /admin/all-characters — viewable by developers only
 router.get('/all-characters', async (req, res) => {
-  const devUserId = process.env.DEV_USER_ID || '';
-  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+  if (!isDeveloper(req)) {
     req.session.flash = '❌ Access denied. This page is only available to developers.';
     return res.redirect('/raids');
   }
@@ -212,10 +232,9 @@ router.get('/all-characters', async (req, res) => {
 
 // POST /admin/suggest-character-change
 router.post('/suggest-character-change', express.urlencoded({ extended: false }), async (req, res) => {
-  const devUserId = process.env.DEV_USER_ID || '';
   // For now, only dev can suggest via this route, though plan mentioned officers too.
   // We'll stick to dev for "all characters" and maybe add officers later if needed.
-  if (!devUserId || !req.session.user_id || req.session.user_id !== devUserId) {
+  if (!isDeveloper(req)) {
     req.session.flash = '❌ Access denied.';
     return res.redirect('/raids');
   }
