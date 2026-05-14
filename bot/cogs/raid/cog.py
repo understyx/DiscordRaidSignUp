@@ -9,7 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 from sqlalchemy import select, func
 
-from bot.config import OFFICER_ROLE_NAME
+from bot.config import OFFICER_ROLE_NAME, DEV_USER_ID, DEV_FULL_ADMIN
 from bot.db import get_session
 from db.models import Raid, RaidStatus
 
@@ -32,6 +32,8 @@ def is_officer():
     """App-command check: user must have OFFICER_ROLE_NAME or manage_guild permission."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
+        if DEV_FULL_ADMIN and DEV_USER_ID and str(interaction.user.id) == DEV_USER_ID:
+            return True
         if interaction.user.guild_permissions.manage_guild:
             return True
         return any(r.name == OFFICER_ROLE_NAME for r in interaction.user.roles)
@@ -225,6 +227,4 @@ class RaidCog(commands.Cog):
     @is_officer()
     async def create_raid(self, interaction: discord.Interaction):
         await interaction.response.send_modal(CreateRaidModal())
-
-
 

@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.config import DEV_USER_ID, DEV_FULL_ADMIN
 from bot.db import get_session
 from db.models import GuildAdminRole
 
@@ -15,6 +16,8 @@ def _can_manage_admin():
     """Only guild owners or members with manage_guild permission may run these commands."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
+        if DEV_FULL_ADMIN and DEV_USER_ID and str(interaction.user.id) == DEV_USER_ID:
+            return True
         if interaction.user.guild_permissions.manage_guild:
             return True
         if interaction.guild and interaction.guild.owner_id == interaction.user.id:

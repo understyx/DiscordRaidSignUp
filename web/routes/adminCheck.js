@@ -16,6 +16,12 @@ const pool = require('../db');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
+function isDevFullAdmin(userId) {
+  const devUserId = process.env.DEV_USER_ID || '';
+  const devFullAdmin = String(process.env.DEV_FULL_ADMIN || '').toLowerCase() === 'true';
+  return devFullAdmin && !!devUserId && String(userId) === devUserId;
+}
+
 /**
  * Returns true if the given Discord user ID should be treated as a raid admin.
  *
@@ -24,6 +30,8 @@ const DISCORD_API = 'https://discord.com/api/v10';
  * @returns {Promise<boolean>}
  */
 async function resolveIsAdmin(userId, guildId) {
+  if (isDevFullAdmin(userId)) return true;
+
   const botToken = process.env.DISCORD_BOT_TOKEN;
 
   // If guild ID is not provided, grant admin to everyone (backward-compatible).
