@@ -468,8 +468,7 @@ async def _post_to_raid_log(
             thread = await bot.fetch_channel(thread_id)
         if discord_user_id and stored_message_id:
             try:
-                existing_msg = await thread.fetch_message(stored_message_id)
-                await existing_msg.edit(content=log_message)
+                await thread.get_partial_message(stored_message_id).edit(content=log_message)
                 return
             except discord.NotFound:
                 pass
