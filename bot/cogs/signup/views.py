@@ -617,7 +617,10 @@ class EditNotesModal(discord.ui.Modal):
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
                     .all()
                 )
+                has_tentative = False
                 for signup in signups:
+                    if signup.status == SignupStatus.tentative:
+                        has_tentative = True
                     char = signup.character
                     if char is None:
                         continue
@@ -651,17 +654,23 @@ class EditNotesModal(discord.ui.Modal):
                     bullets.append(
                         f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
                     )
-                return (raid.name if raid else None), bullets
+                return (raid.name if raid else None), bullets, has_tentative
             finally:
                 session.close()
 
-        raid_name, bullets = await loop.run_in_executor(None, _save)
+        raid_name, bullets, has_tentative = await loop.run_in_executor(None, _save)
+        if has_tentative:
+            log_emoji = "❓"
+            log_action = "is tentative"
+        else:
+            log_emoji = "✅"
+            log_action = "is coming"
         log_message = format_user_raid_log_message(
             raid_id=raid_id,
             discord_user_id=discord_user_id,
             user_mention=interaction.user.mention,
-            emoji="📝",
-            action="updated notes",
+            emoji=log_emoji,
+            action=log_action,
             raid_name=raid_name,
             detail_lines=bullets,
         )
