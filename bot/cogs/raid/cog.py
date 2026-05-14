@@ -225,6 +225,3 @@ class RaidCog(commands.Cog):
     @is_officer()
     async def create_raid(self, interaction: discord.Interaction):
         await interaction.response.send_modal(CreateRaidModal())
-
-
-
