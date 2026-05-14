@@ -428,11 +428,15 @@ router.get('/:raid_number', async (req, res) => {
 
   // Build a map of character_id -> signup for easy template lookup
   const mySignupMap = {};
+  const mySignupNoteByName = {};
   for (const row of mySignupRows) {
     mySignupMap[String(row.character_id)] = {
       signup_type: row.signup_type,
       status: row.status,
     };
+    if (row.note) {
+      mySignupNoteByName[String(row.char_name || '').toLowerCase()] = row.note;
+    }
   }
 
   // Group user's characters by char_name so each character shows once with all specs
@@ -442,6 +446,7 @@ router.get('/:raid_number', async (req, res) => {
       charGroupMap[c.char_name] = {
         char_name: c.char_name,
         char_class: c.char_class,
+        note: mySignupNoteByName[String(c.char_name || '').toLowerCase()] || '',
         specs: [],
       };
     }
@@ -482,6 +487,7 @@ router.get('/:raid_number', async (req, res) => {
     const is_saved = !!s.is_saved;
     if (existing) {
       existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved });
+      if (!existing.character.note && s.note) existing.character.note = s.note;
     } else {
       bucket.push({
         ...s,
@@ -493,6 +499,7 @@ router.get('/:raid_number', async (req, res) => {
           realm: s.realm,
           char_class: s.char_class,
           role: s.role,
+          note: s.note || '',
           specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved }],
         },
       });
@@ -594,6 +601,19 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   }
   const prioritySet = new Set(priorityIds.map(id => parseInt(id)));
 
+  let noteIds = req.body.note_ids || [];
+  if (!Array.isArray(noteIds)) noteIds = [noteIds];
+  let noteValues = req.body.note_values || [];
+  if (!Array.isArray(noteValues)) noteValues = [noteValues];
+  const noteByCharId = new Map();
+  for (let i = 0; i < Math.min(noteIds.length, noteValues.length); i++) {
+    const charId = parseInt(noteIds[i]);
+    if (isNaN(charId)) continue;
+    const note = String(noteValues[i] || '').trim().slice(0, 500);
+    if (!note) continue;
+    noteByCharId.set(charId, note);
+  }
+
   const isTentative = req.body.signup_mode === 'tentative';
 
   if (characterIds.length === 0) {
@@ -629,9 +649,10 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   for (const charId of characterIds) {
     const stype = prioritySet.has(charId) ? 'prio_character' : 'fill';
     const sstatus = isTentative ? 'tentative' : 'signed';
+    const note = noteByCharId.get(charId) || null;
     await pool.query(
-      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status) VALUES (?, ?, ?, ?, ?)",
-      [raidId, userId, charId, stype, sstatus]
+      "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, note) VALUES (?, ?, ?, ?, ?, ?)",
+      [raidId, userId, charId, stype, sstatus, note]
     );
   }
 
@@ -647,7 +668,9 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     }
     const gs = Number(c.gearscore) >= 99999 ? 'BiS' : Math.floor(Number(c.gearscore) || 0);
     const star = prioritySet.has(id) ? ' ⭐' : '';
-    charGroups[key].specs.push(`${c.spec || '?'}${star} GS ${gs}`);
+    const note = noteByCharId.get(id);
+    const noteSuffix = note ? ` 💬 *${note}*` : '';
+    charGroups[key].specs.push(`${c.spec || '?'}${star} GS ${gs}${noteSuffix}`);
   }
   const bullets = Object.values(charGroups).map(
     d => `• **${d.char_name}** (${d.char_class}) – ${d.specs.join(' / ')}`

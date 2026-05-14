@@ -78,6 +78,23 @@ function buildHiddenInputs() {
       prioInp.value = charId;
       container.appendChild(prioInp);
     }
+
+    const groupIdx = row.dataset.groupIdx;
+    const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`);
+    const note = noteInput ? noteInput.value.trim() : '';
+    if (note) {
+      const noteIdInp = document.createElement('input');
+      noteIdInp.type = 'hidden';
+      noteIdInp.name = 'note_ids';
+      noteIdInp.value = charId;
+      container.appendChild(noteIdInp);
+
+      const noteValInp = document.createElement('input');
+      noteValInp.type = 'hidden';
+      noteValInp.name = 'note_values';
+      noteValInp.value = note;
+      container.appendChild(noteValInp);
+    }
   });
 
   const btn = document.getElementById('signupBtn');
@@ -92,6 +109,33 @@ function buildHiddenInputs() {
   }
 }
 
+function toggleNoteRow(groupIdx) {
+  const noteRow = document.querySelector(`.signup-note-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
+  const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`);
+  if (!noteRow || !toggleBtn) return;
+  const nowHidden = !noteRow.classList.toggle('d-none');
+  toggleBtn.classList.toggle('note-toggle-active', !nowHidden);
+  toggleBtn.setAttribute('aria-expanded', (!nowHidden).toString());
+}
+
+function handleNoteInput(groupIdx) {
+  const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`);
+  const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`);
+  if (noteInput && toggleBtn) {
+    toggleBtn.classList.toggle('note-toggle-active', !!noteInput.value.trim());
+  }
+  buildHiddenInputs();
+}
+
+function toggleMySignupNote(btn) {
+  const card = btn.closest('.card');
+  if (!card) return;
+  const note = card.querySelector('.my-signup-note');
+  if (!note) return;
+  const isHidden = note.classList.toggle('d-none');
+  btn.setAttribute('aria-expanded', (!isHidden).toString());
+}
+
 // Populate hidden inputs and group highlights on page load
 document.addEventListener('DOMContentLoaded', () => {
   buildHiddenInputs();
@@ -100,4 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
     groups.add(row.dataset.groupIdx);
   });
   groups.forEach(gIdx => updateGroupHighlight(gIdx));
+  document.querySelectorAll('.signup-note-input[data-group-idx]').forEach(input => {
+    handleNoteInput(input.dataset.groupIdx);
+  });
 });

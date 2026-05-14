@@ -30,3 +30,36 @@
 }
 .prio-star:hover { opacity: 0.65; }
 .prio-star.prio-active { opacity: 1; }
+
+.note-toggle-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 0.35rem;
+  font-size: 0.9rem;
+  opacity: 0.5;
+}
+.note-toggle-btn:hover { opacity: 0.8; }
+.note-toggle-btn.note-toggle-active { opacity: 1; }
+
+.signup-note-row td {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+.my-note-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.my-signup-note {
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0.2rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+}
