@@ -28,6 +28,7 @@ const EMOJIS = JSON.parse(
 
 
 const router = express.Router();
+const SIGNUP_NOTE_MAX_LENGTH = 500;
 
 // Re-evaluate admin status on every request so that role changes take effect
 // immediately without requiring users to log out and back in.
@@ -521,6 +522,7 @@ router.get('/:raid_number', async (req, res) => {
     my_signup_map: mySignupMap,
     my_signup_count: mySignupRows.length,
     grouped_signups: myGrouped,
+    signup_note_max_length: SIGNUP_NOTE_MAX_LENGTH,
     signup_types: ['fill', 'prio_role', 'prio_character'],
     flash: popFlash(req),
     user: currentUser(req),
@@ -609,7 +611,7 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   for (let i = 0; i < Math.min(noteIds.length, noteValues.length); i++) {
     const charId = parseInt(noteIds[i]);
     if (isNaN(charId)) continue;
-    const note = String(noteValues[i] || '').trim().slice(0, 500);
+    const note = String(noteValues[i] || '').trim().slice(0, SIGNUP_NOTE_MAX_LENGTH);
     if (!note) continue;
     noteByCharId.set(charId, note);
   }

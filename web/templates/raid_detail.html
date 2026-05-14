@@ -96,7 +96,7 @@
                     <textarea class="form-control form-control-sm signup-note-input"
                               data-group-idx="{{ group_idx }}"
                               rows="2"
-                              maxlength="500"
+                              maxlength="{{ signup_note_max_length }}"
                               placeholder="Optional note for {{ group.char_name }} (applies to selected specs in this character)."
                               oninput="handleNoteInput('{{ group_idx }}')">{{ group.note or '' }}</textarea>
                   </td>

@@ -114,7 +114,9 @@ function toggleNoteRow(groupIdx) {
   const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`);
   if (!noteRow || !toggleBtn) return;
   const isHidden = noteRow.classList.toggle('d-none');
-  toggleBtn.classList.toggle('note-toggle-active', !isHidden || !!(noteRow.querySelector('.signup-note-input')?.value.trim()));
+  const noteInput = noteRow.querySelector('.signup-note-input');
+  const hasNoteText = !!(noteInput && noteInput.value.trim());
+  toggleBtn.classList.toggle('note-toggle-active', !isHidden || hasNoteText);
   toggleBtn.setAttribute('aria-expanded', (!isHidden).toString());
 }
 
