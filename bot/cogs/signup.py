@@ -72,6 +72,9 @@ BIS_GS = 99999.0
 # Keywords that mark a text sign-up as tentative when placed on the first non-empty line.
 _TENTATIVE_KEYWORDS = frozenset({"tentative", "maybe"})
 
+# Maximum number of log-thread messages to scan for an existing per-user entry.
+_RAID_LOG_HISTORY_SCAN_LIMIT = 10000
+
 def _is_tentative_message(text: str) -> bool:
     """Return True if the first non-empty line of *text* is a tentative keyword."""
     for line in text.splitlines():
@@ -427,7 +430,7 @@ async def _post_to_raid_log(
             # Mentions may appear as either <@id> or <@!id> depending on context/client.
             mention_a = f"<@{discord_user_id}>"
             mention_b = f"<@!{discord_user_id}>"
-            async for msg in thread.history(limit=None):
+            async for msg in thread.history(limit=_RAID_LOG_HISTORY_SCAN_LIMIT):
                 if msg.author.id != bot.user.id:
                     continue
                 if mention_a not in msg.content and mention_b not in msg.content:
