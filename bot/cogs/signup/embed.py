@@ -10,6 +10,7 @@ from db.models import Raid, Signup
 from .parser import format_gs
 
 logger = logging.getLogger(__name__)
+DEFAULT_SIGNUP_STATUS = "signed"
 
 
 def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
@@ -19,7 +20,10 @@ def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
         if not user_id:
             continue
         uid = str(user_id)
-        statuses_by_user.setdefault(uid, set()).add(s.get("status") or "signed")
+        status = s.get("status") or DEFAULT_SIGNUP_STATUS
+        if status not in {"tentative", DEFAULT_SIGNUP_STATUS}:
+            status = DEFAULT_SIGNUP_STATUS
+        statuses_by_user.setdefault(uid, set()).add(status)
 
     coming_count = 0
     tentative_count = 0
@@ -69,7 +73,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             if raid is None:
                 return None, None
             sups = session.query(Signup).filter_by(raid_id=raid_id).all()
-            signup_data = [{"discord_user_id": s.discord_user_id, "status": s.status.value if s.status else "signed"} for s in sups]
+            signup_data = [{"discord_user_id": s.discord_user_id, "status": s.status.value if s.status else DEFAULT_SIGNUP_STATUS} for s in sups]
             raid_data = {
                 "id": raid.id,
                 "name": raid.name,

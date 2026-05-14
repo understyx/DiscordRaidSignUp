@@ -185,7 +185,7 @@ router.get('/', async (req, res) => {
   const [raids] = await pool.query(
     `SELECT
        r.*,
-       COALESCE(SUM(CASE WHEN u.user_status = 'signed' THEN 1 ELSE 0 END), 0) AS signup_coming_count,
+       COALESCE(SUM(CASE WHEN u.user_status = 'coming' THEN 1 ELSE 0 END), 0) AS signup_coming_count,
        COALESCE(SUM(CASE WHEN u.user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS signup_tentative_count
      FROM raids r
      LEFT JOIN (
@@ -193,7 +193,7 @@ router.get('/', async (req, res) => {
          raid_id,
          discord_user_id,
          CASE
-           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'signed'
+           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'coming'
            ELSE 'tentative'
          END AS user_status
        FROM signups
@@ -424,13 +424,13 @@ router.get('/:raid_number', async (req, res) => {
 
   const [[counts]] = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN user_status = 'signed' THEN 1 ELSE 0 END), 0) AS coming_count,
+       COALESCE(SUM(CASE WHEN user_status = 'coming' THEN 1 ELSE 0 END), 0) AS coming_count,
        COALESCE(SUM(CASE WHEN user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS tentative_count
      FROM (
        SELECT
          discord_user_id,
          CASE
-           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'signed'
+           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'coming'
            ELSE 'tentative'
          END AS user_status
        FROM signups
