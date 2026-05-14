@@ -68,7 +68,7 @@ async function editDiscordMessage(channelId, messageId, payload) {
 }
 
 function isDiscordNotFound(result) {
-  return Boolean(result && !result.ok && Number(result.status) === 404);
+  return Boolean(result && !result.ok && result.status === 404);
 }
 
 async function fetchDiscordMessagesPage(channelId, limit, before = null) {
