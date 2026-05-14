@@ -673,16 +673,18 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     if (!c) continue;
     const key = c.char_name.toLowerCase();
     if (!charGroups[key]) {
-      charGroups[key] = { char_name: c.char_name, char_class: c.char_class || '?', specs: [] };
+      charGroups[key] = { char_name: c.char_name, char_class: c.char_class || '?', specs: [], note: '' };
     }
     const gs = Number(c.gearscore) >= 99999 ? 'BiS' : Math.floor(Number(c.gearscore) || 0);
     const star = prioritySet.has(id) ? ' ⭐' : '';
     const note = noteByCharId.get(id);
-    const noteSuffix = note ? ` 💬 *${note}*` : '';
-    charGroups[key].specs.push(`${c.spec || '?'}${star} GS ${gs}${noteSuffix}`);
+    if (!charGroups[key].note && note) {
+      charGroups[key].note = note;
+    }
+    charGroups[key].specs.push(`${c.spec || '?'}${star} GS ${gs}`);
   }
   const bullets = Object.values(charGroups).map(
-    d => `• **${d.char_name}** (${d.char_class}) – ${d.specs.join(' / ')}`
+    d => `• **${d.char_name}** (${d.char_class}) – ${d.specs.join(' / ')}${d.note ? ` 💬 *${d.note}*` : ''}`
   );
   const logEmoji = isTentative ? '❓' : '✅';
   const logAction = isTentative ? 'tentatively signed up' : 'signed up';
