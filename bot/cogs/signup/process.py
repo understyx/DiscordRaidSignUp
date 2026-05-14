@@ -17,7 +17,7 @@ from .parser import (
     format_gs,
 )
 from .embed import update_raid_embed
-from .log_thread import _post_to_raid_log, _create_log_thread
+from .log_thread import _post_to_raid_log, _create_log_thread, format_user_raid_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -202,14 +202,24 @@ async def process_text_signup(
 
     # 3. Log and cleanup
     if signup_status == SignupStatus.tentative:
-        log_message = (
-            f"❓ {user.mention} tentatively signed up for **{raid_name}**:\n"
-            + "\n".join(summaries)
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=discord_user_id,
+            user_mention=user.mention,
+            emoji="❓",
+            action="tentatively signed up",
+            raid_name=raid_name,
+            detail_lines=summaries,
         )
     else:
-        log_message = (
-            f"✅ {user.mention} signed up for **{raid_name}**:\n"
-            + "\n".join(summaries)
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=discord_user_id,
+            user_mention=user.mention,
+            emoji="✅",
+            action="signed up",
+            raid_name=raid_name,
+            detail_lines=summaries,
         )
 
     if message_to_delete:

@@ -11,7 +11,7 @@ from db.models import Raid, Signup, SignupType, SignupStatus
 from .parser import format_gs
 from .char_helpers import _char_label, _char_display_description
 from .process import process_text_signup, _upsert_discord_user
-from .log_thread import _post_to_raid_log
+from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
 
 logger = logging.getLogger(__name__)
@@ -302,10 +302,14 @@ class SignupPrioritySelectView(discord.ui.View):
             bullets.append(
                 f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
             )
-        raid_name_str = f" for **{raid_name}**" if raid_name else ""
-        log_message = (
-            f"{log_emoji} {interaction.user.mention} {log_action}{raid_name_str}:\n"
-            + "\n".join(bullets)
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=interaction.user.id,
+            user_mention=interaction.user.mention,
+            emoji=log_emoji,
+            action=log_action,
+            raid_name=raid_name,
+            detail_lines=bullets,
         )
         await _post_to_raid_log(
             interaction.client,

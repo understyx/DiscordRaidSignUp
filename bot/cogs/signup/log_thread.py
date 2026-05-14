@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 import discord
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from bot.db import get_session
 from db.models import Raid, RaidLogMessage
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of log-thread messages to scan for an existing per-user entry.
 _RAID_LOG_HISTORY_SCAN_LIMIT = 10000
+_RAID_LOG_TOKEN_PREFIX = "[raid-log:"
 
 # Per-(raid_id, discord_user_id) locks that serialize concurrent _post_to_raid_log
 # calls for the same user+raid, preventing race conditions that would cause
@@ -31,6 +33,36 @@ def _get_log_post_lock(raid_id: int, discord_user_id: int) -> asyncio.Lock:
     return _log_post_locks.setdefault(key, asyncio.Lock())
 
 
+def _user_log_identity_token(raid_id: int, discord_user_id: int) -> str:
+    return f"{_RAID_LOG_TOKEN_PREFIX}{raid_id}:{discord_user_id}]"
+
+
+def _ensure_user_log_identity_token(log_message: str, raid_id: int, discord_user_id: int) -> str:
+    token = _user_log_identity_token(raid_id, discord_user_id)
+    if token in log_message:
+        return log_message
+    return f"{log_message}\n{token}"
+
+
+def format_user_raid_log_message(
+    *,
+    raid_id: int,
+    discord_user_id: int,
+    user_mention: str,
+    emoji: str,
+    action: str,
+    raid_name: Optional[str] = None,
+    detail_lines: Optional[list[str]] = None,
+) -> str:
+    raid_part = f" for **{raid_name}**" if raid_name else ""
+    header = f"{emoji} {user_mention} {action}{raid_part}"
+    if detail_lines:
+        message = f"{header}:\n" + "\n".join(detail_lines)
+    else:
+        message = header
+    return _ensure_user_log_identity_token(message, raid_id, discord_user_id)
+
+
 async def _post_to_raid_log(
     bot: discord.Client,
     raid_id: int,
@@ -41,6 +73,7 @@ async def _post_to_raid_log(
 ):
     """Post to the raid log thread, editing an existing per-user message when possible."""
     if discord_user_id:
+        log_message = _ensure_user_log_identity_token(log_message, raid_id, discord_user_id)
         async with _get_log_post_lock(raid_id, discord_user_id):
             await _do_post_to_raid_log(
                 bot, raid_id, log_message,
@@ -102,27 +135,34 @@ async def _do_post_to_raid_log(
         def _save():
             session = get_session()
             try:
-                row = (
-                    session.query(RaidLogMessage)
-                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
-                    .first()
+                stmt = mysql_insert(RaidLogMessage.__table__).values(
+                    raid_id=raid_id,
+                    discord_user_id=discord_user_id,
+                    discord_thread_id=thread_id,
+                    discord_message_id=message_id,
                 )
-                if row is None:
-                    row = RaidLogMessage(
-                        raid_id=raid_id,
-                        discord_user_id=discord_user_id,
-                        discord_thread_id=thread_id,
-                        discord_message_id=message_id,
-                    )
-                    session.add(row)
-                else:
-                    row.discord_thread_id = thread_id
-                    row.discord_message_id = message_id
+                stmt = stmt.on_duplicate_key_update(
+                    discord_thread_id=stmt.inserted.discord_thread_id,
+                    discord_message_id=stmt.inserted.discord_message_id,
+                )
+                session.execute(stmt)
                 session.commit()
             finally:
                 session.close()
 
         await loop.run_in_executor(None, _save)
+
+    async def _safe_save_log_ref(message_id: int):
+        try:
+            await _save_log_ref(message_id)
+        except Exception:
+            logger.warning(
+                "Edited/sent raid log message %s but failed to save mapping for raid %s user %s",
+                message_id,
+                raid_id,
+                discord_user_id,
+                exc_info=True,
+            )
 
     try:
         thread = bot.get_channel(thread_id)
@@ -130,7 +170,8 @@ async def _do_post_to_raid_log(
             thread = await bot.fetch_channel(thread_id)
         if discord_user_id and stored_message_id:
             try:
-                await thread.get_partial_message(stored_message_id).edit(content=log_message)
+                edited = await thread.get_partial_message(stored_message_id).edit(content=log_message)
+                await _safe_save_log_ref(edited.id)
                 return
             except discord.NotFound:
                 pass
@@ -140,22 +181,21 @@ async def _do_post_to_raid_log(
             except Exception as e:
                 logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
                 allow_new_post = False
-        if discord_user_id and bot.user:
-            # Mentions may appear as either <@id> or <@!id> depending on context/client.
-            mention_a = f"<@{discord_user_id}>"
-            mention_b = f"<@!{discord_user_id}>"
+        if discord_user_id:
+            token = _user_log_identity_token(raid_id, discord_user_id)
+            bot_user_id = bot.user.id if bot.user else None
             async for msg in thread.history(limit=_RAID_LOG_HISTORY_SCAN_LIMIT):
-                if msg.author.id != bot.user.id:
+                if bot_user_id and msg.author.id != bot_user_id:
                     continue
-                if mention_a not in msg.content and mention_b not in msg.content:
+                if token not in msg.content:
                     continue
                 await msg.edit(content=log_message)
-                await _save_log_ref(msg.id)
+                await _safe_save_log_ref(msg.id)
                 return
         if not allow_new_post:
             return
         sent = await thread.send(log_message)
-        await _save_log_ref(sent.id)
+        await _safe_save_log_ref(sent.id)
     except Exception as e:
         logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
 

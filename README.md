@@ -246,6 +246,15 @@ Players can sign up for raids directly in Discord using three methods:
 2. **Text message** – Post character lines in the format `CharName / Class / Spec / GS` in the raid channel. The bot registers the character and signs you up automatically.
 3. **Bot DM** – DM the bot with character lines to register a character (does not auto-sign-up for a raid).
 
+### Manual verification: per-user log message upsert
+
+Use this quick check to validate that rapid status changes mutate a single log-thread post per user:
+
+1. Open an active raid and its sign-up log thread.
+2. With one test user, perform this sequence quickly: **Sign Up** → **Tentative** → **Withdraw** → **Sign Up**.
+3. Verify that the thread still has only one bot log message for that user (same message edited repeatedly, not new posts each time).
+4. Repeat with another user in parallel to confirm each user keeps exactly one mutable message.
+
 ---
 
 ## Project Structure

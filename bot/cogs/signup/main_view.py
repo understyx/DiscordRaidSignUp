@@ -10,7 +10,7 @@ from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
 from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupStatus
 from .char_helpers import _chars_to_dicts, _group_chars_by_name
-from .log_thread import _post_to_raid_log
+from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
 from .views import SignupCharacterSelectView, TextSignupModal
 
@@ -251,7 +251,13 @@ class SignupView(discord.ui.View):
 
         if removed:
             await interaction.response.send_message("✅ Withdrawn from the raid.", ephemeral=True)
-            log_message = f"❌ {interaction.user.mention} withdrew from the raid."
+            log_message = format_user_raid_log_message(
+                raid_id=raid_id,
+                discord_user_id=interaction.user.id,
+                user_mention=interaction.user.mention,
+                emoji="❌",
+                action="withdrew from the raid",
+            )
             await _post_to_raid_log(
                 interaction.client,
                 raid_id,
