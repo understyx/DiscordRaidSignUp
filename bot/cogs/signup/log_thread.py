@@ -74,7 +74,6 @@ async def _post_to_raid_log(
     """Post to the raid log thread, editing an existing per-user message when possible."""
     if discord_user_id:
         log_message = _ensure_user_log_identity_token(log_message, raid_id, discord_user_id)
-    if discord_user_id:
         async with _get_log_post_lock(raid_id, discord_user_id):
             await _do_post_to_raid_log(
                 bot, raid_id, log_message,
