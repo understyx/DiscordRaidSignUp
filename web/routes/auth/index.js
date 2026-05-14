@@ -2,8 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
-const pool = require('../db');
-const { resolveIsAdmin } = require('./adminCheck');
+const pool = require('../../db');
+const { resolveIsAdmin } = require('../adminCheck');
 
 const router = express.Router();
 

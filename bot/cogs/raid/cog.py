@@ -227,5 +227,4 @@ class RaidCog(commands.Cog):
         await interaction.response.send_modal(CreateRaidModal())
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(RaidCog(bot))
+
