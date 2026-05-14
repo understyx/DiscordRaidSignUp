@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 import discord
+from sqlalchemy import text
 
 from bot.db import get_session
 from db.models import Raid, RaidLogMessage
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of log-thread messages to scan for an existing per-user entry.
 _RAID_LOG_HISTORY_SCAN_LIMIT = 10000
+_RAID_LOG_TOKEN_PREFIX = "[raid-log:"
 
 # Per-(raid_id, discord_user_id) locks that serialize concurrent _post_to_raid_log
 # calls for the same user+raid, preventing race conditions that would cause
@@ -31,6 +33,36 @@ def _get_log_post_lock(raid_id: int, discord_user_id: int) -> asyncio.Lock:
     return _log_post_locks.setdefault(key, asyncio.Lock())
 
 
+def _user_log_identity_token(raid_id: int, discord_user_id: int) -> str:
+    return f"{_RAID_LOG_TOKEN_PREFIX}{raid_id}:{discord_user_id}]"
+
+
+def _ensure_user_log_identity_token(log_message: str, raid_id: int, discord_user_id: int) -> str:
+    token = _user_log_identity_token(raid_id, discord_user_id)
+    if token in log_message:
+        return log_message
+    return f"{log_message}\n{token}"
+
+
+def format_user_raid_log_message(
+    *,
+    raid_id: int,
+    discord_user_id: int,
+    user_mention: str,
+    emoji: str,
+    action: str,
+    raid_name: Optional[str] = None,
+    detail_lines: Optional[list[str]] = None,
+) -> str:
+    raid_part = f" for **{raid_name}**" if raid_name else ""
+    header = f"{emoji} {user_mention} {action}{raid_part}"
+    if detail_lines:
+        message = f"{header}:\n" + "\n".join(detail_lines)
+    else:
+        message = header
+    return _ensure_user_log_identity_token(message, raid_id, discord_user_id)
+
+
 async def _post_to_raid_log(
     bot: discord.Client,
     raid_id: int,
@@ -40,6 +72,8 @@ async def _post_to_raid_log(
     thread_id: Optional[int] = None,
 ):
     """Post to the raid log thread, editing an existing per-user message when possible."""
+    if discord_user_id:
+        log_message = _ensure_user_log_identity_token(log_message, raid_id, discord_user_id)
     if discord_user_id:
         async with _get_log_post_lock(raid_id, discord_user_id):
             await _do_post_to_raid_log(
@@ -102,22 +136,26 @@ async def _do_post_to_raid_log(
         def _save():
             session = get_session()
             try:
-                row = (
-                    session.query(RaidLogMessage)
-                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
-                    .first()
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO raid_log_messages (
+                            raid_id, discord_user_id, discord_thread_id, discord_message_id
+                        ) VALUES (
+                            :raid_id, :discord_user_id, :discord_thread_id, :discord_message_id
+                        )
+                        ON DUPLICATE KEY UPDATE
+                            discord_thread_id = VALUES(discord_thread_id),
+                            discord_message_id = VALUES(discord_message_id)
+                        """
+                    ),
+                    {
+                        "raid_id": raid_id,
+                        "discord_user_id": discord_user_id,
+                        "discord_thread_id": thread_id,
+                        "discord_message_id": message_id,
+                    },
                 )
-                if row is None:
-                    row = RaidLogMessage(
-                        raid_id=raid_id,
-                        discord_user_id=discord_user_id,
-                        discord_thread_id=thread_id,
-                        discord_message_id=message_id,
-                    )
-                    session.add(row)
-                else:
-                    row.discord_thread_id = thread_id
-                    row.discord_message_id = message_id
                 session.commit()
             finally:
                 session.close()
@@ -131,6 +169,7 @@ async def _do_post_to_raid_log(
         if discord_user_id and stored_message_id:
             try:
                 await thread.get_partial_message(stored_message_id).edit(content=log_message)
+                await _save_log_ref(stored_message_id)
                 return
             except discord.NotFound:
                 pass
@@ -140,14 +179,12 @@ async def _do_post_to_raid_log(
             except Exception as e:
                 logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
                 allow_new_post = False
-        if discord_user_id and bot.user:
-            # Mentions may appear as either <@id> or <@!id> depending on context/client.
-            mention_a = f"<@{discord_user_id}>"
-            mention_b = f"<@!{discord_user_id}>"
+        if discord_user_id:
+            token = _user_log_identity_token(raid_id, discord_user_id)
             async for msg in thread.history(limit=_RAID_LOG_HISTORY_SCAN_LIMIT):
-                if msg.author.id != bot.user.id:
+                if bot.user and msg.author.id != bot.user.id:
                     continue
-                if mention_a not in msg.content and mention_b not in msg.content:
+                if token not in msg.content:
                     continue
                 await msg.edit(content=log_message)
                 await _save_log_ref(msg.id)
