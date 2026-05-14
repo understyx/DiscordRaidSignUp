@@ -8,10 +8,11 @@ import discord
 
 from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
-from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupStatus
+from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupStatus, SignupType
 from .char_helpers import _chars_to_dicts, _group_chars_by_name
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
+from .parser import format_gs
 from .views import SignupCharacterSelectView, TextSignupModal
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ class SignupView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Sign Up",
+        label="Sign up",
         style=discord.ButtonStyle.success,
         custom_id="signup:multi",
         emoji="✅",
@@ -105,67 +106,11 @@ class SignupView(discord.ui.View):
         await self._start_signup_flow(interaction, SignupStatus.signed)
 
     @discord.ui.button(
-        label="Tentative",
-        style=discord.ButtonStyle.primary,
-        custom_id="signup:tentative",
-        emoji="❓",
-        row=0,
-    )
-    async def btn_tentative(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._start_signup_flow(interaction, SignupStatus.tentative)
-
-    @discord.ui.button(
-        label="Sign Up on Website",
-        style=discord.ButtonStyle.secondary,
-        custom_id="signup:website",
-        emoji="🌐",
-        row=1,
-    )
-    async def btn_website(self, interaction: discord.Interaction, button: discord.ui.Button):
-        raid_id = self._get_raid_id(interaction)
-        if raid_id is None:
-            await interaction.response.send_message(
-                "❌ Could not determine raid ID from this message.", ephemeral=True
-            )
-            return
-
-        loop = asyncio.get_event_loop()
-
-        def _fetch_raid():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                if raid is None:
-                    return None, None, None
-                guild = session.get(BotGuild, raid.guild_id) if raid.guild_id else None
-                subdomain = guild.subdomain if guild else None
-                return raid.guild_id, raid.guild_raid_number, subdomain
-            finally:
-                session.close()
-
-        guild_id, guild_raid_number, subdomain = await loop.run_in_executor(None, _fetch_raid)
-
-        if BASE_DOMAIN and guild_raid_number:
-            # Use subdomain URL: {subdomain or guild_id}.{BASE_DOMAIN}/raids/{guild_raid_number}
-            slug = subdomain if subdomain else str(guild_id)
-            protocol = "https" if "https" in WEB_BASE_URL else "http"
-            url = f"{protocol}://{slug}.{BASE_DOMAIN}/raids/{guild_raid_number}"
-        elif guild_id is not None and guild_raid_number:
-            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{guild_id}/{guild_raid_number}"
-        else:
-            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"
-
-        await interaction.response.send_message(
-            f"🌐 Sign up for this raid on the website: {url}",
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="Text Sign Up",
+        label="Sign up (Text)",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:show_characters",
         emoji="📋",
-        row=1,
+        row=0,
     )
     async def btn_show_characters(self, interaction: discord.Interaction, button: discord.ui.Button):
         raid_id = self._get_raid_id(interaction)
@@ -219,11 +164,173 @@ class SignupView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Withdraw",
+        label="Sign up (Website)",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:website",
+        emoji="🌐",
+        row=0,
+    )
+    async def btn_website(self, interaction: discord.Interaction, button: discord.ui.Button):
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
+        loop = asyncio.get_event_loop()
+
+        def _fetch_raid():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                if raid is None:
+                    return None, None, None
+                guild = session.get(BotGuild, raid.guild_id) if raid.guild_id else None
+                subdomain = guild.subdomain if guild else None
+                return raid.guild_id, raid.guild_raid_number, subdomain
+            finally:
+                session.close()
+
+        guild_id, guild_raid_number, subdomain = await loop.run_in_executor(None, _fetch_raid)
+
+        if BASE_DOMAIN and guild_raid_number:
+            # Use subdomain URL: {subdomain or guild_id}.{BASE_DOMAIN}/raids/{guild_raid_number}
+            slug = subdomain if subdomain else str(guild_id)
+            protocol = "https" if "https" in WEB_BASE_URL else "http"
+            url = f"{protocol}://{slug}.{BASE_DOMAIN}/raids/{guild_raid_number}"
+        elif guild_id is not None and guild_raid_number:
+            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{guild_id}/{guild_raid_number}"
+        else:
+            url = f"{WEB_BASE_URL.rstrip('/')}/raids/{raid_id}"
+
+        await interaction.response.send_message(
+            f"🌐 Sign up for this raid on the website: {url}",
+            ephemeral=True,
+        )
+
+    async def _change_status(
+        self,
+        interaction: discord.Interaction,
+        new_status: SignupStatus,
+    ):
+        """Change the status of all existing signups for this user+raid to new_status."""
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        def _update():
+            session = get_session()
+            try:
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                if not signups:
+                    return None, []
+
+                for signup in signups:
+                    signup.status = new_status
+                session.commit()
+
+                grouped: dict[str, dict] = {}
+                for signup in signups:
+                    char = signup.character
+                    if char is None:
+                        continue
+                    key = char.char_name.lower()
+                    if key not in grouped:
+                        grouped[key] = {
+                            "char_name": char.char_name,
+                            "char_class": char.char_class or "?",
+                            "specs": [],
+                            "note": signup.note,
+                        }
+                    star = " ⭐" if signup.signup_type == SignupType.prio_character else ""
+                    grouped[key]["specs"].append(
+                        f"{char.spec or '?'}{star} GS {format_gs(char.gearscore or 0.0)}"
+                    )
+
+                bullets = []
+                for key, d in grouped.items():
+                    note_str = f" 💬 *{d['note']}*" if d.get("note") else ""
+                    bullets.append(
+                        f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
+                    )
+                return len(signups), bullets
+            finally:
+                session.close()
+
+        result = await loop.run_in_executor(None, _update)
+        count, bullets = result
+
+        if count is None:
+            await interaction.response.send_message(
+                "❌ You are not signed up for this raid. Use **Sign up** first.",
+                ephemeral=True,
+            )
+            return
+
+        if new_status == SignupStatus.signed:
+            emoji = "✅"
+            action = "is coming"
+            reply = "✅ Status updated: **I'm coming**!"
+        else:
+            emoji = "❓"
+            action = "is tentative"
+            reply = "❓ Status updated: **I'm tentative**!"
+
+        await interaction.response.send_message(reply, ephemeral=True)
+
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=discord_user_id,
+            user_mention=interaction.user.mention,
+            emoji=emoji,
+            action=action,
+            detail_lines=bullets,
+        )
+        await _post_to_raid_log(
+            interaction.client,
+            raid_id,
+            log_message,
+            discord_user_id=discord_user_id,
+        )
+        await update_raid_embed(interaction.client, raid_id)
+
+    @discord.ui.button(
+        label="I'm coming",
+        style=discord.ButtonStyle.success,
+        custom_id="signup:coming",
+        emoji="✅",
+        row=1,
+    )
+    async def btn_coming(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._change_status(interaction, SignupStatus.signed)
+
+    @discord.ui.button(
+        label="I'm tentative",
+        style=discord.ButtonStyle.primary,
+        custom_id="signup:status_tentative",
+        emoji="❓",
+        row=1,
+    )
+    async def btn_status_tentative(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._change_status(interaction, SignupStatus.tentative)
+
+    @discord.ui.button(
+        label="Not coming",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:withdraw",
         emoji="❌",
-        row=0,
+        row=1,
     )
     async def btn_withdraw(self, interaction: discord.Interaction, button: discord.ui.Button):
         raid_id = self._get_raid_id(interaction)
