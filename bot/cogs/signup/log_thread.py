@@ -14,6 +14,22 @@ logger = logging.getLogger(__name__)
 # Maximum number of log-thread messages to scan for an existing per-user entry.
 _RAID_LOG_HISTORY_SCAN_LIMIT = 10000
 
+# Per-(raid_id, discord_user_id) locks that serialize concurrent _post_to_raid_log
+# calls for the same user+raid, preventing race conditions that would cause
+# duplicate messages when two coroutines both find no existing post before either
+# has had a chance to save its newly-sent message ID.
+# Growth is naturally bounded by the number of unique (raid, user) combinations
+# that have ever interacted with the log thread during the bot's lifetime.
+_log_post_locks: dict[tuple[int, int], asyncio.Lock] = {}
+
+
+def _get_log_post_lock(raid_id: int, discord_user_id: int) -> asyncio.Lock:
+    """Return (creating if necessary) the asyncio.Lock for a given raid+user pair."""
+    key = (raid_id, discord_user_id)
+    # setdefault is a single atomic dict operation: it only stores the new Lock
+    # when the key is absent, so concurrent lookups always share the same instance.
+    return _log_post_locks.setdefault(key, asyncio.Lock())
+
 
 async def _post_to_raid_log(
     bot: discord.Client,
@@ -24,6 +40,30 @@ async def _post_to_raid_log(
     thread_id: Optional[int] = None,
 ):
     """Post to the raid log thread, editing an existing per-user message when possible."""
+    if discord_user_id:
+        async with _get_log_post_lock(raid_id, discord_user_id):
+            await _do_post_to_raid_log(
+                bot, raid_id, log_message,
+                discord_user_id=discord_user_id,
+                thread_id=thread_id,
+            )
+    else:
+        await _do_post_to_raid_log(
+            bot, raid_id, log_message,
+            discord_user_id=None,
+            thread_id=thread_id,
+        )
+
+
+async def _do_post_to_raid_log(
+    bot: discord.Client,
+    raid_id: int,
+    log_message: str,
+    *,
+    discord_user_id: Optional[int] = None,
+    thread_id: Optional[int] = None,
+):
+    """Internal implementation – call _post_to_raid_log instead."""
     loop = asyncio.get_event_loop()
     stored_message_id: Optional[int] = None
     allow_new_post = True
@@ -46,7 +86,12 @@ async def _post_to_raid_log(
             finally:
                 session.close()
 
-        thread_id, stored_message_id = await loop.run_in_executor(None, _get_log_refs)
+        try:
+            thread_id, stored_message_id = await loop.run_in_executor(None, _get_log_refs)
+        except Exception as e:
+            logger.warning(f"Failed to look up log refs for raid {raid_id}: {e}")
+            return
+
     if not thread_id:
         return
 
