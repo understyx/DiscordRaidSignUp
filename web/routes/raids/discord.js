@@ -8,6 +8,7 @@ const pool = require('../../db');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const RAID_LOG_HISTORY_SCAN_LIMIT = 10000;
+const RAID_LOG_TOKEN_PREFIX = '[raid-log:';
 let CACHED_BOT_USER_ID = null;
 
 async function postToDiscordChannel(channelId, payload) {
@@ -102,7 +103,19 @@ async function fetchDiscordBotUserId() {
   }
 }
 
-async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
+function userLogIdentityToken(raidId, discordUserId) {
+  return `${RAID_LOG_TOKEN_PREFIX}${raidId}:${discordUserId}]`;
+}
+
+function ensureUserLogIdentityToken(message, raidId, discordUserId) {
+  const content = String(message || '');
+  const token = userLogIdentityToken(raidId, discordUserId);
+  if (content.includes(token)) return content;
+  return `${content}\n${token}`;
+}
+
+async function findExistingRaidUserLogMessageId(threadId, raidId, discordUserId) {
+  const token = userLogIdentityToken(raidId, discordUserId);
   const mentionA = `<@${discordUserId}>`;
   const mentionB = `<@!${discordUserId}>`;
   const botUserId = await fetchDiscordBotUserId();
@@ -125,6 +138,8 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
     for (const msg of msgs) {
       if (!msg.author || String(msg.author.id) !== botUserId) continue;
       const content = String(msg.content || '');
+      if (content.includes(token)) return msg.id;
+      // Backward-compat fallback for legacy rows/messages created before tokenization.
       if (!content.includes(mentionA) && !content.includes(mentionB)) continue;
       return msg.id;
     }
@@ -162,11 +177,13 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
   const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
   if (!threadId) return;
   let allowPostFallback = true;
+  let finalMessage = String(message || '');
 
   if (discordUserId) {
+    finalMessage = ensureUserLogIdentityToken(finalMessage, raidId, discordUserId);
     const storedMessageId = await getStoredRaidUserLogMessageId(raidId, discordUserId);
     if (storedMessageId) {
-      const editStoredResult = await editDiscordMessage(threadId, storedMessageId, { content: message });
+      const editStoredResult = await editDiscordMessage(threadId, storedMessageId, { content: finalMessage });
       if (editStoredResult.ok) {
         return;
       }
@@ -176,9 +193,9 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       }
     }
 
-    const existingMessageId = await findExistingRaidUserLogMessageId(threadId, discordUserId);
+    const existingMessageId = await findExistingRaidUserLogMessageId(threadId, raidId, discordUserId);
     if (existingMessageId) {
-      const editResult = await editDiscordMessage(threadId, existingMessageId, { content: message });
+      const editResult = await editDiscordMessage(threadId, existingMessageId, { content: finalMessage });
       if (!editResult.ok) {
         console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
         if (!isDiscordNotFound(editResult)) {
@@ -193,7 +210,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
 
   if (!allowPostFallback) return;
 
-  const postResult = await postToDiscordChannel(threadId, { content: message });
+  const postResult = await postToDiscordChannel(threadId, { content: finalMessage });
   if (!postResult.ok) {
     console.warn(`[log-thread] Failed to post to log thread ${threadId}: ${postResult.reason}`);
     return;
