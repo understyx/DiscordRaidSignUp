@@ -618,14 +618,17 @@ class EditNotesModal(discord.ui.Modal):
                     .all()
                 )
                 statuses = {signup.status for signup in signups}
-                if statuses == {SignupStatus.tentative}:
+                if not statuses:
+                    log_status = None
+                elif statuses == {SignupStatus.tentative}:
                     log_status = SignupStatus.tentative
-                elif statuses:
+                elif SignupStatus.signed in statuses:
                     # If data is mixed, prefer signed so we don't incorrectly
                     # downgrade the visible status to tentative.
                     log_status = SignupStatus.signed
                 else:
-                    log_status = None
+                    # Fallback for unexpected status values; preserve a non-tentative display.
+                    log_status = SignupStatus.signed
                 for signup in signups:
                     char = signup.character
                     if char is None:
@@ -674,6 +677,9 @@ class EditNotesModal(discord.ui.Modal):
         if log_status == SignupStatus.tentative:
             log_emoji = "❓"
             log_action = "is tentative"
+        elif log_status == SignupStatus.signed:
+            log_emoji = "✅"
+            log_action = "is coming"
         else:
             log_emoji = "✅"
             log_action = "is coming"
