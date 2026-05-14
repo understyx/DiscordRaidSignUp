@@ -2,6 +2,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../../db');
 const { requireAdmin, popFlash } = require('../helpers');
+const { isDevFullAdminEnabled, setDevFullAdminEnabled } = require('../../server/runtimeFlags');
 const {
   _WOW_CLASSES,
   _CLASS_SPEC_ROLES,
@@ -12,13 +13,13 @@ const {
 } = require('./seedHelpers');
 
 const router = express.Router();
+const DEV_USER_ID = process.env.DEV_USER_ID || '';
 
 // lowercase class names used for spec aliases management
 const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
 
 function isDeveloper(req) {
-  const devUserId = process.env.DEV_USER_ID || '';
-  return !!devUserId && !!req.session.user_id && req.session.user_id === devUserId;
+  return !!DEV_USER_ID && !!req.session.user_id && req.session.user_id === DEV_USER_ID;
 }
 
 // POST /admin/dev-full-admin/toggle — developer-only live runtime toggle (web process)
@@ -28,15 +29,10 @@ router.post('/dev-full-admin/toggle', express.urlencoded({ extended: false }), (
     return res.redirect('/raids');
   }
 
-  const current = String(process.env.DEV_FULL_ADMIN || '').toLowerCase() === 'true';
+  const current = isDevFullAdminEnabled();
   const next = !current;
-  process.env.DEV_FULL_ADMIN = next ? 'true' : 'false';
+  setDevFullAdminEnabled(next);
   req.session.flash = `✅ Developer full-admin is now ${next ? 'enabled' : 'disabled'} (website runtime).`;
-
-  const returnTo = String(req.body.return_to || '/raids');
-  if (returnTo.startsWith('/') && !returnTo.startsWith('//') && !/[\r\n]/.test(returnTo)) {
-    return res.redirect(returnTo);
-  }
   return res.redirect('/raids');
 });
 

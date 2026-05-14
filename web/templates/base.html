@@ -34,7 +34,6 @@
             <ul class="dropdown-menu">
               <li>
                 <form method="post" action="/admin/dev-full-admin/toggle" class="px-3 py-2">
-                  <input type="hidden" name="return_to" value="/raids" />
                   <button type="submit" class="btn btn-sm {% if dev_full_admin %}btn-success{% else %}btn-outline-warning{% endif %} w-100">
                     {% if dev_full_admin %}Disable{% else %}Enable{% endif %} Website Dev Full Admin
                   </button>

@@ -13,13 +13,13 @@
 
 const fetch = require('node-fetch');
 const pool = require('../db');
+const { isDevFullAdminEnabled } = require('../server/runtimeFlags');
 
 const DISCORD_API = 'https://discord.com/api/v10';
+const DEV_USER_ID = process.env.DEV_USER_ID || '';
 
 function isDevFullAdmin(userId) {
-  const devUserId = process.env.DEV_USER_ID || '';
-  const devFullAdmin = String(process.env.DEV_FULL_ADMIN || '').toLowerCase() === 'true';
-  return devFullAdmin && !!devUserId && String(userId) === devUserId;
+  return isDevFullAdminEnabled() && !!DEV_USER_ID && String(userId) === DEV_USER_ID;
 }
 
 /**
