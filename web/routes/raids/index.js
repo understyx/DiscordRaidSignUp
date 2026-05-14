@@ -29,6 +29,7 @@ const EMOJIS = JSON.parse(
 
 const router = express.Router();
 const SIGNUP_NOTE_MAX_LENGTH = 500;
+const SIGNUP_STATUS_SIGNED = 'signed';
 
 // Re-evaluate admin status on every request so that role changes take effect
 // immediately without requiring users to log out and back in.
@@ -183,9 +184,22 @@ router.get('/', async (req, res) => {
   const isAdmin = await resolveIsAdmin(userId, activeGuildId);
 
   const [raids] = await pool.query(
-    `SELECT r.*, COUNT(DISTINCT s.discord_user_id) AS signup_count
+    `SELECT
+       r.*,
+       COALESCE(SUM(CASE WHEN u.user_status = 'coming' THEN 1 ELSE 0 END), 0) AS signup_coming_count,
+       COALESCE(SUM(CASE WHEN u.user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS signup_tentative_count
      FROM raids r
-     LEFT JOIN signups s ON s.raid_id = r.id
+     LEFT JOIN (
+       SELECT
+         raid_id,
+         discord_user_id,
+         CASE
+           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
+           ELSE 'tentative'
+         END AS user_status
+       FROM signups
+       GROUP BY raid_id, discord_user_id
+     ) u ON u.raid_id = r.id
      WHERE r.guild_id = ?
      GROUP BY r.id
      ORDER BY r.id DESC`,
@@ -194,7 +208,8 @@ router.get('/', async (req, res) => {
 
   const raidData = raids.map(r => ({
     raid: r,
-    signup_count: r.signup_count,
+    signup_coming_count: r.signup_coming_count,
+    signup_tentative_count: r.signup_tentative_count,
     can_manage: isAdmin,
   }));
 
@@ -408,11 +423,25 @@ router.get('/:raid_number', async (req, res) => {
 
   const raidId = raid.id;
 
-  const [[{ player_count }]] = await pool.query(
-    'SELECT COUNT(DISTINCT discord_user_id) AS player_count FROM signups WHERE raid_id = ?',
+  const [[counts]] = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN user_status = 'coming' THEN 1 ELSE 0 END), 0) AS coming_count,
+       COALESCE(SUM(CASE WHEN user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS tentative_count
+     FROM (
+       SELECT
+         discord_user_id,
+         CASE
+           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
+           ELSE 'tentative'
+         END AS user_status
+       FROM signups
+       WHERE raid_id = ?
+       GROUP BY discord_user_id
+     ) users`,
     [raidId]
   );
-  raid.signup_count = player_count;
+  raid.signup_coming_count = counts.coming_count;
+  raid.signup_tentative_count = counts.tentative_count;
 
   const [userChars] = await pool.query(
     'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0',

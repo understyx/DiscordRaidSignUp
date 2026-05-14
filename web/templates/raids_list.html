@@ -39,7 +39,7 @@
             <span class="badge badge-locked">🔒 Locked</span>
           {% endif %}
         </td>
-        <td>{{ item.signup_count }} / {{ r.max_size }}</td>
+        <td>{{ item.signup_coming_count }} + {{ item.signup_tentative_count }}</td>
         <td>
           <a href="/raids/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
           {% if item.can_manage %}
