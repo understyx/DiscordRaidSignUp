@@ -169,6 +169,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
   const raid = rows[0];
   const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
   if (!threadId) return;
+  let allowPostFallback = true;
 
   if (discordUserId) {
     const storedMessageId = await getStoredRaidUserLogMessageId(raidId, discordUserId);
@@ -179,7 +180,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       }
       console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);
       if (!isDiscordNotFound(editStoredResult)) {
-        return;
+        allowPostFallback = false;
       }
     }
 
@@ -189,7 +190,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       if (!editResult.ok) {
         console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
         if (!isDiscordNotFound(editResult)) {
-          return;
+          allowPostFallback = false;
         }
       } else {
         await upsertRaidUserLogMessageId(raidId, discordUserId, threadId, existingMessageId);
@@ -197,6 +198,8 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       }
     }
   }
+
+  if (!allowPostFallback) return;
 
   const postResult = await postToDiscordChannel(threadId, { content: message });
   if (!postResult.ok) {
