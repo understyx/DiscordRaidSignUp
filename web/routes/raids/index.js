@@ -429,14 +429,14 @@ router.get('/:raid_number', async (req, res) => {
 
   // Build a map of character_id -> signup for easy template lookup
   const mySignupMap = {};
-  const mySignupNoteByName = {};
+  const mySignupNoteByCharId = {};
   for (const row of mySignupRows) {
     mySignupMap[String(row.character_id)] = {
       signup_type: row.signup_type,
       status: row.status,
     };
     if (row.note) {
-      mySignupNoteByName[String(row.char_name || '').toLowerCase()] = row.note;
+      mySignupNoteByCharId[String(row.character_id)] = row.note;
     }
   }
 
@@ -447,7 +447,7 @@ router.get('/:raid_number', async (req, res) => {
       charGroupMap[c.char_name] = {
         char_name: c.char_name,
         char_class: c.char_class,
-        note: mySignupNoteByName[String(c.char_name || '').toLowerCase()] || '',
+        note: '',
         specs: [],
       };
     }
@@ -457,6 +457,9 @@ router.get('/:raid_number', async (req, res) => {
       gearscore: c.gearscore,
       role: c.role,
     });
+    if (!charGroupMap[c.char_name].note && mySignupNoteByCharId[String(c.id)]) {
+      charGroupMap[c.char_name].note = mySignupNoteByCharId[String(c.id)];
+    }
   }
   const userCharGroups = Object.values(charGroupMap).map(g => {
     const is_signed = g.specs.some(s => mySignupMap[String(s.id)] !== undefined);
