@@ -451,13 +451,11 @@ async def _post_to_raid_log(
                         discord_user_id=discord_user_id,
                         discord_thread_id=thread_id,
                         discord_message_id=message_id,
-                        updated_at=datetime.datetime.now(datetime.timezone.utc),
                     )
                     session.add(row)
                 else:
                     row.discord_thread_id = thread_id
                     row.discord_message_id = message_id
-                    row.updated_at = datetime.datetime.now(datetime.timezone.utc)
                 session.commit()
             finally:
                 session.close()
@@ -477,7 +475,7 @@ async def _post_to_raid_log(
             except discord.NotFound:
                 pass
             except discord.Forbidden as e:
-                logger.info(f"Missing access to edit raid log message {stored_message_id}: {e}")
+                logger.warning(f"Missing access to edit raid log message {stored_message_id}: {e}")
             except Exception as e:
                 logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
         if discord_user_id and bot.user:
