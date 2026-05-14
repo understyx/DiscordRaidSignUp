@@ -186,11 +186,8 @@ class SignupPrioritySelectView(discord.ui.View):
         return text
 
     async def _on_add_note(self, interaction: discord.Interaction):
-        parent_message = interaction.message
-        note_view = NoteCharSelectView(parent_view=self, parent_message=parent_message)
-        await interaction.response.edit_message(
-            content="Select a character to add a note to:",
-            view=note_view,
+        await interaction.response.send_modal(
+            AllNotesModal(parent_view=self, parent_message=interaction.message)
         )
 
     async def _on_priority_select(self, interaction: discord.Interaction):
@@ -470,133 +467,66 @@ class SignupCharacterSelectView(discord.ui.View):
         )
 
 
-class NoteCharSelectView(discord.ui.View):
+class AllNotesModal(discord.ui.Modal):
     """
-    Shown when the player clicks "Add Note to Character" inside
-    SignupPrioritySelectView.  Lets the player pick one character then open a
-    modal to type a note.  After the modal is submitted the parent view is
-    restored with the note stored.
+    Modal that lets the player set notes for all selected characters at once.
+
+    Pre-populated with lines of the form::
+
+        CharName: existing note
+        CharName2:
+
+    On submit, each line that starts with a known character name (case-insensitive)
+    has everything after the first ``:`` treated as that character's note.
+    Lines not starting with a recognised character name are silently ignored.
+    A blank note (nothing after ``:``) clears any existing note for that character.
     """
 
-    def __init__(
-        self,
-        parent_view: SignupPrioritySelectView,
-        parent_message: discord.Message,
-    ):
-        super().__init__(timeout=120)
-        self.parent_view = parent_view
-        self.parent_message = parent_message
-        self.selected_name: str | None = None
-        # Deduplicate selected_chars by character name so the player picks a
-        # character (not a per-spec row) when adding a note.
-        seen: set[str] = set()
-        self.unique_chars: list[dict] = []
-        for c in parent_view.selected_chars:
-            key = c["char_name"].lower()
-            if key not in seen:
-                seen.add(key)
-                self.unique_chars.append(c)
-        self._build_components()
-
-    def _build_components(self):
-        self.clear_items()
-        options = [
-            discord.SelectOption(
-                label=c["char_name"][:100],
-                description=_char_display_description(c)[:100],
-                value=c["char_name"].lower(),
-                default=c["char_name"].lower() == self.selected_name,
-                emoji="📝" if c["char_name"].lower() in self.parent_view.notes else None,
-            )
-            for c in self.unique_chars
-        ]
-        char_select = discord.ui.Select(
-            placeholder="Select a character…",
-            options=options,
-            min_values=1,
-            max_values=1,
-            row=0,
-        )
-        char_select.callback = self._on_select
-        self.add_item(char_select)
-
-        write_btn = discord.ui.Button(
-            label="Write Note",
-            style=discord.ButtonStyle.primary,
-            emoji="✏️",
-            disabled=self.selected_name is None,
-            row=1,
-        )
-        write_btn.callback = self._on_write_note
-        self.add_item(write_btn)
-
-        back_btn = discord.ui.Button(
-            label="Back",
-            style=discord.ButtonStyle.secondary,
-            row=1,
-        )
-        back_btn.callback = self._on_back
-        self.add_item(back_btn)
-
-    async def _on_select(self, interaction: discord.Interaction):
-        self.selected_name = interaction.data["values"][0]
-        self._build_components()
-        await interaction.response.edit_message(view=self)
-
-    async def _on_write_note(self, interaction: discord.Interaction):
-        char = next((c for c in self.unique_chars if c["char_name"].lower() == self.selected_name), None)
-        if char is None:
-            await interaction.response.send_message("❌ Could not find the selected character.", ephemeral=True)
-            return
-        existing_note = self.parent_view.notes.get(self.selected_name, "")
-        modal = NoteModal(
-            char=char,
-            parent_view=self.parent_view,
-            parent_message=self.parent_message,
-            existing_note=existing_note,
-        )
-        await interaction.response.send_modal(modal)
-
-    async def _on_back(self, interaction: discord.Interaction):
-        self.parent_view._build_components()
-        await interaction.response.edit_message(
-            content=self.parent_view._step_text(),
-            view=self.parent_view,
-        )
-
-
-class NoteModal(discord.ui.Modal):
-    """Modal for entering or editing a character note during select-based sign-up."""
-
-    note_input = discord.ui.TextInput(
-        label="Note",
-        style=discord.TextStyle.short,
-        placeholder="Enter a note for this character (leave blank to clear)…",
+    notes_input = discord.ui.TextInput(
+        label="Character: note (one per line)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Character1: your note here\nCharacter2:\nLeave blank after : to clear a note.",
         required=False,
-        max_length=200,
+        max_length=2000,
     )
 
     def __init__(
         self,
-        char: dict,
         parent_view: SignupPrioritySelectView,
         parent_message: discord.Message,
-        existing_note: str = "",
     ):
-        super().__init__(title=f"Note for {char['char_name'][:35]}")
-        self.char = char
+        super().__init__(title="Add Notes to Characters")
         self.parent_view = parent_view
         self.parent_message = parent_message
-        self.note_input.default = existing_note
+        # Collect unique character names in display order
+        seen: set[str] = set()
+        self.unique_char_names: list[str] = []
+        for c in parent_view.selected_chars:
+            key = c["char_name"].lower()
+            if key not in seen:
+                seen.add(key)
+                self.unique_char_names.append(c["char_name"])
+        # Pre-populate with existing notes
+        lines = []
+        for name in self.unique_char_names:
+            existing = parent_view.notes.get(name.lower(), "")
+            lines.append(f"{name}: {existing}" if existing else f"{name}:")
+        self.notes_input.default = "\n".join(lines)
 
     async def on_submit(self, interaction: discord.Interaction):
-        note = self.note_input.value.strip()
-        name_key = self.char["char_name"].lower()
-        if note:
-            self.parent_view.notes[name_key] = note
-        else:
-            self.parent_view.notes.pop(name_key, None)
-        # Restore the SignupPrioritySelectView with updated note content
+        known = {name.lower(): name for name in self.unique_char_names}
+        for line in self.notes_input.value.splitlines():
+            if ":" not in line:
+                continue
+            name_part, _, note_part = line.partition(":")
+            name_key = name_part.strip().lower()
+            if name_key not in known:
+                continue
+            note = note_part.strip()
+            if note:
+                self.parent_view.notes[name_key] = note
+            else:
+                self.parent_view.notes.pop(name_key, None)
         self.parent_view._build_components()
         try:
             await self.parent_message.edit(
@@ -604,9 +534,5 @@ class NoteModal(discord.ui.Modal):
                 view=self.parent_view,
             )
         except Exception:
-            logger.warning("Failed to edit parent message after note modal submission")
-        action = "saved" if note else "cleared"
-        await interaction.response.send_message(
-            f"✅ Note {action} for **{self.char['char_name']}**.",
-            ephemeral=True,
-        )
+            logger.warning("Failed to edit parent message after notes modal submission")
+        await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
