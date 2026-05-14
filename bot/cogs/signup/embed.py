@@ -11,6 +11,7 @@ from .parser import format_gs
 
 logger = logging.getLogger(__name__)
 DEFAULT_SIGNUP_STATUS = "signed"
+VALID_SIGNUP_STATUSES = frozenset({DEFAULT_SIGNUP_STATUS, "tentative"})
 
 
 def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
@@ -21,7 +22,7 @@ def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
             continue
         uid = str(user_id)
         status = s.get("status") or DEFAULT_SIGNUP_STATUS
-        if status not in {"tentative", DEFAULT_SIGNUP_STATUS}:
+        if status not in VALID_SIGNUP_STATUSES:
             status = DEFAULT_SIGNUP_STATUS
         statuses_by_user.setdefault(uid, set()).add(status)
 

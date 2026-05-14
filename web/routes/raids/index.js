@@ -29,6 +29,7 @@ const EMOJIS = JSON.parse(
 
 const router = express.Router();
 const SIGNUP_NOTE_MAX_LENGTH = 500;
+const SIGNUP_STATUS_SIGNED = 'signed';
 
 // Re-evaluate admin status on every request so that role changes take effect
 // immediately without requiring users to log out and back in.
@@ -193,7 +194,7 @@ router.get('/', async (req, res) => {
          raid_id,
          discord_user_id,
          CASE
-           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'coming'
+           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
            ELSE 'tentative'
          END AS user_status
        FROM signups
@@ -430,7 +431,7 @@ router.get('/:raid_number', async (req, res) => {
        SELECT
          discord_user_id,
          CASE
-           WHEN SUM(CASE WHEN status = 'signed' THEN 1 ELSE 0 END) > 0 THEN 'coming'
+           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
            ELSE 'tentative'
          END AS user_status
        FROM signups
