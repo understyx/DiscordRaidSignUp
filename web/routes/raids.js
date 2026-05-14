@@ -16,6 +16,7 @@ const EMOJIS = JSON.parse(
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const RAID_LOG_HISTORY_SCAN_LIMIT = 1000;
+let CACHED_BOT_USER_ID = null;
 
 async function postToDiscordChannel(channelId, payload) {
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -87,14 +88,33 @@ async function fetchDiscordMessagesPage(channelId, limit, before = null) {
   }
 }
 
+async function fetchDiscordBotUserId() {
+  if (CACHED_BOT_USER_ID) return CACHED_BOT_USER_ID;
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+  try {
+    const resp = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    CACHED_BOT_USER_ID = data && data.id ? String(data.id) : null;
+    return CACHED_BOT_USER_ID;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
   const mentionA = `<@${discordUserId}>`;
   const mentionB = `<@!${discordUserId}>`;
+  const botUserId = await fetchDiscordBotUserId();
+  if (!botUserId) return null;
   let before = null;
-  let scanned = 0;
+  let scannedBotMessages = 0;
 
-  while (scanned < RAID_LOG_HISTORY_SCAN_LIMIT) {
-    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scanned);
+  while (scannedBotMessages < RAID_LOG_HISTORY_SCAN_LIMIT) {
+    const pageSize = Math.min(100, RAID_LOG_HISTORY_SCAN_LIMIT - scannedBotMessages);
     const page = await fetchDiscordMessagesPage(threadId, pageSize, before);
     if (!page.ok) {
       console.warn(`[log-thread] Failed to read thread history ${threadId}: ${page.reason}`);
@@ -104,9 +124,9 @@ async function findExistingRaidUserLogMessageId(threadId, discordUserId) {
     if (msgs.length === 0) break;
 
     for (const msg of msgs) {
-      scanned += 1;
+      if (!msg.author || String(msg.author.id) !== botUserId) continue;
+      scannedBotMessages += 1;
       const content = String(msg.content || '');
-      if (!msg.author || !msg.author.bot) continue;
       if (!content.includes(mentionA) && !content.includes(mentionB)) continue;
       return msg.id;
     }
