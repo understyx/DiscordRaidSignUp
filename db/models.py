@@ -88,6 +88,18 @@ class Signup(Base):
     character = relationship("Character", back_populates="signups")
 
 
+class RaidLogMessage(Base):
+    __tablename__ = "raid_log_messages"
+    raid_id = Column(Integer, ForeignKey("raids.id"), primary_key=True)
+    discord_user_id = Column(BigInteger, primary_key=True)
+    discord_thread_id = Column(BigInteger, nullable=False)
+    discord_message_id = Column(BigInteger, nullable=False)
+    updated_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    raid = relationship("Raid")
+
+
 class Composition(Base):
     __tablename__ = "compositions"
     id = Column(Integer, primary_key=True, autoincrement=True)
