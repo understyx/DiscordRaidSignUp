@@ -13,7 +13,7 @@ from .char_helpers import _chars_to_dicts, _group_chars_by_name
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
 from .parser import format_gs
-from .views import SignupCharacterSelectView, TextSignupModal
+from .views import SignupCharacterSelectView, TextSignupModal, EditNotesModal
 
 logger = logging.getLogger(__name__)
 
@@ -376,3 +376,57 @@ class SignupView(discord.ui.View):
             await interaction.response.send_message(
                 "You were not signed up for this raid.", ephemeral=True
             )
+
+    @discord.ui.button(
+        label="Edit notes",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:edit_notes",
+        emoji="📝",
+        row=2,
+    )
+    async def btn_edit_notes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        def _fetch():
+            session = get_session()
+            try:
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                if not signups:
+                    return None
+                seen: set[str] = set()
+                result: list[tuple[str, str]] = []
+                for signup in signups:
+                    char = signup.character
+                    if char is None:
+                        continue
+                    key = char.char_name.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        result.append((char.char_name, signup.note or ""))
+                return result
+            finally:
+                session.close()
+
+        char_name_notes = await loop.run_in_executor(None, _fetch)
+
+        if char_name_notes is None:
+            await interaction.response.send_message(
+                "❌ You are not signed up for this raid.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(
+            EditNotesModal(raid_id, discord_user_id, char_name_notes)
+        )

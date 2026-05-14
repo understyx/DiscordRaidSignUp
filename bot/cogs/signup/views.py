@@ -186,6 +186,11 @@ class SignupPrioritySelectView(discord.ui.View):
         return text
 
     async def _on_add_note(self, interaction: discord.Interaction):
+        if interaction.message is None:
+            await interaction.response.send_message(
+                "❌ Could not open notes editor (message context unavailable).", ephemeral=True
+            )
+            return
         await interaction.response.send_modal(
             AllNotesModal(parent_view=self, parent_message=interaction.message)
         )
@@ -407,6 +412,15 @@ class SignupCharacterSelectView(discord.ui.View):
         next_step_btn.callback = self._on_next_step
         self.add_item(next_step_btn)
 
+        all_chars_btn = discord.ui.Button(
+            label="All characters",
+            style=discord.ButtonStyle.secondary,
+            emoji="⚡",
+            row=2,
+        )
+        all_chars_btn.callback = self._on_all_chars
+        self.add_item(all_chars_btn)
+
     def _update_selected_from_page(self, selected_values: list[str]):
         """Replace selections for the current page's items based on the select interaction."""
         start = self.page * _SELECT_PAGE_SIZE
@@ -460,6 +474,15 @@ class SignupCharacterSelectView(discord.ui.View):
             return
 
         view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
+        await interaction.response.edit_message(
+            content=view._step_text(),
+            embed=None,
+            view=view,
+        )
+
+    async def _on_all_chars(self, interaction: discord.Interaction):
+        self.selected_ids = {c["id"] for c in self.char_dicts}
+        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status)
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
@@ -535,4 +558,75 @@ class AllNotesModal(discord.ui.Modal):
             )
         except Exception:
             logger.warning("Failed to edit parent message after notes modal submission")
+        await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
+
+
+class EditNotesModal(discord.ui.Modal):
+    """
+    Modal opened from the "Edit notes" embed button.
+
+    Pre-populated with each signed-up character's existing note.
+    On submit, parses ``CharName: note`` lines and writes the updated notes
+    back to the database.  Lines not starting with a recognised character name
+    are silently ignored; a blank value after ``:`` clears any existing note.
+    """
+
+    notes_input = discord.ui.TextInput(
+        label="Character: note (one per line)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Character1: your note here\nCharacter2:\nLeave blank after : to clear a note.",
+        required=False,
+        max_length=2000,
+    )
+
+    def __init__(
+        self,
+        raid_id: int,
+        discord_user_id: int,
+        char_name_notes: list[tuple[str, str]],  # [(char_name, existing_note), ...]
+    ):
+        super().__init__(title="Edit Character Notes")
+        self.raid_id = raid_id
+        self.discord_user_id = discord_user_id
+        # Map lower-case name → display name
+        self.known: dict[str, str] = {name.lower(): name for name, _ in char_name_notes}
+        lines = [f"{name}: {note}" if note else f"{name}:" for name, note in char_name_notes]
+        self.notes_input.default = "\n".join(lines)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        updates: dict[str, str | None] = {}
+        for line in self.notes_input.value.splitlines():
+            if ":" not in line:
+                continue
+            name_part, _, note_part = line.partition(":")
+            name_key = name_part.strip().lower()
+            if name_key not in self.known:
+                continue
+            updates[name_key] = note_part.strip() or None
+
+        loop = asyncio.get_event_loop()
+        raid_id = self.raid_id
+        discord_user_id = self.discord_user_id
+
+        def _save():
+            session = get_session()
+            try:
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                for signup in signups:
+                    char = signup.character
+                    if char is None:
+                        continue
+                    key = char.char_name.lower()
+                    if key in updates:
+                        signup.note = updates[key]
+                session.commit()
+            finally:
+                session.close()
+
+        await loop.run_in_executor(None, _save)
+        await update_raid_embed(interaction.client, raid_id)
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
