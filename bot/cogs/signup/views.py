@@ -636,7 +636,7 @@ class EditNotesModal(discord.ui.Modal):
                             "char_name": char.char_name,
                             "char_class": char.char_class or "?",
                             "specs": [],
-                            "note": signup.note or "",
+                            "note": signup.note or None,
                         }
                     elif not grouped[key]["note"] and signup.note:
                         grouped[key]["note"] = signup.note
@@ -647,7 +647,7 @@ class EditNotesModal(discord.ui.Modal):
 
                 bullets = []
                 for d in grouped.values():
-                    note_str = f" 💬 *{d['note']}*" if d.get("note") else ""
+                    note_str = f" 💬 *{d['note']}*" if d["note"] else ""
                     bullets.append(
                         f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}{note_str}"
                     )
