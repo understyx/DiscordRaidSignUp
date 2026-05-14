@@ -67,7 +67,15 @@
                   {% if loop.index == 1 %}
                   <td class="fw-bold cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
                       onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
-                      style="cursor:pointer">{{ group.char_name }}</td>
+                      style="cursor:pointer">
+                    <span>{{ group.char_name }}</span>
+                    <button type="button"
+                            class="note-toggle-btn{% if group.note %} note-toggle-active{% endif %}"
+                            data-group-idx="{{ group_idx }}"
+                            aria-expanded="{{ 'true' if group.note else 'false' }}"
+                            aria-label="Toggle note for {{ group.char_name }}"
+                            onclick="event.stopPropagation(); toggleNoteRow('{{ group_idx }}')">📝</button>
+                  </td>
                   <td class="cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
                       onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
                       style="cursor:pointer">{{ group.char_class or "—" }}</td>
@@ -82,6 +90,18 @@
                             aria-label="Mark {{ s.spec or group.char_name }} as priority">⭐</button>
                   </td>
                 </tr>
+                {% if loop.last %}
+                <tr class="signup-note-row{% if not group.note %} d-none{% endif %}" data-group-idx="{{ group_idx }}">
+                  <td colspan="5">
+                    <textarea class="form-control form-control-sm signup-note-input"
+                              data-group-idx="{{ group_idx }}"
+                              rows="2"
+                              maxlength="{{ signup_note_max_length }}"
+                              placeholder="Optional note for {{ group.char_name }} (applies to selected specs for this character)."
+                              oninput="handleNoteInput('{{ group_idx }}')">{{ group.note or '' }}</textarea>
+                  </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
                 {% endfor %}
               </tbody>
@@ -140,9 +160,21 @@
               <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
                 <div class="card p-2 h-100 border-secondary">
                   <div class="d-flex justify-content-between align-items-center">
-                    <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}</span>
+                    <span class="fw-bold cls-{{ cls_key }}">
+                      {{ c.char_name }}
+                      {% if c.note %}
+                      <button type="button"
+                              class="my-note-toggle"
+                              aria-expanded="false"
+                              aria-label="Toggle note for {{ c.char_name }}"
+                              onclick="toggleMySignupNote(this)">📝</button>
+                      {% endif %}
+                    </span>
                     <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                   </div>
+                  {% if c.note %}
+                  <div class="my-signup-note d-none mt-1">{{ c.note }}</div>
+                  {% endif %}
                   <small class="text-muted">
                     {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
                   </small>
@@ -166,9 +198,21 @@
             <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
               <div class="card p-2 h-100 border-secondary">
                 <div class="d-flex justify-content-between align-items-center">
-                  <span class="fw-bold cls-{{ cls_key }} tentative-name">{{ c.char_name }}</span>
+                  <span class="fw-bold cls-{{ cls_key }} tentative-name">
+                    {{ c.char_name }}
+                    {% if c.note %}
+                    <button type="button"
+                            class="my-note-toggle"
+                            aria-expanded="false"
+                            aria-label="Toggle note for {{ c.char_name }}"
+                            onclick="toggleMySignupNote(this)">📝</button>
+                    {% endif %}
+                  </span>
                   <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
                 </div>
+                {% if c.note %}
+                <div class="my-signup-note d-none mt-1">{{ c.note }}</div>
+                {% endif %}
                 <small class="text-muted">
                   {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
                 </small>
