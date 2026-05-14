@@ -13,46 +13,14 @@
 
 const express = require('express');
 const fetch = require('node-fetch');
-const pool = require('../db');
-const { requireAdmin, popFlash, currentUser } = require('./helpers');
+const pool = require('../../db');
+const { requireAdmin, popFlash, currentUser } = require('../helpers');
+const { fetchGuildRoles, RESERVED_SLUGS } = require('./helpers');
 
-const DISCORD_API = 'https://discord.com/api/v10';
 const VALID_RESTRICTIONS = ['all', 'guild_member', 'role'];
 
 const router = express.Router();
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Fetch guild roles from Discord API.
- * Returns [] on any error so the UI degrades gracefully.
- */
-async function fetchGuildRoles(guildId) {
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!guildId || !botToken) return [];
-
-  try {
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!resp.ok) {
-      console.warn(`[guild-settings] Discord API ${resp.status} fetching roles for guild ${guildId}`);
-      return [];
-    }
-    const roles = await resp.json();
-    return roles
-      .filter(r => r.id !== guildId) // exclude @everyone
-      .sort((a, b) => b.position - a.position)
-      .map(r => ({
-        id: r.id,
-        name: r.name,
-        color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
-      }));
-  } catch (err) {
-    console.warn('[guild-settings] Failed to fetch guild roles:', err.message || err);
-    return [];
-  }
-}
 
 // ── GET /guild-settings ───────────────────────────────────────────────────────
 
@@ -202,12 +170,6 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), asyn
 });
 
 // ── POST /guild-settings/subdomain ────────────────────────────────────────────
-
-const RESERVED_SLUGS = new Set([
-  'www', 'api', 'admin', 'mail', 'auth', 'login', 'app', 'static', 'assets',
-  'cdn', 'ftp', 'smtp', 'pop', 'imap', 'dev', 'staging', 'test', 'beta',
-  'help', 'support', 'status', 'blog', 'shop', 'store',
-]);
 
 router.post('/subdomain', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;

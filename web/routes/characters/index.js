@@ -1,6 +1,6 @@
 const express = require('express');
-const pool = require('../db');
-const { BIS_GS, parseGS, requireLogin, popFlash, currentUser } = require('./helpers');
+const pool = require('../../db');
+const { BIS_GS, parseGS, requireLogin, popFlash, currentUser } = require('../helpers');
 
 const router = express.Router();
 
