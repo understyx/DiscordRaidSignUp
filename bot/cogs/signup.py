@@ -12,7 +12,7 @@ from discord.ext import commands
 from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
 from bot.class_utils import normalize_class, KNOWN_CLASSES
-from db.models import BotGuild, Character, DiscordUser, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from db.models import BotGuild, Character, DiscordUser, Raid, RaidLogMessage, RaidStatus, Signup, SignupStatus, SignupType
 
 logger = logging.getLogger(__name__)
 
@@ -409,23 +409,77 @@ async def _post_to_raid_log(
 ):
     """Post to the raid log thread, editing an existing per-user message when possible."""
     loop = asyncio.get_event_loop()
+    stored_message_id: Optional[int] = None
 
-    if thread_id is None:
-        def _get_thread_id():
+    if thread_id is None or discord_user_id:
+        def _get_log_refs():
             session = get_session()
             try:
                 raid = session.get(Raid, raid_id)
-                return raid.discord_log_thread_id if raid else None
+                resolved_thread_id = thread_id or (raid.discord_log_thread_id if raid else None)
+                resolved_message_id = None
+                if discord_user_id:
+                    row = (
+                        session.query(RaidLogMessage)
+                        .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                        .first()
+                    )
+                    resolved_message_id = row.discord_message_id if row else None
+                return resolved_thread_id, resolved_message_id
             finally:
                 session.close()
 
-        thread_id = await loop.run_in_executor(None, _get_thread_id)
+        thread_id, stored_message_id = await loop.run_in_executor(None, _get_log_refs)
     if not thread_id:
         return
+
+    async def _save_log_ref(message_id: int):
+        if not discord_user_id:
+            return
+
+        def _save():
+            session = get_session()
+            try:
+                row = (
+                    session.query(RaidLogMessage)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .first()
+                )
+                if row is None:
+                    row = RaidLogMessage(
+                        raid_id=raid_id,
+                        discord_user_id=discord_user_id,
+                        discord_thread_id=thread_id,
+                        discord_message_id=message_id,
+                        updated_at=datetime.datetime.now(datetime.timezone.utc),
+                    )
+                    session.add(row)
+                else:
+                    row.discord_thread_id = thread_id
+                    row.discord_message_id = message_id
+                    row.updated_at = datetime.datetime.now(datetime.timezone.utc)
+                session.commit()
+            finally:
+                session.close()
+
+        await loop.run_in_executor(None, _save)
+
     try:
         thread = bot.get_channel(thread_id)
         if thread is None:
             thread = await bot.fetch_channel(thread_id)
+        if discord_user_id and stored_message_id:
+            try:
+                existing_msg = await thread.fetch_message(stored_message_id)
+                await existing_msg.edit(content=log_message)
+                await _save_log_ref(existing_msg.id)
+                return
+            except discord.NotFound:
+                pass
+            except discord.Forbidden as e:
+                logger.info(f"Missing access to edit raid log message {stored_message_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
         if discord_user_id and bot.user:
             # Mentions may appear as either <@id> or <@!id> depending on context/client.
             mention_a = f"<@{discord_user_id}>"
@@ -436,8 +490,10 @@ async def _post_to_raid_log(
                 if mention_a not in msg.content and mention_b not in msg.content:
                     continue
                 await msg.edit(content=log_message)
+                await _save_log_ref(msg.id)
                 return
-        await thread.send(log_message)
+        sent = await thread.send(log_message)
+        await _save_log_ref(sent.id)
     except Exception as e:
         logger.warning(f"Failed to post to raid log thread {thread_id}: {e}")
 
