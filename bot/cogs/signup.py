@@ -410,6 +410,7 @@ async def _post_to_raid_log(
     """Post to the raid log thread, editing an existing per-user message when possible."""
     loop = asyncio.get_event_loop()
     stored_message_id: Optional[int] = None
+    allow_new_post = True
 
     if thread_id is None or discord_user_id:
         def _get_log_refs():
@@ -474,8 +475,10 @@ async def _post_to_raid_log(
                 pass
             except discord.Forbidden as e:
                 logger.warning(f"Missing access to edit raid log message {stored_message_id}: {e}")
+                allow_new_post = False
             except Exception as e:
                 logger.warning(f"Failed to edit stored raid log message {stored_message_id}: {e}")
+                allow_new_post = False
         if discord_user_id and bot.user:
             # Mentions may appear as either <@id> or <@!id> depending on context/client.
             mention_a = f"<@{discord_user_id}>"
@@ -488,6 +491,8 @@ async def _post_to_raid_log(
                 await msg.edit(content=log_message)
                 await _save_log_ref(msg.id)
                 return
+        if not allow_new_post:
+            return
         sent = await thread.send(log_message)
         await _save_log_ref(sent.id)
     except Exception as e:

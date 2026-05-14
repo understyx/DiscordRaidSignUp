@@ -59,12 +59,16 @@ async function editDiscordMessage(channelId, messageId, payload) {
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      return { ok: false, reason: `Discord API ${resp.status}: ${text}` };
+      return { ok: false, status: resp.status, reason: `Discord API ${resp.status}: ${text}` };
     }
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: `Network error: ${err.message}` };
   }
+}
+
+function isDiscordNotFound(result) {
+  return Boolean(result && !result.ok && result.status === 404);
 }
 
 async function fetchDiscordMessagesPage(channelId, limit, before = null) {
@@ -165,6 +169,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
   const raid = rows[0];
   const threadId = raid && raid.discord_log_thread_id ? String(raid.discord_log_thread_id) : null;
   if (!threadId) return;
+  let allowPostFallback = true;
 
   if (discordUserId) {
     const storedMessageId = await getStoredRaidUserLogMessageId(raidId, discordUserId);
@@ -174,6 +179,9 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
         return;
       }
       console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);
+      if (!isDiscordNotFound(editStoredResult)) {
+        allowPostFallback = false;
+      }
     }
 
     const existingMessageId = await findExistingRaidUserLogMessageId(threadId, discordUserId);
@@ -181,12 +189,17 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
       const editResult = await editDiscordMessage(threadId, existingMessageId, { content: message });
       if (!editResult.ok) {
         console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
+        if (!isDiscordNotFound(editResult)) {
+          allowPostFallback = false;
+        }
       } else {
         await upsertRaidUserLogMessageId(raidId, discordUserId, threadId, existingMessageId);
         return;
       }
     }
   }
+
+  if (!allowPostFallback) return;
 
   const postResult = await postToDiscordChannel(threadId, { content: message });
   if (!postResult.ok) {
