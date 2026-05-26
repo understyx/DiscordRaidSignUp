@@ -22,14 +22,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
     characters = discord.ui.TextInput(
         label="Character Sign-up Lines",
         style=discord.TextStyle.paragraph,
-        placeholder=(
-            "One character per line. Format:\n"
-            "  CharName / Class / Spec / GS [/ Spec2 / GS2 ...]\n\n"
-            "Examples:\n"
-            "  Puredecay / Hunter / Survival / 6.5k / MM / 6.5k / BM / 6.2k\n"
-            "  Thrall / Shaman / Enh / 6200\n"
-            "  Arthas / Death Knight / Frost / BiS / Unholy / 6500"
-        ),
+        placeholder="CharName / Class / Spec / GS [/ Spec2 / GS2] — one character per line",
         required=True,
         max_length=2000,
     )
