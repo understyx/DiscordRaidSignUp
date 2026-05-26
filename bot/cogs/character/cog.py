@@ -12,13 +12,127 @@ from discord.ext import commands
 from bot.db import get_session
 from bot.class_utils import normalize_class
 from bot.cogs.signup import parse_gs, format_gs
+from bot.cogs.signup.parser import _parse_character_lines
 from db.models import Character, CharacterSuggestion, SuggestionStatus
 
 logger = logging.getLogger(__name__)
 
+
+class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
+    characters = discord.ui.TextInput(
+        label="Character Sign-up Lines",
+        style=discord.TextStyle.paragraph,
+        placeholder=(
+            "One character per line. Format:\n"
+            "  CharName / Class / Spec / GS [/ Spec2 / GS2 ...]\n\n"
+            "Examples:\n"
+            "  Puredecay / Hunter / Survival / 6.5k / MM / 6.5k / BM / 6.2k\n"
+            "  Thrall / Shaman / Enh / 6200\n"
+            "  Arthas / Death Knight / Frost / BiS / Unholy / 6500"
+        ),
+        required=True,
+        max_length=2000,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_user_id = interaction.user.id
+        loop = asyncio.get_event_loop()
+
+        parsed, parse_errors = _parse_character_lines(self.characters.value)
+
+        if parse_errors or not parsed:
+            if not parse_errors:
+                parse_errors.append(
+                    "No valid character lines found. "
+                    "Expected format: `CharName / Class / Spec / GS`"
+                )
+            error_text = "❌ Failed to parse character(s):\n" + "\n".join(parse_errors)
+            await interaction.followup.send(error_text, ephemeral=True)
+            return
+
+        def _upsert_all():
+            session = get_session()
+            try:
+                char_spec_info: dict[str, dict] = {}
+                for entry in parsed:
+                    char = (
+                        session.query(Character)
+                        .filter_by(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                            spec=entry["spec"],
+                        )
+                        .first()
+                    )
+                    if char is None:
+                        char = Character(
+                            discord_user_id=discord_user_id,
+                            char_name=entry["char_name"],
+                        )
+                        session.add(char)
+                    char.char_class = entry["char_class"]
+                    char.spec = entry["spec"]
+                    char.gearscore = entry["gearscore"]
+                    char.is_deleted = False
+                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    session.flush()
+
+                    key = entry["char_name"].lower()
+                    if key not in char_spec_info:
+                        char_spec_info[key] = {
+                            "char_name": entry["char_name"],
+                            "char_class": entry["char_class"],
+                            "specs": [],
+                        }
+                    char_spec_info[key]["specs"].append(
+                        {"spec": entry["spec"], "gearscore": entry["gearscore"]}
+                    )
+
+                session.commit()
+                return char_spec_info
+            finally:
+                session.close()
+
+        try:
+            char_spec_info = await loop.run_in_executor(None, _upsert_all)
+        except Exception:
+            logger.exception("Failed to save characters for user %s", discord_user_id)
+            await interaction.followup.send(
+                "❌ An error occurred while saving your character(s). Please try again later.",
+                ephemeral=True,
+            )
+            return
+
+        lines = []
+        for data in char_spec_info.values():
+            spec_parts = [
+                f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
+            ]
+            lines.append(
+                f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
+            )
+
+        embed = discord.Embed(
+            title="✅ Character(s) added!",
+            description="\n".join(lines),
+            color=discord.Color.green(),
+        )
+        embed.set_footer(text="Use /my_characters to see all your characters.")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 class CharacterCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    # ── /addcharacters ─────────────────────────────────────────────────────
+    @app_commands.command(
+        name="addcharacters",
+        description="Add one or more characters via a text form.",
+    )
+    async def addcharacters(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(AddCharactersModal())
 
     # ── /addcharacter ──────────────────────────────────────────────────────
     @app_commands.command(
