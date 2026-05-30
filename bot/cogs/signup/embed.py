@@ -6,6 +6,7 @@ import logging
 import os
 
 import discord
+from sqlalchemy import text
 
 from bot.db import get_session
 from db.models import Raid, Signup
@@ -33,13 +34,61 @@ def _class_emoji(class_name: str) -> str:
     return _EMOJIS.get(class_name, {}).get("emoji", "")
 
 
-def _spec_emoji(class_name: str, spec_name: str) -> str:
+def _canonical_spec(class_name: str, spec_name: str, alias_map: dict) -> str:
+    """Resolve *spec_name* to a canonical spec string using *alias_map*.
+
+    The map has the shape ``{class_lower: {alias_lower: canonical}}``, matching
+    the ``spec_aliases`` DB table loaded by the website.  Mirrors the logic of
+    ``getCanonicalSpec`` in ``web/routes/raids/embeds.js``.
+    """
+    if not spec_name:
+        return spec_name
+    cls_key = class_name.lower().strip().replace("-", " ")
+    # Use only the first spec when the DB has comma-separated values (e.g. Warmane).
+    first = spec_name.split(",")[0].strip()
+    s = first.lower()
+    cls_map = alias_map.get(cls_key, {})
+    # 1. Exact alias match.
+    if s in cls_map:
+        return cls_map[s]
+    # 2. Spec text contains a known alias (e.g. "Balance Druid" contains "balance").
+    for alias, canonical in cls_map.items():
+        if alias in s:
+            return canonical
+    return first
+
+
+def _spec_emoji(class_name: str, spec_name: str, alias_map: dict | None = None) -> str:
     specs = _EMOJIS.get(class_name, {}).get("specs", {})
-    # Case-insensitive lookup: try exact match first, then title-cased.
+    if not spec_name:
+        return ""
+
+    # Resolve slang / alias to canonical spec name when the alias map is available.
+    canonical = (
+        _canonical_spec(class_name, spec_name, alias_map)
+        if alias_map
+        else spec_name.split(",")[0].strip()
+    )
+
+    # Try exact match with the canonical name (case-sensitive, then title-cased).
+    result = specs.get(canonical) or specs.get(canonical.title(), "")
+    if result:
+        return result
+
+    # Some canonicals carry a parenthetical role qualifier (e.g. "Blood (Tank)",
+    # "Feral (Cat)").  Strip it and try just the base name so we can still show
+    # at least the correct spec icon when the emoji JSON has a simpler key.
+    if "(" in canonical:
+        base = canonical.split("(")[0].strip()
+        result = specs.get(base) or specs.get(base.title(), "")
+        if result:
+            return result
+
+    # Final fallback: case-insensitive lookup on the raw spec_name as before.
     return specs.get(spec_name) or specs.get(spec_name.title(), "")
 
 
-def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
+def _build_signup_embed(raid: dict, signups: list, spec_aliases: dict | None = None) -> discord.Embed:
     # ── per-user status aggregation (for the summary line) ──────────────────
     statuses_by_user: dict[str, set[str]] = {}
     for s in signups:
@@ -106,7 +155,7 @@ def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
 
         lines: list[str] = []
         for spec, entries in spec_groups.items():
-            s_emoji = _spec_emoji(class_name, spec)
+            s_emoji = _spec_emoji(class_name, spec, alias_map=spec_aliases)
             prefix = f"{s_emoji} " if s_emoji else ""
             for char_name, status in entries:
                 suffix = " ❓" if status == "tentative" else ""
@@ -136,7 +185,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         try:
             raid = session.get(Raid, raid_id)
             if raid is None:
-                return None, None
+                return None, None, {}
             sups = session.query(Signup).filter_by(raid_id=raid_id).all()
             signup_data = []
             for s in sups:
@@ -159,11 +208,23 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
                 "discord_message_id": raid.discord_message_id,
                 "discord_channel_id": raid.discord_channel_id,
             }
-            return raid_data, signup_data
+            # Load spec aliases for canonical spec name resolution.
+            try:
+                alias_rows = session.execute(
+                    text("SELECT char_class, alias, canonical FROM spec_aliases")
+                ).fetchall()
+                spec_aliases: dict = {}
+                for char_class, alias, canonical in alias_rows:
+                    cls_key = (char_class or "").lower().strip()
+                    alias_key = (alias or "").lower().strip()
+                    spec_aliases.setdefault(cls_key, {})[alias_key] = canonical
+            except Exception:
+                spec_aliases = {}
+            return raid_data, signup_data, spec_aliases
         finally:
             session.close()
 
-    raid_data, signup_data = await loop.run_in_executor(None, _fetch)
+    raid_data, signup_data, spec_aliases = await loop.run_in_executor(None, _fetch)
 
     if not raid_data or not raid_data.get("discord_message_id"):
         return
@@ -173,7 +234,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         if channel is None:
             channel = await bot.fetch_channel(raid_data["discord_channel_id"])
         msg = await channel.fetch_message(raid_data["discord_message_id"])
-        embed = _build_signup_embed(raid_data, signup_data)
+        embed = _build_signup_embed(raid_data, signup_data, spec_aliases=spec_aliases)
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)
