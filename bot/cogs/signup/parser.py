@@ -214,7 +214,7 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
             # spec name segment, or star in this GS segment.
             spec_is_prio = last_has_star or spec_has_star or gs_has_star
 
-            spec = spec_raw.replace("⭐", "").replace("★", "").strip()
+            spec = spec_raw.replace("⭐", "").replace("★", "").strip().title()
 
             try:
                 gs, segment_note = _parse_gs_and_note(gs_raw)
