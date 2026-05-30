@@ -1,20 +1,44 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 
 import discord
 
 from bot.db import get_session
 from db.models import Raid, Signup
-from .parser import format_gs
 
 logger = logging.getLogger(__name__)
 DEFAULT_SIGNUP_STATUS = "signed"
 VALID_SIGNUP_STATUSES = frozenset({DEFAULT_SIGNUP_STATUS, "tentative"})
 
+# ---------------------------------------------------------------------------
+# Emoji data loaded once at import time from emojis.json at the repo root.
+# ---------------------------------------------------------------------------
+_EMOJIS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "emojis.json")
+try:
+    with open(_EMOJIS_PATH, "r", encoding="utf-8") as _f:
+        _EMOJIS: dict = json.load(_f)
+except Exception:
+    _EMOJIS = {}
+
+# Ordered list of class names taken directly from emojis.json so that the
+# class fields always appear in a consistent order in the embed.
+_CLASS_ORDER: list[str] = list(_EMOJIS.keys())
+
+
+def _class_emoji(class_name: str) -> str:
+    return _EMOJIS.get(class_name, {}).get("emoji", "")
+
+
+def _spec_emoji(class_name: str, spec_name: str) -> str:
+    return _EMOJIS.get(class_name, {}).get("specs", {}).get(spec_name, "")
+
 
 def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
+    # ── per-user status aggregation (for the summary line) ──────────────────
     statuses_by_user: dict[str, set[str]] = {}
     for s in signups:
         user_id = s.get("discord_user_id")
@@ -53,9 +77,47 @@ def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
     embed.add_field(name="Status", value=f"{status_emoji} {raid['status'].capitalize()}", inline=True)
     embed.add_field(
         name="👥 Players Signed Up",
-        value=f"{coming_count} + {tentative_count}",
+        value=f"{coming_count} + {tentative_count} tentative",
         inline=False,
     )
+
+    # ── raid-helper style class / spec breakdown ─────────────────────────────
+    # Group signups: class_name → spec_name → list of (char_name, status)
+    class_spec_groups: dict[str, dict[str, list[tuple[str, str]]]] = {}
+    for s in signups:
+        char_class = s.get("char_class") or "Unknown"
+        spec = s.get("spec") or "Unknown"
+        char_name = s.get("char_name") or "?"
+        status = s.get("status") or DEFAULT_SIGNUP_STATUS
+        class_spec_groups.setdefault(char_class, {}).setdefault(spec, []).append(
+            (char_name, status)
+        )
+
+    # Emit fields in the canonical class order, then any extras at the end.
+    ordered_classes = [c for c in _CLASS_ORDER if c in class_spec_groups]
+    remaining = [c for c in class_spec_groups if c not in _CLASS_ORDER]
+
+    for class_name in ordered_classes + remaining:
+        spec_groups = class_spec_groups[class_name]
+        c_emoji = _class_emoji(class_name)
+        total = sum(len(v) for v in spec_groups.values())
+
+        lines: list[str] = []
+        for spec, entries in spec_groups.items():
+            s_emoji = _spec_emoji(class_name, spec)
+            prefix = f"{s_emoji} " if s_emoji else ""
+            for char_name, status in entries:
+                suffix = " ❓" if status == "tentative" else ""
+                lines.append(f"{prefix}{char_name}{suffix}")
+
+        field_name = f"{c_emoji} {class_name} ({total})" if c_emoji else f"{class_name} ({total})"
+        # Discord field value max is 1024 chars; truncate gracefully if needed.
+        value = "\n".join(lines)
+        if len(value) > 1024:
+            value = value[:1021] + "…"
+
+        embed.add_field(name=field_name, value=value or "—", inline=True)
+
     embed.set_footer(text=f"Raid ID: {raid['id']}")
     return embed
 
@@ -74,7 +136,16 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             if raid is None:
                 return None, None
             sups = session.query(Signup).filter_by(raid_id=raid_id).all()
-            signup_data = [{"discord_user_id": s.discord_user_id, "status": s.status.value if s.status else DEFAULT_SIGNUP_STATUS} for s in sups]
+            signup_data = []
+            for s in sups:
+                char = s.character
+                signup_data.append({
+                    "discord_user_id": s.discord_user_id,
+                    "status": s.status.value if s.status else DEFAULT_SIGNUP_STATUS,
+                    "char_name": char.char_name if char else None,
+                    "char_class": char.char_class if char else None,
+                    "spec": char.spec if char else None,
+                })
             raid_data = {
                 "id": raid.id,
                 "name": raid.name,
