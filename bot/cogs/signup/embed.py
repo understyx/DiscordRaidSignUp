@@ -96,7 +96,9 @@ def _build_signup_embed(
 ) -> discord.Embed:
     # ── per-user status & char-count aggregation ─────────────────────────────
     statuses_by_user: dict[str, set[str]] = {}
-    char_count_by_user: dict[str, int] = {}
+    # Count unique character names per user (not spec rows, since one character
+    # can sign up with multiple specs and produce multiple signup rows).
+    chars_by_user: dict[str, set[str]] = {}
     for s in signups:
         user_id = s.get("discord_user_id")
         if not user_id:
@@ -106,7 +108,9 @@ def _build_signup_embed(
         if status not in VALID_SIGNUP_STATUSES:
             status = DEFAULT_SIGNUP_STATUS
         statuses_by_user.setdefault(uid, set()).add(status)
-        char_count_by_user[uid] = char_count_by_user.get(uid, 0) + 1
+        char_name = (s.get("char_name") or "").strip().lower()
+        chars_by_user.setdefault(uid, set()).add(char_name)
+    char_count_by_user: dict[str, int] = {uid: len(chars) for uid, chars in chars_by_user.items()}
 
     coming_count = 0
     tentative_count = 0
@@ -182,10 +186,18 @@ def _build_signup_embed(
             )
 
     # ── class / spec breakdown (counts only, no character names) ────────────
+    # Canonicalize spec names via the alias map so that abbreviations like
+    # "Ret" / "Retribution" and "Disco" / "Disc" / "Discipline" are merged
+    # into a single entry with the canonical name used in emojis.json.
     class_spec_groups: dict[str, dict[str, int]] = {}
     for s in signups:
         char_class = s.get("char_class") or "Unknown"
-        spec = s.get("spec") or "Unknown"
+        spec_raw = s.get("spec") or "Unknown"
+        spec = (
+            _canonical_spec(char_class, spec_raw, spec_aliases)
+            if spec_aliases
+            else spec_raw.split(",")[0].strip()
+        )
         spec_counts = class_spec_groups.setdefault(char_class, {})
         spec_counts[spec] = spec_counts.get(spec, 0) + 1
 
