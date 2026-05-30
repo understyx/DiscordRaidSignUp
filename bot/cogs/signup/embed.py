@@ -88,9 +88,15 @@ def _spec_emoji(class_name: str, spec_name: str, alias_map: dict | None = None) 
     return specs.get(spec_name) or specs.get(spec_name.title(), "")
 
 
-def _build_signup_embed(raid: dict, signups: list, spec_aliases: dict | None = None) -> discord.Embed:
-    # ── per-user status aggregation (for the summary line) ──────────────────
+def _build_signup_embed(
+    raid: dict,
+    signups: list,
+    spec_aliases: dict | None = None,
+    user_display_names: dict | None = None,
+) -> discord.Embed:
+    # ── per-user status & char-count aggregation ─────────────────────────────
     statuses_by_user: dict[str, set[str]] = {}
+    char_count_by_user: dict[str, int] = {}
     for s in signups:
         user_id = s.get("discord_user_id")
         if not user_id:
@@ -100,6 +106,7 @@ def _build_signup_embed(raid: dict, signups: list, spec_aliases: dict | None = N
         if status not in VALID_SIGNUP_STATUSES:
             status = DEFAULT_SIGNUP_STATUS
         statuses_by_user.setdefault(uid, set()).add(status)
+        char_count_by_user[uid] = char_count_by_user.get(uid, 0) + 1
 
     coming_count = 0
     tentative_count = 0
@@ -132,17 +139,55 @@ def _build_signup_embed(raid: dict, signups: list, spec_aliases: dict | None = N
         inline=False,
     )
 
-    # ── raid-helper style class / spec breakdown ─────────────────────────────
-    # Group signups: class_name → spec_name → list of (char_name, status)
-    class_spec_groups: dict[str, dict[str, list[tuple[str, str]]]] = {}
+    # ── player list: ✅/❓ display_name (x chars) ────────────────────────────
+    # Preserve insertion order (first signup per user).
+    seen_users: list[str] = []
+    for s in signups:
+        uid = str(s.get("discord_user_id") or "")
+        if uid and uid not in seen_users:
+            seen_users.append(uid)
+
+    dn_map = user_display_names or {}
+    player_lines: list[str] = []
+    for uid in seen_users:
+        statuses = statuses_by_user.get(uid, set())
+        icon = "❓" if statuses == {"tentative"} else "✅"
+        display_name = dn_map.get(uid) or f"<@{uid}>"
+        count = char_count_by_user.get(uid, 0)
+        player_lines.append(f"{icon} {display_name} ({count} char{'s' if count != 1 else ''})")
+
+    if player_lines:
+        # Split into multiple fields if the value would exceed 1024 chars.
+        chunk: list[str] = []
+        chunk_len = 0
+        field_idx = 0
+        for line in player_lines:
+            entry = line + "\n"
+            if chunk and chunk_len + len(entry) > 1024:
+                embed.add_field(
+                    name="🧑‍🤝‍🧑 Players" if field_idx == 0 else "\u200b",
+                    value="".join(chunk).strip(),
+                    inline=False,
+                )
+                field_idx += 1
+                chunk = []
+                chunk_len = 0
+            chunk.append(entry)
+            chunk_len += len(entry)
+        if chunk:
+            embed.add_field(
+                name="🧑‍🤝‍🧑 Players" if field_idx == 0 else "\u200b",
+                value="".join(chunk).strip(),
+                inline=False,
+            )
+
+    # ── class / spec breakdown (counts only, no character names) ────────────
+    class_spec_groups: dict[str, dict[str, int]] = {}
     for s in signups:
         char_class = s.get("char_class") or "Unknown"
         spec = s.get("spec") or "Unknown"
-        char_name = s.get("char_name") or "?"
-        status = s.get("status") or DEFAULT_SIGNUP_STATUS
-        class_spec_groups.setdefault(char_class, {}).setdefault(spec, []).append(
-            (char_name, status)
-        )
+        spec_counts = class_spec_groups.setdefault(char_class, {})
+        spec_counts[spec] = spec_counts.get(spec, 0) + 1
 
     # Emit fields in the canonical class order, then any extras at the end.
     ordered_classes = [c for c in _CLASS_ORDER if c in class_spec_groups]
@@ -151,18 +196,15 @@ def _build_signup_embed(raid: dict, signups: list, spec_aliases: dict | None = N
     for class_name in ordered_classes + remaining:
         spec_groups = class_spec_groups[class_name]
         c_emoji = _class_emoji(class_name)
-        total = sum(len(v) for v in spec_groups.values())
+        total = sum(spec_groups.values())
 
         lines: list[str] = []
-        for spec, entries in spec_groups.items():
+        for spec, count in spec_groups.items():
             s_emoji = _spec_emoji(class_name, spec, alias_map=spec_aliases)
             prefix = f"{s_emoji} " if s_emoji else ""
-            for char_name, status in entries:
-                suffix = " ❓" if status == "tentative" else ""
-                lines.append(f"{prefix}{char_name}{suffix}")
+            lines.append(f"{prefix}{spec} ({count})")
 
         field_name = f"{c_emoji} {class_name} ({total})" if c_emoji else f"{class_name} ({total})"
-        # Discord field value max is 1024 chars; truncate gracefully if needed.
         value = "\n".join(lines)
         if len(value) > 1024:
             value = value[:1021] + "…"
@@ -185,7 +227,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         try:
             raid = session.get(Raid, raid_id)
             if raid is None:
-                return None, None, {}
+                return None, None, {}, {}
             sups = session.query(Signup).filter_by(raid_id=raid_id).all()
             signup_data = []
             for s in sups:
@@ -220,11 +262,29 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
                     spec_aliases.setdefault(cls_key, {})[alias_key] = canonical
             except Exception:
                 spec_aliases = {}
-            return raid_data, signup_data, spec_aliases
+            # Load discord display names for all signed-up users.
+            try:
+                user_ids = list({s.discord_user_id for s in sups if s.discord_user_id})
+                if user_ids:
+                    dn_rows = session.execute(
+                        text(
+                            "SELECT discord_user_id, display_name, username "
+                            "FROM discord_users WHERE discord_user_id IN :ids"
+                        ),
+                        {"ids": tuple(user_ids)},
+                    ).fetchall()
+                    user_display_names: dict = {
+                        str(row[0]): row[1] or row[2] for row in dn_rows
+                    }
+                else:
+                    user_display_names = {}
+            except Exception:
+                user_display_names = {}
+            return raid_data, signup_data, spec_aliases, user_display_names
         finally:
             session.close()
 
-    raid_data, signup_data, spec_aliases = await loop.run_in_executor(None, _fetch)
+    raid_data, signup_data, spec_aliases, user_display_names = await loop.run_in_executor(None, _fetch)
 
     if not raid_data or not raid_data.get("discord_message_id"):
         return
@@ -234,7 +294,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         if channel is None:
             channel = await bot.fetch_channel(raid_data["discord_channel_id"])
         msg = await channel.fetch_message(raid_data["discord_message_id"])
-        embed = _build_signup_embed(raid_data, signup_data, spec_aliases=spec_aliases)
+        embed = _build_signup_embed(raid_data, signup_data, spec_aliases=spec_aliases, user_display_names=user_display_names)
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)
