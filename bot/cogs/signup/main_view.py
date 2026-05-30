@@ -82,8 +82,29 @@ class SignupView(discord.ui.View):
             return
 
         if not char_dicts:
+            dm_text = (
+                "👋 **You have no registered characters!**\n\n"
+                "The easiest way to add your characters is to **reply to me here in DMs** "
+                "using the following format (one character per line):\n\n"
+                "```\n"
+                "CharName / CharClass / Spec1 / GS1 / Spec2 / GS2 / ... / Spec6 / GS6\n"
+                "```\n"
+                "**Example:**\n"
+                "```\n"
+                "Thrall / Shaman / Enhancement / 6200 / Restoration / 5800\n"
+                "```\n"
+                "You can list up to 6 specs per character and multiple characters at once.\n\n"
+                "Alternatively, use the `/addcharacter` or `/addcharacters` commands in the server."
+            )
+            try:
+                await interaction.user.send(dm_text)
+                dm_note = " A DM has been sent to you with instructions."
+            except discord.Forbidden:
+                dm_note = " (Could not send you a DM — please enable DMs from server members.)"
+            except Exception:
+                dm_note = ""
             await interaction.response.send_message(
-                "❌ You have no registered characters. Post a sign-up line or use `/addcharacter` first.",
+                "❌ You have no registered characters." + dm_note,
                 ephemeral=True,
             )
             return
