@@ -34,7 +34,9 @@ def _class_emoji(class_name: str) -> str:
 
 
 def _spec_emoji(class_name: str, spec_name: str) -> str:
-    return _EMOJIS.get(class_name, {}).get("specs", {}).get(spec_name, "")
+    specs = _EMOJIS.get(class_name, {}).get("specs", {})
+    # Case-insensitive lookup: try exact match first, then title-cased.
+    return specs.get(spec_name) or specs.get(spec_name.title(), "")
 
 
 def _build_signup_embed(raid: dict, signups: list) -> discord.Embed:
