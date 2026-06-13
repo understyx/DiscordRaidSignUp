@@ -12,6 +12,9 @@ const {
   sendNotificationChannelPing,
   sendDiscordDM,
   redirectToRecruitmentOAuth,
+  createApplicationChannel,
+  moveChannelToCategory,
+  sendEmbedToChannel,
 } = require('./discord');
 const {
   RESERVED_SLUGS,
@@ -707,6 +710,17 @@ router.post('/:form_id/applications/:app_id/accept', requireAdmin, async (req, r
     [req.session.user_id, appId]
   );
 
+  // Move Discord channel if exists
+  if (application.discord_channel_id) {
+    const [[settings]] = await pool.query(
+      'SELECT recruitment_category_closed_id FROM guild_settings WHERE guild_id = ?',
+      [guildId]
+    );
+    if (settings && settings.recruitment_category_closed_id) {
+      await moveChannelToCategory(application.discord_channel_id, settings.recruitment_category_closed_id);
+    }
+  }
+
   // Send acceptance DM and notification channel ping
   const guildName = req.session.active_guild_name || 'the guild';
   const acceptMsg = `🎉 Congratulations, **${application.applicant_display_name}**! Your application to **${guildName}** has been **accepted**. Welcome aboard!`;
@@ -754,6 +768,17 @@ router.post('/:form_id/applications/:app_id/reject', requireAdmin, async (req, r
       WHERE id = ?`,
     [req.session.user_id, appId]
   );
+
+  // Move Discord channel if exists
+  if (application.discord_channel_id) {
+    const [[settings]] = await pool.query(
+      'SELECT recruitment_category_closed_id FROM guild_settings WHERE guild_id = ?',
+      [guildId]
+    );
+    if (settings && settings.recruitment_category_closed_id) {
+      await moveChannelToCategory(application.discord_channel_id, settings.recruitment_category_closed_id);
+    }
+  }
 
   // Send rejection DM and notification channel ping
   const guildName = req.session.active_guild_name || 'the guild';
@@ -914,20 +939,37 @@ router.post('/:form_id/submit', async (req, res) => {
     }
   }
 
+  // Create Discord channel
+  let discordChannelId = null;
+  const chanRes = await createApplicationChannel(
+    form.guild_id,
+    req.session.recruit_discord_id,
+    req.session.recruit_username,
+    req.session.recruit_display_name
+  );
+  if (chanRes.ok) {
+    discordChannelId = chanRes.channel_id;
+  } else {
+    console.warn('[recruitment] Failed to create Discord channel:', chanRes.reason);
+  }
+
   const [appResult] = await pool.query(
     `INSERT INTO recruitment_applications
        (form_id, guild_id, applicant_discord_id, applicant_username, applicant_display_name,
-        status)
-     VALUES (?, ?, ?, ?, ?, 'pending')`,
+        status, discord_channel_id)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
     [
       formId,
       form.guild_id,
       req.session.recruit_discord_id,
       req.session.recruit_username,
       req.session.recruit_display_name,
+      discordChannelId,
     ]
   );
   const appId = appResult.insertId;
+
+  const qaForEmbed = [];
 
   for (const q of questions) {
     let answerText;
@@ -965,6 +1007,21 @@ router.post('/:form_id/submit', async (req, res) => {
       'INSERT INTO recruitment_answers (application_id, question_id, answer_text) VALUES (?, ?, ?)',
       [appId, q.id, answerText]
     );
+
+    if (q.question_type !== 'header' && q.question_type !== 'separator') {
+      qaForEmbed.push({ name: q.question_text.slice(0, 256), value: answerText.slice(0, 1024) || '(empty)' });
+    }
+  }
+
+  // Send summary embed to Discord channel if created
+  if (discordChannelId) {
+    const summaryEmbed = {
+      title: 'New Application Submitted via Web',
+      description: `Applicant: **${req.session.recruit_display_name}** (<@${req.session.recruit_discord_id}>)`,
+      color: 0x00ff00,
+      fields: qaForEmbed.slice(0, 25), // Discord limit
+    };
+    await sendEmbedToChannel(discordChannelId, summaryEmbed);
   }
 
   req.session.flash = '✅ Your application has been submitted successfully!';

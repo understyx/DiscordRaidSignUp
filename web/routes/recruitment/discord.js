@@ -98,6 +98,104 @@ function redirectToRecruitmentOAuth(req, res) {
   res.redirect(`${DISCORD_OAUTH_URL}?${params.toString()}`);
 }
 
+/**
+ * Create a private application channel in the "Status - Open" category.
+ */
+async function createApplicationChannel(guildId, userId, username, displayName) {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return { ok: false, reason: 'no bot token' };
+
+  try {
+    const pool = require('../../db');
+    const [[settings]] = await pool.query(
+      'SELECT recruitment_category_open_id FROM guild_settings WHERE guild_id = ?',
+      [guildId]
+    );
+
+    let categoryId = settings ? settings.recruitment_category_open_id : null;
+
+    // Create channel
+    const chanResp = await fetch(`${DISCORD_API}/guilds/${guildId}/channels`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: `app-${username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        type: 0, // Text channel
+        parent_id: categoryId ? String(categoryId) : null,
+        topic: `Application for ${displayName} (ID: ${userId})`,
+        permission_overwrites: [
+          { id: guildId, type: 0, deny: '1024' }, // Deny @everyone View Channel
+          { id: String(userId), type: 1, allow: '3072' }, // Allow applicant View & Send
+          { id: process.env.DISCORD_CLIENT_ID, type: 1, allow: '8' } // Allow bot Administrator (or just enough)
+        ]
+      }),
+    });
+
+    if (!chanResp.ok) {
+      const text = await chanResp.text();
+      return { ok: false, reason: `Failed to create channel: ${text}` };
+    }
+
+    const channel = await chanResp.json();
+    return { ok: true, channel_id: channel.id };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
+/**
+ * Move a channel to a different category.
+ */
+async function moveChannelToCategory(channelId, categoryId) {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return { ok: false, reason: 'no bot token' };
+
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ parent_id: categoryId ? String(categoryId) : null }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { ok: false, reason: `Failed to move channel: ${text}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
+async function sendEmbedToChannel(channelId, embed) {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return { ok: false, reason: 'no bot token' };
+
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { ok: false, reason: `Failed to send embed: ${text}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
 module.exports = {
   DISCORD_API,
   DISCORD_OAUTH_URL,
@@ -109,4 +207,7 @@ module.exports = {
   sendNotificationChannelPing,
   sendDiscordDM,
   redirectToRecruitmentOAuth,
+  createApplicationChannel,
+  moveChannelToCategory,
+  sendEmbedToChannel,
 };

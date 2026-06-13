@@ -132,6 +132,105 @@ class GuildAdminRole(Base):
     role_id = Column(BigInteger, primary_key=True)
 
 
+class SignupRestriction(str, enum.Enum):
+    all = "all"
+    guild_member = "guild_member"
+    role = "role"
+
+
+class GuildSettings(Base):
+    __tablename__ = "guild_settings"
+    guild_id = Column(BigInteger, primary_key=True)
+    signup_restriction = Column(Enum(SignupRestriction), default=SignupRestriction.all, nullable=False)
+    signup_role_id = Column(BigInteger, nullable=True)
+    recruitment_category_open_id = Column(BigInteger, nullable=True)
+    recruitment_category_closed_id = Column(BigInteger, nullable=True)
+
+
+class RecruitmentForm(Base):
+    __tablename__ = "recruitment_forms"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    slug = Column(String(100), unique=True, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by = Column(BigInteger, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    recruit_role_id = Column(BigInteger, nullable=True)
+    invite_channel_id = Column(BigInteger, nullable=True)
+    questions = relationship("RecruitmentQuestion", back_populates="form", cascade="all, delete-orphan")
+    applications = relationship("RecruitmentApplication", back_populates="form", cascade="all, delete-orphan")
+
+
+class QuestionType(str, enum.Enum):
+    text = "text"
+    textarea = "textarea"
+    select = "select"
+    radio = "radio"
+    characters = "characters"
+    checkbox = "checkbox"
+    header = "header"
+    separator = "separator"
+
+
+class ColWidth(str, enum.Enum):
+    full = "full"
+    half = "half"
+    third = "third"
+
+
+class RecruitmentQuestion(Base):
+    __tablename__ = "recruitment_questions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    form_id = Column(Integer, ForeignKey("recruitment_forms.id"), nullable=False)
+    question_text = Column(Text, nullable=False)
+    question_type = Column(Enum(QuestionType), default=QuestionType.text, nullable=False)
+    options = Column(Text, nullable=True)  # JSON string
+    is_required = Column(Boolean, default=False, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    default_value = Column(Text, nullable=True)
+    group_key = Column(String(100), nullable=True)
+    group_label = Column(String(255), nullable=True)
+    is_group_repeatable = Column(Boolean, default=False, nullable=False)
+    col_width = Column(Enum(ColWidth), default=ColWidth.full, nullable=False)
+    form = relationship("RecruitmentForm", back_populates="questions")
+
+
+class ApplicationStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+class RecruitmentApplication(Base):
+    __tablename__ = "recruitment_applications"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    form_id = Column(Integer, ForeignKey("recruitment_forms.id"), nullable=False)
+    guild_id = Column(BigInteger, nullable=False)
+    applicant_discord_id = Column(BigInteger, nullable=False)
+    applicant_username = Column(String(100), nullable=False)
+    applicant_display_name = Column(String(100), nullable=False)
+    status = Column(Enum(ApplicationStatus), default=ApplicationStatus.pending, nullable=False)
+    wants_discord_notify = Column(Boolean, default=False, nullable=False)
+    discord_invited = Column(Boolean, default=False, nullable=False)
+    discord_channel_id = Column(BigInteger, nullable=True)
+    submitted_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    reviewed_by = Column(BigInteger, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    form = relationship("RecruitmentForm", back_populates="applications")
+    answers = relationship("RecruitmentAnswer", back_populates="application", cascade="all, delete-orphan")
+
+
+class RecruitmentAnswer(Base):
+    __tablename__ = "recruitment_answers"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(Integer, ForeignKey("recruitment_applications.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("recruitment_questions.id"), nullable=False)
+    answer_text = Column(Text, nullable=True)
+    application = relationship("RecruitmentApplication", back_populates="answers")
+
+
 class SuggestionStatus(str, enum.Enum):
     pending = "pending"
     accepted = "accepted"
