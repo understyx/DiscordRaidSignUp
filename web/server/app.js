@@ -11,6 +11,7 @@ const raidsRouter = require('../routes/raids');
 const charactersRouter = require('../routes/characters');
 const adminRouter = require('../routes/admin');
 const guildSettingsRouter = require('../routes/guildSettings');
+const guildCharactersRouter = require('../routes/guildCharacters');
 const recruitmentRouter = require('../routes/recruitment');
 const { registerFilters } = require('./filters');
 
@@ -153,6 +154,7 @@ function createApp() {
   app.use('/', charactersRouter);
   app.use('/admin', adminRouter);
   app.use('/guild-settings', guildSettingsRouter);
+  app.use('/guild-characters', guildCharactersRouter);
   app.use('/recruitment', recruitmentRouter);
   
   // Bare-slug shortcut: /<slug> serves a recruitment form directly.
