@@ -912,13 +912,7 @@ router.get('/:raid_number/manage', async (req, res) => {
 
   // Fetch officer notes for all signed-up users in this guild
   const officerNotes = {};
-  if (signedUpUserIds.length > 0) {
-    const [officerNoteRows] = await pool.query(
-      'SELECT discord_user_id, note FROM guild_player_notes WHERE guild_id = ? AND discord_user_id IN (?)',
-      [raidGuildId, signedUpUserIds]
-    );
-    for (const row of officerNoteRows) officerNotes[String(row.discord_user_id)] = row.note;
-  }
+
 
   for (const userGroup of signupsByUser) {
     userGroup.officer_note = officerNotes[userGroup.discord_user_id] || '';
@@ -938,6 +932,13 @@ router.get('/:raid_number/manage', async (req, res) => {
   const userGuildRoles = await fetchUserGuildRoles(raidGuildId, signedUpUserIds);
   for (const userGroup of signupsByUser) {
     userGroup.guild_role = userGuildRoles[userGroup.discord_user_id] || null;
+  }
+  if (signedUpUserIds.length > 0) {
+    const [officerNoteRows] = await pool.query(
+      'SELECT discord_user_id, note FROM guild_player_notes WHERE guild_id = ? AND discord_user_id IN (?)',
+      [raidGuildId, signedUpUserIds]
+    );
+    for (const row of officerNoteRows) officerNotes[String(row.discord_user_id)] = row.note;
   }
 
   // Determine which comp numbers already exist for this raid
