@@ -347,6 +347,19 @@
 .user-group-header           { background: rgba(58, 255, 41, 0.21); }
 .user-group-header.tentative { background: rgba(255, 182, 41, 0.21); }
 
+.officer-note-btn {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 0.9rem;
+  opacity: 0.25;
+  transition: opacity 0.1s;
+  cursor: pointer;
+}
+.officer-note-btn:hover, .officer-note-btn.has-note {
+  opacity: 1;
+}
+
 /* ── Signup status badges ────────────────────────────────────────────── */
 .badge-tentative {
   font-size: 0.62rem;

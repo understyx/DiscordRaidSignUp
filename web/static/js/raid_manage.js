@@ -40,6 +40,7 @@ let draggedCharClass     = null;
 let draggedDiscordUserId = null;
 let draggedDisplayLabel  = null;
 let draggedSpec          = null;
+let draggedGearscore     = null;
 let draggedRole          = null;   // detected role for auto-slot-assignment
 let draggedPlaceholder   = null;
 let draggedPlaceholderColor = null;
@@ -210,8 +211,9 @@ function selectSpec(btn) {
   const card = btn.closest('.char-card');
   card.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  card.dataset.charId = btn.dataset.charId;
-  card.dataset.spec   = btn.dataset.spec || '';
+  card.dataset.charId    = btn.dataset.charId;
+  card.dataset.spec      = btn.dataset.spec || '';
+  card.dataset.gearscore = btn.dataset.gs || '';
   // Update role hint from the spec button's data-role if present
   if (btn.dataset.role) card.dataset.role = btn.dataset.role;
 }
@@ -259,6 +261,7 @@ function onDragStart(event) {
   draggedCharClass        = event.currentTarget.dataset.charClass || null;
   draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
   draggedSpec             = event.currentTarget.dataset.spec || null;
+  draggedGearscore        = event.currentTarget.dataset.gearscore || null;
   draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec), draggedCharClass);
   event.dataTransfer.effectAllowed = 'move';
 }
@@ -271,6 +274,7 @@ function onPlayerDragStart(event) {
   draggedCharName         = null;
   draggedCharClass        = null;
   draggedSpec             = null;
+  draggedGearscore        = null;
   draggedRole             = null;
   draggedIsPlayer         = true;
   draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
@@ -411,7 +415,7 @@ function onDrop(event) {
   nameSpan.textContent = draggedCharName + (isTentative ? ' [?]' : '');
   const specSmall = document.createElement('small');
   specSmall.className   = 'text-muted d-block';
-  specSmall.textContent = draggedSpec || '?';
+  specSmall.textContent = `${draggedSpec || '?'} ${formatGearscore(draggedGearscore)}`;
   assignedDiv.appendChild(nameSpan);
   assignedDiv.appendChild(specSmall);
   assignedDiv.dataset.charId = draggedCharId;
@@ -431,6 +435,7 @@ function onDrop(event) {
   draggedCharClass     = null;
   draggedDiscordUserId = null;
   draggedSpec          = null;
+  draggedGearscore     = null;
   draggedRole          = null;
   addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, character_id: finalCharId });
   updateCharInCompStatus();
@@ -640,7 +645,7 @@ function applyRemoteState(entries) {
           nameSpan.textContent = (remote.char_name || '?') + (remoteIsTentative ? ' [?]' : '');
           const specSmall = document.createElement('small');
           specSmall.className   = 'text-muted d-block';
-          specSmall.textContent = remote.spec || '?';
+          specSmall.textContent = `${remote.spec || '?'} ${formatGearscore(remote.gearscore)}`;
           assignedDiv.appendChild(nameSpan);
           assignedDiv.appendChild(specSmall);
           assignedDiv.dataset.charId = remote.character_id;
@@ -1154,6 +1159,47 @@ function startTabRename() {
     // Only commit if the input is still present (not already replaced by Escape)
     if (document.getElementById('tabRenameInput')) commitRename();
   });
+}
+
+/* ── Officer Player Notes ─────────────────────────────────────────── */
+
+let _officerNoteModalInstance = null;
+
+function openOfficerNoteModal(event, btn) {
+  event.stopPropagation();
+  if (!_officerNoteModalInstance) {
+    _officerNoteModalInstance = new bootstrap.Modal(document.getElementById('officerNoteModal'));
+  }
+  document.getElementById('officerNoteUserId').value = btn.dataset.discordUserId;
+  document.getElementById('officerNotePlayerName').textContent = btn.dataset.displayLabel;
+  document.getElementById('officerNoteText').value = btn.dataset.note || '';
+  _officerNoteModalInstance.show();
+}
+
+function saveOfficerNote() {
+  const discord_user_id = document.getElementById('officerNoteUserId').value;
+  const note = document.getElementById('officerNoteText').value;
+
+  fetch('/raids/player-note', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ discord_user_id, note }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      if (_officerNoteModalInstance) _officerNoteModalInstance.hide();
+      // Update all buttons for this user in the DOM
+      document.querySelectorAll(`.officer-note-btn[data-discord-user-id="${discord_user_id}"]`).forEach(btn => {
+        btn.dataset.note = data.note || '';
+        btn.classList.toggle('has-note', !!data.note);
+        btn.title = data.note ? `Officer Note: ${data.note}` : 'Officer Note';
+      });
+    } else {
+      alert('Error saving note: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(err => alert('Failed to save note: ' + err));
 }
 
 /* ── Placeholder Preset Management ─────────────────────────────────── */

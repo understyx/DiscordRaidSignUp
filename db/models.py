@@ -150,3 +150,13 @@ class CharacterSuggestion(Base):
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     resolved_at = Column(DateTime, nullable=True)
     character = relationship("Character")
+
+
+class GuildPlayerNote(Base):
+    __tablename__ = "guild_player_notes"
+    guild_id = Column(BigInteger, primary_key=True)
+    discord_user_id = Column(BigInteger, primary_key=True)
+    note = Column(Text, nullable=False)
+    updated_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
