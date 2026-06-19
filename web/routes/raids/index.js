@@ -910,6 +910,20 @@ router.get('/:raid_number/manage', async (req, res) => {
     }
   }
 
+  // Fetch officer notes for all signed-up users in this guild
+  const officerNotes = {};
+  if (signedUpUserIds.length > 0) {
+    const [officerNoteRows] = await pool.query(
+      'SELECT discord_user_id, note FROM guild_player_notes WHERE guild_id = ? AND discord_user_id IN (?)',
+      [raidGuildId, signedUpUserIds]
+    );
+    for (const row of officerNoteRows) officerNotes[String(row.discord_user_id)] = row.note;
+  }
+
+  for (const userGroup of signupsByUser) {
+    userGroup.officer_note = officerNotes[userGroup.discord_user_id] || '';
+  }
+
   // Sort: players with starred (prio) characters first, tentative players last
   signupsByUser.sort((a, b) => {
     const aPrio = a.characters.some(cg => cg.specs.some(s => s.is_prio));
@@ -946,10 +960,12 @@ router.get('/:raid_number/manage', async (req, res) => {
 
   const [existingComp] = await pool.query(
     `SELECT co.*, s.status AS signup_status,
+            c.char_name, c.char_class, c.spec, c.gearscore,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
+     LEFT JOIN characters c ON c.id = co.character_id
      LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id)
+     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
      WHERE co.raid_id = ? AND co.comp_number = ?`,
     [raidId, currentComp]
   );
@@ -961,6 +977,7 @@ router.get('/:raid_number/manage', async (req, res) => {
   const placeholderMap = {};
   const playerPlaceholderMap = {};
   const slotRoleMap = {};
+  const compCharacterMap = {};
 
   const compStatusMap = {};
   for (const c of existingComp) {
@@ -969,6 +986,13 @@ router.get('/:raid_number/manage', async (req, res) => {
     if (c.character_id) {
       compMap[slotKey] = String(c.character_id);
       compStatusMap[slotKey] = c.signup_status;
+      compCharacterMap[slotKey] = {
+        id: c.character_id,
+        char_name: c.char_name,
+        char_class: c.char_class,
+        spec: c.spec,
+        gearscore: c.gearscore
+      };
     } else if (c.discord_user_id) {
       let displayLabel = c.du_display_name || c.du_username || String(c.discord_user_id);
       playerPlaceholderMap[slotKey] = {
@@ -1041,6 +1065,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     comp_status_map: compStatusMap,
     slots,
     comp_map: compMap,
+    comp_character_map: compCharacterMap,
     placeholder_map: placeholderMap,
     player_placeholder_map: playerPlaceholderMap,
     slot_role_map: slotRoleMap,
@@ -1165,7 +1190,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     // Return current composition even for empty payloads
     const [emptyRows] = await pool.query(
       `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
-              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
               s.status AS signup_status
        FROM compositions co
        LEFT JOIN characters c ON co.character_id = c.id
@@ -1182,6 +1207,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       char_name: r.char_name || null,
       char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
       spec: r.spec || null,
+    gearscore: r.gearscore || 0,
       discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
       status: r.signup_status || null,
     }));
@@ -1271,7 +1297,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
   // Return the full current composition so all clients can converge immediately
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
-            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
             s.status AS signup_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
@@ -1293,6 +1319,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
+    gearscore: r.gearscore || 0,
     status: r.signup_status || null,
   }));
 
@@ -1313,7 +1340,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
             MAX(co.updated_at) OVER () AS max_updated_at,
-            c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
             s.status AS signup_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
@@ -1342,6 +1369,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
+    gearscore: r.gearscore || 0,
     status: r.signup_status || null,
   }));
 
@@ -1640,6 +1668,37 @@ router.post('/:raid_number/unlock', async (req, res) => {
   }
 
   res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
+});
+
+// POST /raids/player-note — save/update officer note for a player in a guild
+router.post('/player-note', express.json(), async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) return res.status(400).json({ ok: false, error: 'No active guild' });
+
+  const { discord_user_id, note } = req.body || {};
+  if (!discord_user_id) return res.status(400).json({ ok: false, error: 'discord_user_id is required' });
+
+  const trimmedNote = (note || '').trim();
+
+  try {
+    if (trimmedNote) {
+      await pool.query(
+        'INSERT INTO guild_player_notes (guild_id, discord_user_id, note, updated_at) VALUES (?, ?, ?, NOW(3)) ON DUPLICATE KEY UPDATE note = ?, updated_at = NOW(3)',
+        [guildId, discord_user_id, trimmedNote, trimmedNote]
+      );
+    } else {
+      await pool.query(
+        'DELETE FROM guild_player_notes WHERE guild_id = ? AND discord_user_id = ?',
+        [guildId, discord_user_id]
+      );
+    }
+    res.json({ ok: true, note: trimmedNote });
+  } catch (err) {
+    console.error('[player-note] Failed to save officer note:', err.message);
+    res.status(500).json({ ok: false, error: 'Database error' });
+  }
 });
 
 module.exports = router;

@@ -96,6 +96,16 @@
                title="Click to expand/collapse">
             <span>👤</span>
             <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}<br><small class="text-muted" style="font-size:0.75rem;">{{ userGroup.guild_role if userGroup.guild_role else "No role" }}</small></span>
+            {% if can_edit %}
+            <button type="button" class="officer-note-btn{% if userGroup.officer_note %} has-note{% endif %}"
+                    data-discord-user-id="{{ userGroup.discord_user_id }}"
+                    data-display-label="{{ userGroup.display_label }}"
+                    data-note="{{ userGroup.officer_note }}"
+                    onclick="openOfficerNoteModal(event, this)"
+                    title="Officer Note{% if userGroup.officer_note %}: {{ userGroup.officer_note }}{% endif %}">
+              🛡️
+            </button>
+            {% endif %}
             {% if userGroup.is_tentative %}<span class="badge-tentative">❓</span>{% endif %}
             <span class="ug-chevron" style="font-size:0.75rem; color:#8a95b0;">▾</span>
           </div>
@@ -111,6 +121,7 @@
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
+                   data-gearscore="{{ firstSpec.gearscore }}"
                    data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
                  {% if can_edit %}ondragstart="onDragStart(event)"{% endif %}
                  style="position:relative;">
@@ -185,13 +196,12 @@
                 {% endif %}
                 <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
-                  {% set s = signup_by_char_id[assigned_char_id] %}
-                  {% if s %}
-                    {% set c = s.character %}
+                  {% set c = comp_character_map[slot] %}
+                  {% if c %}
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                    <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
+                    <div class="assigned-char" data-char-id="{{ c.id }}" data-char-class="{{ cls_key }}">
                       <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
-                      <small class="text-muted">{{ c.spec or "?" }}</small>
+                      <small class="text-muted">{{ c.spec or "?" }} {{ c.gearscore | gsformat }}</small>
                     </div>
                   {% else %}
                   <div class="assigned-char text-muted small">
@@ -357,6 +367,29 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Officer player note modal ───────────────────────────────────────── #}
+<div class="modal fade" id="officerNoteModal" tabindex="-1" aria-labelledby="officerNoteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:#151b28; border:1px solid var(--border-dim);">
+      <div class="modal-header">
+        <h5 class="modal-title" id="officerNoteModalLabel">🛡️ Officer Note: <span id="officerNotePlayerName"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Private note visible only to officers in this guild.</p>
+        <textarea id="officerNoteText" class="form-control" rows="4"
+                  placeholder="Enter private note for this player…"
+                  style="background:#0f1520; border-color:var(--border-dim); color:#e0e0e0;"></textarea>
+        <input type="hidden" id="officerNoteUserId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveOfficerNote()">💾 Save Note</button>
       </div>
     </div>
   </div>

@@ -167,3 +167,12 @@ function colorForPlaceholder(text) {
   if (/\bdk\b/.test(t)) return typeof WOW_CLASS_COLORS !== 'undefined' ? WOW_CLASS_COLORS['death-knight'] : null;
   return null;
 }
+
+/**
+ * Formats gearscore for display: 99999 -> "BiS", others -> floor integer.
+ */
+function formatGearscore(gs) {
+  const n = Number(gs);
+  if (n >= 99999) return 'BiS';
+  return Math.floor(n) || 0;
+}
