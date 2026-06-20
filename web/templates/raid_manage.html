@@ -199,7 +199,7 @@
                   {% set c = comp_character_map[slot] %}
                   {% if c %}
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-                    <div class="assigned-char" data-char-id="{{ c.id }}" data-char-class="{{ cls_key }}">
+                    <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
                       <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
                       <small class="text-muted">{{ c.spec or "?" }} {{ c.gearscore | gsformat }}</small>
                     </div>
