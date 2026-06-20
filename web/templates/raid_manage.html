@@ -196,8 +196,9 @@
                 {% endif %}
                 <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
-                  {% set c = comp_character_map[slot] %}
-                  {% if c %}
+                  {% set s = signup_by_char_id[assigned_char_id] %}
+                  {% if s %}
+                    {% set c = s.character %}
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                     <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
                       <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
