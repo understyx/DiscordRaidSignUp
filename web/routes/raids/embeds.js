@@ -79,7 +79,6 @@ async function fetchUserGuildRoles(guildId, userIds) {
   if (!guildId || !botToken || !userIds.length) return {};
 
   try {
-    // Fetch guild roles once to build a map of roleId → {name, position}
     const rolesResp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
       headers: { Authorization: `Bot ${botToken}` },
     });
@@ -90,7 +89,6 @@ async function fetchUserGuildRoles(guildId, userIds) {
       roleMap[r.id] = { name: r.name, position: r.position };
     }
 
-    // Fetch each member's role list in parallel
     const memberResults = await Promise.all(
       userIds.map(async userId => {
         try {
@@ -99,7 +97,6 @@ async function fetchUserGuildRoles(guildId, userIds) {
           });
           if (!resp.ok) return [userId, null];
           const member = await resp.json();
-          // Filter out @everyone (its id equals the guildId) and find the highest-positioned role
           const memberRoleIds = (member.roles || []).filter(rid => rid !== guildId);
           if (!memberRoleIds.length) return [userId, null];
           const topRoleId = memberRoleIds.reduce((best, rid) => {
@@ -181,21 +178,17 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
         const c = e.character;
         if (c.char_class && EMOJIS[c.char_class]) {
           const classData = EMOJIS[c.char_class];
-
           let specToLookup = null;
 
-          // 1. Raw spec
           if (c.spec && classData.specs && classData.specs[c.spec]) {
             specToLookup = c.spec;
           }
-          // 2. Canonical spec
           if (!specToLookup) {
             const canonical = getCanonicalSpec(c.char_class, c.spec, specAliasesMap);
             if (canonical && classData.specs && classData.specs[canonical]) {
               specToLookup = canonical;
             }
           }
-          // 3. Role-based spec
           if (!specToLookup) {
             const roleBased = getRoleBasedSpec(c.char_class, e.slot_role);
             if (roleBased && classData.specs && classData.specs[roleBased]) {
@@ -213,8 +206,6 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
 
       if (e.is_placeholder) {
         const text = e.placeholder_text || '?';
-        // If the placeholder text already starts with an emoji (likely the role emoji),
-        // don't double-post it.
         const startsWithEmoji = /^\p{Emoji}/u.test(text);
         return startsWithEmoji ? `*${text}*` : `${emoji} *${text}*`;
       }
@@ -228,14 +219,46 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
       return `${emoji} **${c.char_name}**${mention}${tentative}`;
     });
 
-    fields.push({
-      name: `${section.label} [${entries.length}]`,
-      value: lines.join('\n') || '—',
-      inline: false,
-    });
+    // Chunk strings to respect the strict 1024 character value limit per field
+    // Chunk strings to respect the strict 1024 character value limit per field
+    let currentFieldText = "";
+    let chunkIndex = 1;
+
+    for (const line of lines) {
+      // Check if appending this line (plus a newline character) breaks the 1024 cap
+      if (currentFieldText.length + line.length + 1 > 1024) {
+        fields.push({
+          // Uses the section label for the first chunk, and a zero-width space for additions
+          name: chunkIndex === 1 ? `${section.label} [${entries.length}]` : '\u200b',
+          value: currentFieldText || '—',
+          inline: false,
+        });
+        currentFieldText = line;
+        chunkIndex++;
+      } else {
+        currentFieldText = currentFieldText ? `${currentFieldText}\n${line}` : line;
+      }
+    }
+
+    // Append any leftover lines from the loop execution
+    if (currentFieldText) {
+      fields.push({
+        name: chunkIndex === 1 ? `${section.label} [${entries.length}]` : '\u200b',
+        value: currentFieldText,
+        inline: false,
+      });
+    }
+
+    // Append any leftover lines from the loop execution
+    if (currentFieldText) {
+      fields.push({
+        name: chunkIndex === 1 ? `${section.label} [${entries.length}]` : `${section.label} (cont.)`,
+        value: currentFieldText,
+        inline: false,
+      });
+    }
   }
 
-  // Collect unique user IDs so pings in the message content trigger real notifications.
   const allIds = collectUniqueUserIds(groups);
   const content = allIds.map(id => `<@${id}>`).join(' ');
 
