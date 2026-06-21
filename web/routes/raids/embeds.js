@@ -248,15 +248,6 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
         inline: false,
       });
     }
-
-    // Append any leftover lines from the loop execution
-    if (currentFieldText) {
-      fields.push({
-        name: chunkIndex === 1 ? `${section.label} [${entries.length}]` : `${section.label} (cont.)`,
-        value: currentFieldText,
-        inline: false,
-      });
-    }
   }
 
   const allIds = collectUniqueUserIds(groups);
