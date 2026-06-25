@@ -76,11 +76,17 @@
             {{ signupsByUser | length }} player{{ 's' if signupsByUser | length != 1 else '' }}
           </span>
         </h5>
-        <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Filter sign-ups by role">
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Filter sign-ups by role">
           <button type="button" class="btn btn-outline-secondary pool-filter-btn active" data-role="all" onclick="filterPool('all')">All</button>
           <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="tank" onclick="filterPool('tank')">🛡️ Tank</button>
           <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="healer" onclick="filterPool('healer')">💚 Heal</button>
           <button type="button" class="btn btn-outline-secondary pool-filter-btn" data-role="dps" onclick="filterPool('dps')">⚔️ DPS</button>
+        </div>
+
+        <div class="d-flex flex-wrap gap-1 mb-3">
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1 btn-pool-action" onclick="expandAllPool()">Expand All</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1 btn-pool-action" onclick="collapseAllPool()">Collapse All</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100 btn-pool-action" onclick="collapseInRaidPool()">Collapse in Raid</button>
         </div>
 
         {% for userGroup in signupsByUser %}
