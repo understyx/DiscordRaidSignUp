@@ -227,6 +227,42 @@ function toggleUserGroup(id, header) {
   chevron.textContent = collapsed ? '▾' : '▸';
 }
 
+function expandAllPool() {
+  document.querySelectorAll('.user-group-container').forEach(body => {
+    body.style.display = '';
+    const headerId = body.id + '-header';
+    const header = document.getElementById(headerId);
+    if (header) {
+      const chevron = header.querySelector('.ug-chevron');
+      if (chevron) chevron.textContent = '▾';
+    }
+  });
+}
+
+function collapseAllPool() {
+  document.querySelectorAll('.user-group-container').forEach(body => {
+    body.style.display = 'none';
+    const headerId = body.id + '-header';
+    const header = document.getElementById(headerId);
+    if (header) {
+      const chevron = header.querySelector('.ug-chevron');
+      if (chevron) chevron.textContent = '▸';
+    }
+  });
+}
+
+function collapseInRaidPool() {
+  document.querySelectorAll('.user-group-container').forEach(body => {
+    const headerId = body.id + '-header';
+    const header = document.getElementById(headerId);
+    if (header && header.querySelector('.user-group-assigned-badge')) {
+      body.style.display = 'none';
+      const chevron = header.querySelector('.ug-chevron');
+      if (chevron) chevron.textContent = '▸';
+    }
+  });
+}
+
 // ── Sign-ups pool role filter ────────────────────────────────────────────
 function filterPool(role) {
   document.querySelectorAll('.pool-filter-btn').forEach(btn => {

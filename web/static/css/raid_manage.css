@@ -474,3 +474,8 @@
   line-height: 1;
   font-weight: 300;
 }
+
+/* ── Pool action buttons ───────────────────────────────────────────── */
+.btn-pool-action {
+  font-size: 0.7rem !important;
+}
