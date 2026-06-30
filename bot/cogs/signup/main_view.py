@@ -63,17 +63,23 @@ class SignupView(discord.ui.View):
             try:
                 raid = session.get(Raid, raid_id)
                 if raid is None:
-                    return None, []
+                    return None, [], set()
                 chars = (
                     session.query(Character)
                     .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
-                return raid.status, _chars_to_dicts(chars)
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                signup_ids = {s.character_id for s in signups}
+                return raid.status, _chars_to_dicts(chars), signup_ids
             finally:
                 session.close()
 
-        status, char_dicts = await loop.run_in_executor(None, _fetch)
+        status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
             await interaction.response.send_message(
@@ -115,7 +121,7 @@ class SignupView(discord.ui.View):
             )
             return
 
-        view = SignupCharacterSelectView(char_dicts, raid_id, signup_status)
+        view = SignupCharacterSelectView(char_dicts, raid_id, signup_status, selected_ids=signup_ids)
         await interaction.response.send_message(
             view._step_text(),
             view=view,
@@ -172,17 +178,23 @@ class SignupView(discord.ui.View):
             try:
                 raid = session.get(Raid, raid_id)
                 if raid is None:
-                    return None, []
+                    return None, [], set()
                 chars = (
                     session.query(Character)
                     .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
-                return raid.status, _chars_to_dicts(chars)
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                signup_ids = {s.character_id for s in signups}
+                return raid.status, _chars_to_dicts(chars), signup_ids
             finally:
                 session.close()
 
-        status, char_dicts = await loop.run_in_executor(None, _fetch)
+        status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
             await interaction.response.send_message(
@@ -224,7 +236,7 @@ class SignupView(discord.ui.View):
             )
             return
 
-        view = SignupTestingCharacterSelectView(char_dicts, raid_id)
+        view = SignupTestingCharacterSelectView(char_dicts, raid_id, selected_ids=signup_ids)
         await interaction.response.send_message(
             "**Step 1:** Select characters to sign up:",
             view=view,
@@ -251,17 +263,23 @@ class SignupView(discord.ui.View):
             try:
                 raid = session.get(Raid, raid_id)
                 if raid is None:
-                    return None, []
+                    return None, [], set()
                 chars = (
                     session.query(Character)
                     .filter_by(discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
-                return raid.status, _chars_to_dicts(chars)
+                signups = (
+                    session.query(Signup)
+                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
+                    .all()
+                )
+                signup_ids = {s.character_id for s in signups}
+                return raid.status, _chars_to_dicts(chars), signup_ids
             finally:
                 session.close()
 
-        status, char_dicts = await loop.run_in_executor(None, _fetch)
+        status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
             await interaction.response.send_message(
@@ -303,7 +321,7 @@ class SignupView(discord.ui.View):
             )
             return
 
-        view = SignupTesting2ClassSelectView(char_dicts, raid_id)
+        view = SignupTesting2ClassSelectView(char_dicts, raid_id, selected_ids=signup_ids)
         await interaction.response.send_message(
             "**Step 1:** Select a class:",
             view=view,

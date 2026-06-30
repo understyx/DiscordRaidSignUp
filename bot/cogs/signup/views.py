@@ -224,35 +224,27 @@ class SignupPrioritySelectView(discord.ui.View):
                 _upsert_discord_user(session, interaction.user)
                 raid = session.get(Raid, raid_id)
                 raid_name = raid.name if raid else None
+                # Remove ALL existing signups for this user+raid so the new selection
+                # fully overwrites the old sign-up instead of merging with it.
+                session.query(Signup).filter_by(
+                    raid_id=raid_id,
+                    discord_user_id=discord_user_id,
+                ).delete()
                 for char in self.selected_chars:
                     signup_type = (
                         SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
                     )
-                    existing = (
-                        session.query(Signup)
-                        .filter_by(
+                    char_note = notes.get(char["char_name"].lower()) or None
+                    session.add(
+                        Signup(
                             raid_id=raid_id,
                             discord_user_id=discord_user_id,
                             character_id=char["id"],
+                            signup_type=signup_type,
+                            status=signup_status,
+                            note=char_note,
                         )
-                        .first()
                     )
-                    char_note = notes.get(char["char_name"].lower()) or None
-                    if existing:
-                        existing.signup_type = signup_type
-                        existing.status = signup_status
-                        existing.note = char_note
-                    else:
-                        session.add(
-                            Signup(
-                                raid_id=raid_id,
-                                discord_user_id=discord_user_id,
-                                character_id=char["id"],
-                                signup_type=signup_type,
-                                status=signup_status,
-                                note=char_note,
-                            )
-                        )
                 session.commit()
                 return raid_name
             finally:
@@ -708,11 +700,11 @@ class SignupTestingCharacterSelectView(discord.ui.View):
     """
     Testing flow Step 1: Select characters via buttons.
     """
-    def __init__(self, char_dicts: list[dict], raid_id: int):
+    def __init__(self, char_dicts: list[dict], raid_id: int, selected_ids: set[int] | None = None):
         super().__init__(timeout=120)
         self.char_dicts = char_dicts
         self.raid_id = raid_id
-        self.selected_ids: set[int] = set()
+        self.selected_ids: set[int] = selected_ids or set()
         self.chars_by_id = {c["id"]: c for c in char_dicts}
         self._build_components()
 
@@ -819,32 +811,25 @@ class SignupTestingPriorityView(discord.ui.View):
                 _upsert_discord_user(session, interaction.user)
                 raid = session.get(Raid, raid_id)
                 raid_name = raid.name if raid else None
+                # Remove ALL existing signups for this user+raid so the new selection
+                # fully overwrites the old sign-up instead of merging with it.
+                session.query(Signup).filter_by(
+                    raid_id=raid_id,
+                    discord_user_id=discord_user_id,
+                ).delete()
                 for char in self.selected_chars:
                     signup_type = (
                         SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
                     )
-                    existing = (
-                        session.query(Signup)
-                        .filter_by(
+                    session.add(
+                        Signup(
                             raid_id=raid_id,
                             discord_user_id=discord_user_id,
                             character_id=char["id"],
+                            signup_type=signup_type,
+                            status=signup_status,
                         )
-                        .first()
                     )
-                    if existing:
-                        existing.signup_type = signup_type
-                        existing.status = signup_status
-                    else:
-                        session.add(
-                            Signup(
-                                raid_id=raid_id,
-                                discord_user_id=discord_user_id,
-                                character_id=char["id"],
-                                signup_type=signup_type,
-                                status=signup_status,
-                            )
-                        )
                 session.commit()
                 return raid_name
             finally:
@@ -899,10 +884,11 @@ class SignupTesting2ClassSelectView(discord.ui.View):
     """
     Testing flow 2 Step 1: Select class via buttons.
     """
-    def __init__(self, char_dicts: list[dict], raid_id: int):
+    def __init__(self, char_dicts: list[dict], raid_id: int, selected_ids: set[int] | None = None):
         super().__init__(timeout=120)
         self.char_dicts = char_dicts
         self.raid_id = raid_id
+        self.selected_ids: set[int] = selected_ids or set()
         self._build_components()
 
     def _build_components(self):
@@ -911,19 +897,37 @@ class SignupTesting2ClassSelectView(discord.ui.View):
         # Determine which classes the user has
         user_classes = {c["char_class"] for c in self.char_dicts}
 
+        # Track which classes have selected characters
+        selected_classes = {
+            c["char_class"] for c in self.char_dicts if c["id"] in self.selected_ids
+        }
+
         # We use _EMOJIS to get class names and emojis
         for class_name, data in _EMOJIS.items():
             has_class = class_name in user_classes
+            is_selected = class_name in selected_classes
             emoji = data.get("emoji")
 
+            label = f"{class_name} ✅" if is_selected else class_name
+
             btn = discord.ui.Button(
-                label=class_name,
-                style=discord.ButtonStyle.secondary,
+                label=label,
+                style=discord.ButtonStyle.success if is_selected else discord.ButtonStyle.secondary,
                 emoji=emoji,
                 disabled=not has_class
             )
             btn.callback = self._create_class_callback(class_name)
             self.add_item(btn)
+
+        next_btn = discord.ui.Button(
+            label="Next Step",
+            style=discord.ButtonStyle.primary,
+            emoji="➡️",
+            disabled=not self.selected_ids,
+            row=4  # Classes might take up many rows
+        )
+        next_btn.callback = self._on_next_step
+        self.add_item(next_btn)
 
     def _create_class_callback(self, class_name: str):
         async def callback(interaction: discord.Interaction):
@@ -932,13 +936,28 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             await interaction.response.defer()
             await interaction.delete_original_response()
 
-            view = SignupTesting2CharacterSelectView(self.char_dicts, class_chars, self.raid_id, class_name)
+            view = SignupTesting2CharacterSelectView(
+                self.char_dicts, class_chars, self.raid_id, class_name, selected_ids=self.selected_ids
+            )
             await interaction.followup.send(
                 f"**Step 2:** Select characters for **{class_name}**:",
                 view=view,
                 ephemeral=True
             )
         return callback
+
+    async def _on_next_step(self, interaction: discord.Interaction):
+        selected_chars = [c for c in self.char_dicts if c["id"] in self.selected_ids]
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        view = SignupTestingPriorityView(selected_chars, self.raid_id)
+        await interaction.followup.send(
+            view._step_text(),
+            view=view,
+            ephemeral=True
+        )
 
 
 class SignupTesting2CharacterSelectView(discord.ui.View):
@@ -1003,7 +1022,7 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         await interaction.response.defer()
         await interaction.delete_original_response()
 
-        view = SignupTesting2ClassSelectView(self.all_char_dicts, self.raid_id)
+        view = SignupTesting2ClassSelectView(self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids)
         await interaction.followup.send(
             "**Step 1:** Select a class:",
             view=view,
@@ -1011,7 +1030,7 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         )
 
     async def _on_next_step(self, interaction: discord.Interaction):
-        selected_chars = [c for c in self.class_chars if c["id"] in self.selected_ids]
+        selected_chars = [c for c in self.all_char_dicts if c["id"] in self.selected_ids]
 
         await interaction.response.defer()
         await interaction.delete_original_response()
