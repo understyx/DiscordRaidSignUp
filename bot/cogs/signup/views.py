@@ -703,3 +703,209 @@ class EditNotesModal(discord.ui.Modal):
         )
         await update_raid_embed(interaction.client, raid_id)
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
+
+class SignupTestingCharacterSelectView(discord.ui.View):
+    """
+    Testing flow Step 1: Select characters via dropdown, then they turn into buttons.
+    """
+    def __init__(self, char_dicts: list[dict], raid_id: int):
+        super().__init__(timeout=120)
+        self.char_dicts = char_dicts
+        self.raid_id = raid_id
+        self.selected_ids: set[int] = set()
+        self.chars_by_id = {c["id"]: c for c in char_dicts}
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+        if not self.selected_ids:
+            options = [
+                discord.SelectOption(
+                    label=_char_label(c)[:100],
+                    description=_char_display_description(c)[:100],
+                    value=str(c["id"]),
+                )
+                for c in self.char_dicts[:25]
+            ]
+            select = discord.ui.Select(
+                placeholder="Select characters...",
+                options=options,
+                min_values=1,
+                max_values=min(len(options), 25),
+            )
+            select.callback = self._on_select
+            self.add_item(select)
+        else:
+            for sid in self.selected_ids:
+                char = self.chars_by_id.get(sid)
+                if char:
+                    btn = discord.ui.Button(
+                        label=_char_label(char),
+                        style=discord.ButtonStyle.secondary,
+                        disabled=True
+                    )
+                    self.add_item(btn)
+
+            next_btn = discord.ui.Button(label="Next Step", style=discord.ButtonStyle.primary, emoji="➡️")
+            next_btn.callback = self._on_next_step
+            self.add_item(next_btn)
+
+            reset_btn = discord.ui.Button(label="Reset", style=discord.ButtonStyle.danger)
+            reset_btn.callback = self._on_reset
+            self.add_item(reset_btn)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        self.selected_ids = {int(v) for v in interaction.data.get("values", [])}
+        self._build_components()
+        await interaction.response.edit_message(content="**Step 1:** Characters selected. Click Next Step to continue.", view=self)
+
+    async def _on_reset(self, interaction: discord.Interaction):
+        self.selected_ids = set()
+        self._build_components()
+        await interaction.response.edit_message(content="**Step 1:** Select characters to sign up:", view=self)
+
+    async def _on_next_step(self, interaction: discord.Interaction):
+        selected_chars = [self.chars_by_id[sid] for sid in self.selected_ids if sid in self.chars_by_id]
+        if not selected_chars:
+            await interaction.response.send_message("❌ No characters selected.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        view = SignupTestingPriorityView(selected_chars, self.raid_id)
+        await interaction.followup.send(
+            view._step_text(),
+            view=view,
+            ephemeral=True
+        )
+
+
+class SignupTestingPriorityView(discord.ui.View):
+    """
+    Testing flow Step 2: Mark preferred characters using buttons.
+    """
+    def __init__(self, selected_chars: list[dict], raid_id: int):
+        super().__init__(timeout=120)
+        self.selected_chars = selected_chars
+        self.raid_id = raid_id
+        self.priority_ids: set[int] = set()
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+        for char in self.selected_chars:
+            is_prio = char["id"] in self.priority_ids
+            btn = discord.ui.Button(
+                label=_char_label(char),
+                style=discord.ButtonStyle.success if is_prio else discord.ButtonStyle.secondary,
+                emoji="⭐" if is_prio else None,
+            )
+            btn.callback = self._create_callback(char["id"])
+            self.add_item(btn)
+
+        finish_btn = discord.ui.Button(label="Finish", style=discord.ButtonStyle.primary, emoji="✅")
+        finish_btn.callback = self.finish
+        self.add_item(finish_btn)
+
+    def _create_callback(self, char_id: int):
+        async def callback(interaction: discord.Interaction):
+            if char_id in self.priority_ids:
+                self.priority_ids.remove(char_id)
+            else:
+                self.priority_ids.add(char_id)
+            self._build_components()
+            await interaction.response.edit_message(content=self._step_text(), view=self)
+        return callback
+
+    def _step_text(self) -> str:
+        return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+
+    async def finish(self, interaction: discord.Interaction):
+        priority_ids = self.priority_ids
+        discord_user_id = interaction.user.id
+        raid_id = self.raid_id
+        signup_status = SignupStatus.signed
+        loop = asyncio.get_event_loop()
+
+        def _upsert_all():
+            session = get_session()
+            try:
+                _upsert_discord_user(session, interaction.user)
+                raid = session.get(Raid, raid_id)
+                raid_name = raid.name if raid else None
+                for char in self.selected_chars:
+                    signup_type = (
+                        SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
+                    )
+                    existing = (
+                        session.query(Signup)
+                        .filter_by(
+                            raid_id=raid_id,
+                            discord_user_id=discord_user_id,
+                            character_id=char["id"],
+                        )
+                        .first()
+                    )
+                    if existing:
+                        existing.signup_type = signup_type
+                        existing.status = signup_status
+                    else:
+                        session.add(
+                            Signup(
+                                raid_id=raid_id,
+                                discord_user_id=discord_user_id,
+                                character_id=char["id"],
+                                signup_type=signup_type,
+                                status=signup_status,
+                            )
+                        )
+                session.commit()
+                return raid_name
+            finally:
+                session.close()
+
+        raid_name = await loop.run_in_executor(None, _upsert_all)
+
+        lines = []
+        for c in self.selected_chars:
+            prio_str = " ⭐ preferred" if c["id"] in priority_ids else ""
+            lines.append(f"• **{_char_label(c)}**{prio_str}")
+
+        await interaction.response.edit_message(
+            content=f"✅ Signed up (Testing) for the raid:\n" + "\n".join(lines),
+            view=None,
+        )
+
+        grouped: dict[str, dict] = {}
+        for c in self.selected_chars:
+            key = c["char_name"].lower()
+            if key not in grouped:
+                grouped[key] = {
+                    "char_name": c["char_name"],
+                    "char_class": c.get("char_class") or "?",
+                    "specs": [],
+                }
+            star = " ⭐" if c["id"] in priority_ids else ""
+            grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
+        bullets = []
+        for key, d in grouped.items():
+            bullets.append(
+                f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
+            )
+        log_message = format_user_raid_log_message(
+            raid_id=raid_id,
+            discord_user_id=interaction.user.id,
+            user_mention=interaction.user.mention,
+            emoji="🧪",
+            action="signed up (testing)",
+            raid_name=raid_name,
+            detail_lines=bullets,
+        )
+        await _post_to_raid_log(
+            interaction.client,
+            raid_id,
+            log_message,
+            discord_user_id=interaction.user.id,
+        )
+        await update_raid_embed(interaction.client, raid_id)
