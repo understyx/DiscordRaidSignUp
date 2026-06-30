@@ -706,7 +706,7 @@ class EditNotesModal(discord.ui.Modal):
 
 class SignupTestingCharacterSelectView(discord.ui.View):
     """
-    Testing flow Step 1: Select characters via dropdown, then they turn into buttons.
+    Testing flow Step 1: Select characters via buttons.
     """
     def __init__(self, char_dicts: list[dict], raid_id: int):
         super().__init__(timeout=120)
@@ -718,51 +718,36 @@ class SignupTestingCharacterSelectView(discord.ui.View):
 
     def _build_components(self):
         self.clear_items()
-        if not self.selected_ids:
-            options = [
-                discord.SelectOption(
-                    label=_char_label(c)[:100],
-                    description=_char_display_description(c)[:100],
-                    value=str(c["id"]),
-                )
-                for c in self.char_dicts[:25]
-            ]
-            select = discord.ui.Select(
-                placeholder="Select characters...",
-                options=options,
-                min_values=1,
-                max_values=min(len(options), 25),
+        # Discord allows up to 25 components (5 rows of 5).
+        # We use up to 24 buttons for characters and 1 for "Next Step".
+        for char in self.char_dicts[:24]:
+            is_selected = char["id"] in self.selected_ids
+            btn = discord.ui.Button(
+                label=_char_label(char),
+                style=discord.ButtonStyle.success if is_selected else discord.ButtonStyle.secondary,
+                emoji="✅" if is_selected else None,
             )
-            select.callback = self._on_select
-            self.add_item(select)
-        else:
-            for sid in self.selected_ids:
-                char = self.chars_by_id.get(sid)
-                if char:
-                    btn = discord.ui.Button(
-                        label=_char_label(char),
-                        style=discord.ButtonStyle.secondary,
-                        disabled=True
-                    )
-                    self.add_item(btn)
+            btn.callback = self._create_toggle_callback(char["id"])
+            self.add_item(btn)
 
-            next_btn = discord.ui.Button(label="Next Step", style=discord.ButtonStyle.primary, emoji="➡️")
-            next_btn.callback = self._on_next_step
-            self.add_item(next_btn)
+        next_btn = discord.ui.Button(
+            label="Next Step",
+            style=discord.ButtonStyle.primary,
+            emoji="➡️",
+            disabled=not self.selected_ids
+        )
+        next_btn.callback = self._on_next_step
+        self.add_item(next_btn)
 
-            reset_btn = discord.ui.Button(label="Reset", style=discord.ButtonStyle.danger)
-            reset_btn.callback = self._on_reset
-            self.add_item(reset_btn)
-
-    async def _on_select(self, interaction: discord.Interaction):
-        self.selected_ids = {int(v) for v in interaction.data.get("values", [])}
-        self._build_components()
-        await interaction.response.edit_message(content="**Step 1:** Characters selected. Click Next Step to continue.", view=self)
-
-    async def _on_reset(self, interaction: discord.Interaction):
-        self.selected_ids = set()
-        self._build_components()
-        await interaction.response.edit_message(content="**Step 1:** Select characters to sign up:", view=self)
+    def _create_toggle_callback(self, char_id: int):
+        async def callback(interaction: discord.Interaction):
+            if char_id in self.selected_ids:
+                self.selected_ids.remove(char_id)
+            else:
+                self.selected_ids.add(char_id)
+            self._build_components()
+            await interaction.response.edit_message(view=self)
+        return callback
 
     async def _on_next_step(self, interaction: discord.Interaction):
         selected_chars = [self.chars_by_id[sid] for sid in self.selected_ids if sid in self.chars_by_id]
