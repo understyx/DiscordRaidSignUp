@@ -12,7 +12,7 @@ from .parser import format_gs
 from .char_helpers import _char_label, _char_display_description
 from .process import process_text_signup, _upsert_discord_user
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
-from .embed import update_raid_embed
+from .embed import update_raid_embed, _EMOJIS
 
 logger = logging.getLogger(__name__)
 
@@ -894,3 +894,131 @@ class SignupTestingPriorityView(discord.ui.View):
             discord_user_id=interaction.user.id,
         )
         await update_raid_embed(interaction.client, raid_id)
+
+class SignupTesting2ClassSelectView(discord.ui.View):
+    """
+    Testing flow 2 Step 1: Select class via buttons.
+    """
+    def __init__(self, char_dicts: list[dict], raid_id: int):
+        super().__init__(timeout=120)
+        self.char_dicts = char_dicts
+        self.raid_id = raid_id
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+
+        # Determine which classes the user has
+        user_classes = {c["char_class"] for c in self.char_dicts}
+
+        # We use _EMOJIS to get class names and emojis
+        for class_name, data in _EMOJIS.items():
+            has_class = class_name in user_classes
+            emoji = data.get("emoji")
+
+            btn = discord.ui.Button(
+                label=class_name,
+                style=discord.ButtonStyle.secondary,
+                emoji=emoji,
+                disabled=not has_class
+            )
+            btn.callback = self._create_class_callback(class_name)
+            self.add_item(btn)
+
+    def _create_class_callback(self, class_name: str):
+        async def callback(interaction: discord.Interaction):
+            class_chars = [c for c in self.char_dicts if c["char_class"] == class_name]
+
+            await interaction.response.defer()
+            await interaction.delete_original_response()
+
+            view = SignupTesting2CharacterSelectView(self.char_dicts, class_chars, self.raid_id, class_name)
+            await interaction.followup.send(
+                f"**Step 2:** Select characters for **{class_name}**:",
+                view=view,
+                ephemeral=True
+            )
+        return callback
+
+
+class SignupTesting2CharacterSelectView(discord.ui.View):
+    """
+    Testing flow 2 Step 2: Select characters of a specific class via buttons.
+    """
+    def __init__(
+        self,
+        all_char_dicts: list[dict],
+        class_chars: list[dict],
+        raid_id: int,
+        class_name: str,
+        selected_ids: set[int] | None = None
+    ):
+        super().__init__(timeout=120)
+        self.all_char_dicts = all_char_dicts
+        self.class_chars = class_chars
+        self.raid_id = raid_id
+        self.class_name = class_name
+        self.selected_ids: set[int] = selected_ids or set()
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+
+        # Discord allows up to 25 components.
+        # Use up to 23 buttons for characters, 1 for Back, 1 for Next Step.
+        for char in self.class_chars[:23]:
+            is_selected = char["id"] in self.selected_ids
+            btn = discord.ui.Button(
+                label=_char_label(char),
+                style=discord.ButtonStyle.success if is_selected else discord.ButtonStyle.secondary,
+                emoji="✅" if is_selected else None,
+            )
+            btn.callback = self._create_toggle_callback(char["id"])
+            self.add_item(btn)
+
+        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="⬅️")
+        back_btn.callback = self._on_back
+        self.add_item(back_btn)
+
+        next_btn = discord.ui.Button(
+            label="Next Step",
+            style=discord.ButtonStyle.primary,
+            emoji="➡️",
+            disabled=not self.selected_ids
+        )
+        next_btn.callback = self._on_next_step
+        self.add_item(next_btn)
+
+    def _create_toggle_callback(self, char_id: int):
+        async def callback(interaction: discord.Interaction):
+            if char_id in self.selected_ids:
+                self.selected_ids.remove(char_id)
+            else:
+                self.selected_ids.add(char_id)
+            self._build_components()
+            await interaction.response.edit_message(view=self)
+        return callback
+
+    async def _on_back(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        view = SignupTesting2ClassSelectView(self.all_char_dicts, self.raid_id)
+        await interaction.followup.send(
+            "**Step 1:** Select a class:",
+            view=view,
+            ephemeral=True
+        )
+
+    async def _on_next_step(self, interaction: discord.Interaction):
+        selected_chars = [c for c in self.class_chars if c["id"] in self.selected_ids]
+
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        view = SignupTestingPriorityView(selected_chars, self.raid_id)
+        await interaction.followup.send(
+            view._step_text(),
+            view=view,
+            ephemeral=True
+        )
