@@ -273,6 +273,155 @@ class CharacterCog(commands.Cog):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @app_commands.command(
+        name="edit_character",
+        description="Update your character's name, class, realm, role, or gearscore.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        name="Current name of the character to edit",
+        realm="Current realm of the character (optional if name is unique)",
+        new_name="New name for the character",
+        new_class="New WoW class",
+        new_realm="New realm",
+        new_role="New primary role (Tank, Healer, DPS)",
+        new_gs="New gearscore (applied to ALL specs of this character)",
+    )
+    @app_commands.choices(
+        new_role=[
+            app_commands.Choice(name="Tank", value="tank"),
+            app_commands.Choice(name="Healer", value="healer"),
+            app_commands.Choice(name="DPS", value="dps"),
+        ]
+    )
+    async def edit_character(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        realm: Optional[str] = None,
+        new_name: Optional[str] = None,
+        new_class: Optional[str] = None,
+        new_realm: Optional[str] = None,
+        new_role: Optional[str] = None,
+        new_gs: Optional[str] = None,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        discord_user_id = interaction.user.id
+        guild_id = interaction.guild_id
+        loop = asyncio.get_event_loop()
+
+        def _update():
+            session = get_session()
+            try:
+                q = session.query(Character).filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    char_name=name,
+                    is_deleted=False,
+                )
+                if realm:
+                    q = q.filter(Character.realm.ilike(realm))
+
+                chars = q.all()
+                if not chars:
+                    return None, "Character not found."
+
+                updates = []
+                if new_name:
+                    name_cap = new_name.capitalize()
+                    for c in chars:
+                        c.char_name = name_cap
+                    updates.append(f"Name: **{name_cap}**")
+
+                if new_class:
+                    normalized = normalize_class(new_class)
+                    for c in chars:
+                        c.char_class = normalized
+                    updates.append(f"Class: **{normalized}**")
+
+                if new_realm:
+                    realm_cap = new_realm.capitalize()
+                    for c in chars:
+                        c.realm = realm_cap
+                    updates.append(f"Realm: **{realm_cap}**")
+
+                if new_role:
+                    for c in chars:
+                        c.role = new_role
+                    updates.append(f"Role: **{new_role.capitalize()}**")
+
+                if new_gs:
+                    try:
+                        parsed_gs = parse_gs(new_gs)
+                        for c in chars:
+                            c.gearscore = parsed_gs
+                        updates.append(f"GS: **{format_gs(parsed_gs)}** (applied to all specs)")
+                    except ValueError:
+                        return None, f"Invalid gearscore: `{new_gs}`"
+
+                if updates:
+                    for c in chars:
+                        c.last_updated = datetime.datetime.now(datetime.timezone.utc)
+                    session.commit()
+                    return updates, None
+                else:
+                    return [], "No changes specified."
+            finally:
+                session.close()
+
+        updates, error = await loop.run_in_executor(None, _update)
+
+        if error:
+            await interaction.followup.send(f"❌ {error}", ephemeral=True)
+        elif updates:
+            embed = discord.Embed(
+                title=f"✅ Character Updated: {name}",
+                description="\n".join(updates),
+                color=discord.Color.green(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.followup.send("ℹ️ No updates were performed.", ephemeral=True)
+
+    @edit_character.autocomplete("name")
+    async def character_name_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        guild_id = interaction.guild_id
+        discord_user_id = interaction.user.id
+        if not guild_id:
+            return []
+
+        def _fetch():
+            session = get_session()
+            try:
+                # Get unique character names for this user in this guild
+                chars = (
+                    session.query(Character.char_name)
+                    .filter_by(
+                        guild_id=guild_id,
+                        discord_user_id=discord_user_id,
+                        is_deleted=False,
+                    )
+                    .distinct()
+                    .all()
+                )
+                return [c[0] for c in chars]
+            finally:
+                session.close()
+
+        loop = asyncio.get_event_loop()
+        try:
+            names = await loop.run_in_executor(None, _fetch)
+        except Exception:
+            return []
+
+        return [
+            app_commands.Choice(name=name, value=name)
+            for name in names
+            if current.lower() in name.lower()
+        ][:25]
+
     # ── /remove_character ──────────────────────────────────────────────────
     @app_commands.command(
         name="remove_character",
@@ -281,12 +430,14 @@ class CharacterCog(commands.Cog):
     @app_commands.guild_only()
     @app_commands.describe(
         name="Character name to remove",
+        realm="Realm name (optional if name is unique)",
         spec="Spec to remove (leave blank to remove all specs of this character)",
     )
     async def remove_character(
         self,
         interaction: discord.Interaction,
         name: str,
+        realm: Optional[str] = None,
         spec: Optional[str] = None,
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -303,6 +454,8 @@ class CharacterCog(commands.Cog):
                     Character.char_name.ilike(name),
                     Character.is_deleted == False,  # noqa: E712
                 )
+                if realm:
+                    q = q.filter(Character.realm.ilike(realm))
                 if spec:
                     q = q.filter(Character.spec.ilike(spec))
                 chars = q.all()
@@ -329,6 +482,12 @@ class CharacterCog(commands.Cog):
                 f"🗑️ Removed **{removed}** entry/entries for **{name.capitalize()}**.",
                 ephemeral=True,
             )
+
+    @remove_character.autocomplete("name")
+    async def remove_character_name_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        return await self.character_name_autocomplete(interaction, current)
 
 
     @app_commands.command(
@@ -376,9 +535,10 @@ class CharacterCog(commands.Cog):
             embed.add_field(
                 name=field_name,
                 value=(
-                    f"Class: {char.char_class or 'Unknown'}\n"
-                    f"GS: {format_gs(char.gearscore)}\n"
-                    f"Role: {role_str}"
+                    f"**Class:** {char.char_class or 'Unknown'}\n"
+                    f"**GS:** {format_gs(char.gearscore)}\n"
+                    f"**Role:** {role_str}\n"
+                    f"**Realm:** {char.realm}"
                 ),
                 inline=True,
             )

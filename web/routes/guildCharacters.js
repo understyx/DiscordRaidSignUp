@@ -142,6 +142,47 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
   res.redirect('/guild-characters');
 });
 
+// POST /guild-characters/update-name/:char_id
+router.post('/update-name/:char_id', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id;
+  const charId = parseInt(req.params.char_id);
+  const newName = (req.body.char_name || '').trim();
+
+  if (!newName) {
+    req.session.flash = '❌ Character name cannot be empty.';
+    return res.redirect('/guild-characters');
+  }
+
+  const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
+
+  try {
+    const [[char]] = await pool.query('SELECT discord_user_id, char_name, realm FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0', [charId, guildId]);
+    if (!char) {
+      req.session.flash = '❌ Character not found.';
+      return res.redirect('/guild-characters');
+    }
+
+    if (!(await verifyGuildMembership(guildId, char.discord_user_id))) {
+      req.session.flash = '❌ Permission denied: Character owner is not in this guild.';
+      return res.redirect('/guild-characters');
+    }
+
+    // Update all specs for this character (matched by user + old name + realm)
+    await pool.query(
+      'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+      [newNameCap, char.discord_user_id, guildId, char.char_name, char.realm]
+    );
+    req.session.flash = `✅ Character renamed to ${newNameCap}.`;
+  } catch (err) {
+    console.error('[guild-characters] Update name error:', err);
+    req.session.flash = '❌ Failed to update name.';
+  }
+
+  res.redirect('/guild-characters');
+});
+
 // POST /guild-characters/update-gs/:char_id
 router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
