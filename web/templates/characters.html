@@ -31,6 +31,7 @@
             <th>Character</th>
             <th>Realm</th>
             <th>Class</th>
+            <th>Professions</th>
             <th>Spec</th>
             <th>GS</th>
             <th></th>
@@ -65,6 +66,38 @@
             </td>
             <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
             <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
+            <td rowspan="{{ group.rows | length }}">
+              <div class="d-flex align-items-center gap-1">
+                <div class="small">
+                  {% if group.rows[0].prof_1 or group.rows[0].prof_2 %}
+                    <div>{{ group.rows[0].prof_1 or '—' }}</div>
+                    <div>{{ group.rows[0].prof_2 or '—' }}</div>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        data-bs-toggle="collapse" data-bs-target="#edit-profs-{{ group_id }}"
+                        title="Edit Professions">✏️</button>
+              </div>
+              <div class="collapse mt-1" id="edit-profs-{{ group_id }}">
+                <form method="post" action="/characters/{{ group_id }}/update-professions" class="d-flex flex-column gap-1">
+                  <select name="prof_1" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">— Prof 1 —</option>
+                    {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
+                    <option {{ 'selected' if group.rows[0].prof_1 == p }}>{{ p }}</option>
+                    {% endfor %}
+                  </select>
+                  <select name="prof_2" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">— Prof 2 —</option>
+                    {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
+                    <option {{ 'selected' if group.rows[0].prof_2 == p }}>{{ p }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-sm btn-outline-success">💾</button>
+                </form>
+              </div>
+            </td>
             {% endif %}
             <td>
               <form method="post" action="/characters/{{ row.id }}/update-spec"
@@ -93,7 +126,7 @@
           </tr>
           {% endfor %}
           <tr class="{{ alt }}">
-            <td colspan="6" class="p-0 border-0">
+            <td colspan="7" class="p-0 border-0">
               <div class="collapse" id="add-spec-{{ group_id }}">
                 <div class="p-2">
                   <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
@@ -106,6 +139,18 @@
                     <input type="text" name="gearscore"
                            class="form-control form-control-sm bg-dark text-light border-secondary"
                            style="width:80px" placeholder="GS" maxlength="10" />
+                    <select name="prof_1" class="form-select form-select-sm bg-dark text-light border-secondary" style="width:110px">
+                      <option value="">— Prof 1 —</option>
+                      {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
+                      <option {{ 'selected' if group.rows[0].prof_1 == p }}>{{ p }}</option>
+                      {% endfor %}
+                    </select>
+                    <select name="prof_2" class="form-select form-select-sm bg-dark text-light border-secondary" style="width:110px">
+                      <option value="">— Prof 2 —</option>
+                      {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
+                      <option {{ 'selected' if group.rows[0].prof_2 == p }}>{{ p }}</option>
+                      {% endfor %}
+                    </select>
                     <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
                   </form>
                 </div>
@@ -165,6 +210,40 @@
             <label class="form-label small">GS</label>
             <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
                    maxlength="10" placeholder="e.g. 6300" style="width:90px" />
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Prof 1</label>
+            <select name="prof_1" class="form-select bg-dark text-light border-secondary">
+              <option value="">— select —</option>
+              <option>Alchemy</option>
+              <option>Blacksmithing</option>
+              <option>Enchanting</option>
+              <option>Engineering</option>
+              <option>Herbalism</option>
+              <option>Inscription</option>
+              <option>Jewelcrafting</option>
+              <option>Leatherworking</option>
+              <option>Mining</option>
+              <option>Skinning</option>
+              <option>Tailoring</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Prof 2</label>
+            <select name="prof_2" class="form-select bg-dark text-light border-secondary">
+              <option value="">— select —</option>
+              <option>Alchemy</option>
+              <option>Blacksmithing</option>
+              <option>Enchanting</option>
+              <option>Engineering</option>
+              <option>Herbalism</option>
+              <option>Inscription</option>
+              <option>Jewelcrafting</option>
+              <option>Leatherworking</option>
+              <option>Mining</option>
+              <option>Skinning</option>
+              <option>Tailoring</option>
+            </select>
           </div>
           <div class="col-auto">
             <button type="submit" class="btn btn-wow">Add</button>

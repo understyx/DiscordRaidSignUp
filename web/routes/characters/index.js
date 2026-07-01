@@ -156,6 +156,8 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const spec = (req.body.spec || '').trim() || null;
   const gsRaw = (req.body.gearscore || '').trim();
   const gearscore = parseGS(gsRaw);
+  const prof1 = (req.body.prof_1 || '').trim() || null;
+  const prof2 = (req.body.prof_2 || '').trim() || null;
 
   if (!charName) {
     req.session.flash = '❌ Character name is required.';
@@ -180,16 +182,22 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
 
   if (existing) {
     await pool.query(
-      'UPDATE characters SET char_class = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-      [charClass, gearscore, existing.id]
+      'UPDATE characters SET char_class = ?, gearscore = ?, prof_1 = ?, prof_2 = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+      [charClass, gearscore, prof1, prof2, existing.id]
     );
   } else {
     await pool.query(
-      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [userId, guildId, charNameCap, realmCap, charClass, spec, gearscore]
+      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, gearscore, prof_1, prof_2, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [userId, guildId, charNameCap, realmCap, charClass, spec, gearscore, prof1, prof2]
     );
   }
+
+  // Propagation: if we just registered/updated a character, update professions for all its specs.
+  await pool.query(
+    'UPDATE characters SET prof_1 = ?, prof_2 = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+    [prof1, prof2, userId, guildId, charNameCap, realmCap]
+  );
 
   req.session.flash = `✅ Character ${charNameCap} registered!`;
   res.redirect('/characters');
@@ -213,6 +221,34 @@ router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: fal
   if (char) {
     await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, char.id]);
     req.session.flash = `✅ GS updated for ${char.char_name}.`;
+  } else {
+    req.session.flash = '❌ Character not found.';
+  }
+
+  res.redirect('/characters');
+});
+
+// POST /characters/:char_id/update-professions
+router.post('/characters/:char_id/update-professions', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
+  const charId = parseInt(req.params.char_id);
+  const prof1 = (req.body.prof_1 || '').trim() || null;
+  const prof2 = (req.body.prof_2 || '').trim() || null;
+
+  const [[char]] = await pool.query(
+    'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
+  );
+
+  if (char) {
+    await pool.query(
+      'UPDATE characters SET prof_1 = ?, prof_2 = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+      [prof1, prof2, userId, guildId, char.char_name, char.realm]
+    );
+    req.session.flash = `✅ Professions updated for ${char.char_name}.`;
   } else {
     req.session.flash = '❌ Character not found.';
   }

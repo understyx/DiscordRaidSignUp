@@ -174,6 +174,8 @@ class CharacterCog(commands.Cog):
         gs5: Optional[str] = None,
         spec6: Optional[str] = None,
         gs6: Optional[str] = None,
+        prof1: Optional[str] = None,
+        prof2: Optional[str] = None,
         realm: str = "Icecrown",
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -247,6 +249,8 @@ class CharacterCog(commands.Cog):
 
                     char.gearscore = gs
                     char.char_class = normalize_class(char_class)
+                    char.prof_1 = prof1
+                    char.prof_2 = prof2
                     char.is_deleted = False
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
@@ -304,6 +308,8 @@ class CharacterCog(commands.Cog):
         new_realm: Optional[str] = None,
         new_role: Optional[str] = None,
         new_gs: Optional[str] = None,
+        new_prof1: Optional[str] = None,
+        new_prof2: Optional[str] = None,
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
@@ -358,6 +364,15 @@ class CharacterCog(commands.Cog):
                         updates.append(f"GS: **{format_gs(parsed_gs)}** (applied to all specs)")
                     except ValueError:
                         return None, f"Invalid gearscore: `{new_gs}`"
+
+                if new_prof1 is not None or new_prof2 is not None:
+                    # Update both together if either is specified, but allow partial update
+                    for c in chars:
+                        if new_prof1 is not None:
+                            c.prof_1 = new_prof1
+                        if new_prof2 is not None:
+                            c.prof_2 = new_prof2
+                    updates.append("Professions updated")
 
                 if updates:
                     for c in chars:
