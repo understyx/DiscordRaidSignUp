@@ -465,7 +465,8 @@ class SignupCharacterSelectView(discord.ui.View):
             )
             return
 
-        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status)
+        priority_ids = {c["id"] for c in selected_chars if c.get("signup_type") == SignupType.prio_character}
+        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status, priority_ids=priority_ids)
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
@@ -474,7 +475,9 @@ class SignupCharacterSelectView(discord.ui.View):
 
     async def _on_all_chars(self, interaction: discord.Interaction):
         self.selected_ids = {c["id"] for c in self.char_dicts}
-        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status)
+        # Update priority_ids in the next view to match what's currently marked as priority (signup_type)
+        priority_ids = {c["id"] for c in self.char_dicts if c.get("signup_type") == SignupType.prio_character}
+        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status, priority_ids=priority_ids)
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
