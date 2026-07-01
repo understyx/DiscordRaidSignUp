@@ -15,7 +15,6 @@ from .embed import update_raid_embed
 from .parser import format_gs
 from .views import (
     SignupCharacterSelectView,
-    SignupTestingCharacterSelectView,
     SignupTesting2ClassSelectView,
     TextSignupModal,
     EditNotesModal
@@ -139,17 +138,7 @@ class SignupView(discord.ui.View):
         await self._start_signup_flow(interaction, SignupStatus.signed)
 
     @discord.ui.button(
-        label="Sign up (Testing)",
-        style=discord.ButtonStyle.secondary,
-        custom_id="signup:testing",
-        emoji="🧪",
-        row=0,
-    )
-    async def btn_signup_testing(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._start_signup_testing_flow(interaction)
-
-    @discord.ui.button(
-        label="Sign up (Test 2)",
+        label="Sign up (raid helper)",
         style=discord.ButtonStyle.secondary,
         custom_id="signup:testing2",
         emoji="🧪",
@@ -158,96 +147,11 @@ class SignupView(discord.ui.View):
     async def btn_signup_testing2(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_signup_testing2_flow(interaction)
 
-    async def _start_signup_testing_flow(
-        self,
-        interaction: discord.Interaction,
-    ):
-        """Open the character sign-up testing flow."""
-        raid_id = self._get_raid_id(interaction)
-        if raid_id is None:
-            await interaction.response.send_message(
-                "❌ Could not determine raid ID from this message.", ephemeral=True
-            )
-            return
-
-        loop = asyncio.get_event_loop()
-        discord_user_id = interaction.user.id
-
-        def _fetch():
-            session = get_session()
-            try:
-                raid = session.get(Raid, raid_id)
-                if raid is None:
-                    return None, [], set()
-                chars = (
-                    session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
-                    .all()
-                )
-                signups = (
-                    session.query(Signup)
-                    .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
-                    .all()
-                )
-                signup_ids = {s.character_id for s in signups}
-                return raid.status, _chars_to_dicts(chars), signup_ids
-            finally:
-                session.close()
-
-        status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
-
-        if status is None:
-            await interaction.response.send_message(
-                "❌ Could not find this raid.", ephemeral=True
-            )
-            return
-
-        if status != RaidStatus.open:
-            await interaction.response.send_message(
-                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
-            )
-            return
-
-        if not char_dicts:
-            dm_text = (
-                "👋 **You have no registered characters!**\n\n"
-                "The easiest way to add your characters is to **reply to me here in DMs** "
-                "using the following format (one character per line):\n\n"
-                "```\n"
-                "CharName / CharClass / Spec1 / GS1 / Spec2 / GS2 / ... / Spec6 / GS6\n"
-                "```\n"
-                "**Example:**\n"
-                "```\n"
-                "Thrall / Shaman / Enhancement / 6200 / Restoration / 5800\n"
-                "```\n"
-                "You can list up to 6 specs per character and multiple characters at once.\n\n"
-                "Alternatively, use the `/addcharacter` or `/addcharacters` commands in the server."
-            )
-            try:
-                await interaction.user.send(dm_text)
-                dm_note = " A DM has been sent to you with instructions."
-            except discord.Forbidden:
-                dm_note = " (Could not send you a DM — please enable DMs from server members.)"
-            except Exception:
-                dm_note = ""
-            await interaction.response.send_message(
-                "❌ You have no registered characters." + dm_note,
-                ephemeral=True,
-            )
-            return
-
-        view = SignupTestingCharacterSelectView(char_dicts, raid_id, selected_ids=signup_ids)
-        await interaction.response.send_message(
-            "**Step 1:** Select characters to sign up:",
-            view=view,
-            ephemeral=True,
-        )
-
     async def _start_signup_testing2_flow(
         self,
         interaction: discord.Interaction,
     ):
-        """Open the second character sign-up testing flow."""
+        """Open the character sign-up raid helper flow."""
         raid_id = self._get_raid_id(interaction)
         if raid_id is None:
             await interaction.response.send_message(

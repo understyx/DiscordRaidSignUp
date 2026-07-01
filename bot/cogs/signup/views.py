@@ -696,71 +696,9 @@ class EditNotesModal(discord.ui.Modal):
         await update_raid_embed(interaction.client, raid_id)
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
 
-class SignupTestingCharacterSelectView(discord.ui.View):
-    """
-    Testing flow Step 1: Select characters via buttons.
-    """
-    def __init__(self, char_dicts: list[dict], raid_id: int, selected_ids: set[int] | None = None):
-        super().__init__(timeout=120)
-        self.char_dicts = char_dicts
-        self.raid_id = raid_id
-        self.selected_ids: set[int] = selected_ids or set()
-        self.chars_by_id = {c["id"]: c for c in char_dicts}
-        self._build_components()
-
-    def _build_components(self):
-        self.clear_items()
-        # Discord allows up to 25 components (5 rows of 5).
-        # We use up to 24 buttons for characters and 1 for "Next Step".
-        for char in self.char_dicts[:24]:
-            is_selected = char["id"] in self.selected_ids
-            btn = discord.ui.Button(
-                label=_char_label(char),
-                style=discord.ButtonStyle.success if is_selected else discord.ButtonStyle.secondary,
-                emoji="✅" if is_selected else None,
-            )
-            btn.callback = self._create_toggle_callback(char["id"])
-            self.add_item(btn)
-
-        next_btn = discord.ui.Button(
-            label="Next Step",
-            style=discord.ButtonStyle.primary,
-            emoji="➡️",
-            disabled=not self.selected_ids
-        )
-        next_btn.callback = self._on_next_step
-        self.add_item(next_btn)
-
-    def _create_toggle_callback(self, char_id: int):
-        async def callback(interaction: discord.Interaction):
-            if char_id in self.selected_ids:
-                self.selected_ids.remove(char_id)
-            else:
-                self.selected_ids.add(char_id)
-            self._build_components()
-            await interaction.response.edit_message(view=self)
-        return callback
-
-    async def _on_next_step(self, interaction: discord.Interaction):
-        selected_chars = [self.chars_by_id[sid] for sid in self.selected_ids if sid in self.chars_by_id]
-        if not selected_chars:
-            await interaction.response.send_message("❌ No characters selected.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        await interaction.delete_original_response()
-
-        view = SignupTestingPriorityView(selected_chars, self.raid_id)
-        await interaction.followup.send(
-            view._step_text(),
-            view=view,
-            ephemeral=True
-        )
-
-
 class SignupTestingPriorityView(discord.ui.View):
     """
-    Testing flow Step 2: Mark preferred characters using buttons.
+    Raid helper flow Step 2: Mark preferred characters using buttons.
     """
     def __init__(self, selected_chars: list[dict], raid_id: int):
         super().__init__(timeout=120)
@@ -843,7 +781,7 @@ class SignupTestingPriorityView(discord.ui.View):
             lines.append(f"• **{_char_label(c)}**{prio_str}")
 
         await interaction.response.edit_message(
-            content=f"✅ Signed up (Testing) for the raid:\n" + "\n".join(lines),
+            content=f"✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
             view=None,
         )
 
@@ -868,7 +806,7 @@ class SignupTestingPriorityView(discord.ui.View):
             discord_user_id=interaction.user.id,
             user_mention=interaction.user.mention,
             emoji="🧪",
-            action="signed up (testing)",
+            action="signed up (raid helper)",
             raid_name=raid_name,
             detail_lines=bullets,
         )
@@ -882,7 +820,7 @@ class SignupTestingPriorityView(discord.ui.View):
 
 class SignupTesting2ClassSelectView(discord.ui.View):
     """
-    Testing flow 2 Step 1: Select class via buttons.
+    Raid helper flow Step 1: Select class via buttons.
     """
     def __init__(self, char_dicts: list[dict], raid_id: int, selected_ids: set[int] | None = None):
         super().__init__(timeout=120)
@@ -962,7 +900,7 @@ class SignupTesting2ClassSelectView(discord.ui.View):
 
 class SignupTesting2CharacterSelectView(discord.ui.View):
     """
-    Testing flow 2 Step 2: Select characters of a specific class via buttons.
+    Raid helper flow Step 2: Select characters of a specific class via buttons.
     """
     def __init__(
         self,
