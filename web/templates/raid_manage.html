@@ -128,6 +128,8 @@
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
                    data-spec="{{ firstSpec.spec or '' }}"
                    data-gearscore="{{ firstSpec.gearscore }}"
+                   data-sfs-count="{{ charGroup.sfs_count if charGroup.sfs_count != null else '' }}"
+                   data-val-count="{{ charGroup.val_count if charGroup.val_count != null else '' }}"
                    data-all-specs="{{ charGroup.specs | map('spec') | select | join(',') }}"
                  {% if can_edit %}ondragstart="onDragStart(event)"{% endif %}
                  style="position:relative;">
@@ -202,6 +204,20 @@
                 {% endif %}
                 <div class="slot-label">{{ slot_emoji }}</div>
                 {% if assigned_char_id %}
+                  {% set s = signup_by_char_id[assigned_char_id] %}
+                  {% if s and s.character %}
+                    {% set c = s.character %}
+                    {% if can_edit %}
+                    <div class="collector-btns">
+                      {% if c.char_class in ['Paladin', 'Death Knight', 'Warrior'] and c.sfs_count != null and c.sfs_count < 50 %}
+                      <button class="collector-btn sfs-btn{% if comp_character_map[slot].is_sfs_collector %} active{% endif %}" onclick="toggleCollector(this, 'sfs')" title="Elect as Shard Collector">❄️</button>
+                      {% endif %}
+                      {% if c.char_class in ['Paladin', 'Priest', 'Druid', 'Shaman'] and c.val_count != null and c.val_count < 30 %}
+                      <button class="collector-btn val-btn{% if comp_character_map[slot].is_val_collector %} active{% endif %}" onclick="toggleCollector(this, 'val')" title="Elect as Val'anyr Collector">🔨</button>
+                      {% endif %}
+                    </div>
+                    {% endif %}
+                  {% endif %}
                   {% set s = signup_by_char_id[assigned_char_id] %}
                   {% if s %}
                     {% set c = s.character %}
@@ -434,6 +450,7 @@
     "COMP_LABELS": {{ comp_labels | tojson | safe }},
     "MAX_SIZE": {{ raid.max_size }},
     "CHARS_IN_COMPS": {{ chars_in_comps | tojson | safe }},
+    "CHAR_COLLECTORS": {{ char_collectors | tojson | safe }},
     "WOTLK_RAID_BUFFS": {{ wotlk_buffs | tojson | safe }}, "EMOJIS": {{ emojis | tojson | safe }}, "RAID": {{ raid | tojson | safe }}
   }
 </script>

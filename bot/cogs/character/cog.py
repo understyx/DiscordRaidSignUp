@@ -278,6 +278,141 @@ class CharacterCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(
+        name="shard_sfs",
+        description="Set Shadowfrost Shard count for a character.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        name="Character name",
+        amount="Shard count (0-50) or 'remove' to stop tracking",
+    )
+    async def shard_sfs(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        amount: str,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        guild_id = interaction.guild_id
+        discord_user_id = interaction.user.id
+
+        valid_classes = {"Paladin", "Death Knight", "Warrior"}
+
+        count = None
+        if amount.lower() != "remove":
+            try:
+                count = int(amount)
+                if not (0 <= count <= 50):
+                    await interaction.followup.send("❌ Amount must be between 0 and 50.", ephemeral=True)
+                    return
+            except ValueError:
+                await interaction.followup.send("❌ Amount must be a number or 'remove'.", ephemeral=True)
+                return
+
+        def _update():
+            session = get_session()
+            try:
+                chars = session.query(Character).filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    char_name=name.capitalize(),
+                    is_deleted=False
+                ).all()
+
+                if not chars:
+                    return False, "Character not found."
+
+                if chars[0].char_class not in valid_classes:
+                    return False, f"❌ Shadowfrost Shards can only be tracked for: {', '.join(valid_classes)}."
+
+                for c in chars:
+                    c.sfs_count = count
+                    c.last_updated = datetime.datetime.now(datetime.timezone.utc)
+
+                session.commit()
+                return True, None
+            finally:
+                session.close()
+
+        success, error = await asyncio.get_event_loop().run_in_executor(None, _update)
+        if not success:
+            await interaction.followup.send(error, ephemeral=True)
+        else:
+            msg = f"✅ Shadowfrost Shards for **{name.capitalize()}** set to **{count if count is not None else 'None'}**."
+            await interaction.followup.send(msg, ephemeral=True)
+
+    @app_commands.command(
+        name="shard_val",
+        description="Set Fragments of Val'anyr count for a character.",
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        name="Character name",
+        amount="Fragment count (0-30) or 'remove' to stop tracking",
+    )
+    async def shard_val(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        amount: str,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        guild_id = interaction.guild_id
+        discord_user_id = interaction.user.id
+
+        valid_classes = {"Paladin", "Priest", "Druid", "Shaman"}
+
+        count = None
+        if amount.lower() != "remove":
+            try:
+                count = int(amount)
+                if not (0 <= count <= 30):
+                    await interaction.followup.send("❌ Amount must be between 0 and 30.", ephemeral=True)
+                    return
+            except ValueError:
+                await interaction.followup.send("❌ Amount must be a number or 'remove'.", ephemeral=True)
+                return
+
+        def _update():
+            session = get_session()
+            try:
+                chars = session.query(Character).filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    char_name=name.capitalize(),
+                    is_deleted=False
+                ).all()
+
+                if not chars:
+                    return False, "Character not found."
+
+                if chars[0].char_class not in valid_classes:
+                    return False, f"❌ Fragments of Val'anyr can only be tracked for: {', '.join(valid_classes)}."
+
+                for c in chars:
+                    c.val_count = count
+                    c.last_updated = datetime.datetime.now(datetime.timezone.utc)
+
+                session.commit()
+                return True, None
+            finally:
+                session.close()
+
+        success, error = await asyncio.get_event_loop().run_in_executor(None, _update)
+        if not success:
+            await interaction.followup.send(error, ephemeral=True)
+        else:
+            msg = f"✅ Fragments of Val'anyr for **{name.capitalize()}** set to **{count if count is not None else 'None'}**."
+            await interaction.followup.send(msg, ephemeral=True)
+
+    @shard_sfs.autocomplete("name")
+    @shard_val.autocomplete("name")
+    async def shard_name_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        return await self.character_name_autocomplete(interaction, current)
+
+    @app_commands.command(
         name="edit_character",
         description="Update your character's name, class, realm, role, or gearscore.",
     )

@@ -795,6 +795,7 @@ router.get('/:raid_number/manage', async (req, res) => {
 
   const [allSignups] = await pool.query(
     `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role,
+            c.sfs_count, c.val_count,
             du.username AS du_username, du.display_name AS du_display_name
      FROM signups s
      JOIN characters c ON s.character_id = c.id
@@ -813,6 +814,8 @@ router.get('/:raid_number/manage', async (req, res) => {
       spec: s.spec,
       gearscore: s.gearscore,
       role: s.role,
+        sfs_count: s.sfs_count,
+        val_count: s.val_count,
     },
   }));
 
@@ -855,6 +858,8 @@ router.get('/:raid_number/manage', async (req, res) => {
         char_class: s.character.char_class,
         discord_user_id: uid,
         note: s.note || '',
+        sfs_count: s.character.sfs_count,
+        val_count: s.character.val_count,
         specs: [],
       };
       userSignupMap[uid].characters.push(charGroup);
@@ -961,7 +966,7 @@ router.get('/:raid_number/manage', async (req, res) => {
 
   const [existingComp] = await pool.query(
     `SELECT co.*, s.status AS signup_status,
-            c.char_name, c.char_class, c.spec, c.gearscore,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN characters c ON c.id = co.character_id
@@ -992,7 +997,11 @@ router.get('/:raid_number/manage', async (req, res) => {
         char_name: c.char_name,
         char_class: c.char_class,
         spec: c.spec,
-        gearscore: c.gearscore
+        gearscore: c.gearscore,
+        sfs_count: c.sfs_count,
+        val_count: c.val_count,
+        is_sfs_collector: !!c.is_sfs_collector,
+        is_val_collector: !!c.is_val_collector
       };
     } else if (c.discord_user_id) {
       let displayLabel = c.du_display_name || c.du_username || String(c.discord_user_id);
@@ -1023,16 +1032,24 @@ router.get('/:raid_number/manage', async (req, res) => {
   const compLabels = await fetchCompLabels(raidId);
 
   // Build map of character_id -> [comp_numbers] across ALL comps for this raid.
-  // Used by the left-panel to show which characters are already placed.
+  // Also track which characters are marked as collectors.
+  // Used by the left-panel to show which characters are already placed and collecting.
   const [allCompAssignments] = await pool.query(
-    'SELECT character_id, comp_number FROM compositions WHERE raid_id = ? AND character_id IS NOT NULL',
+    'SELECT character_id, comp_number, is_sfs_collector, is_val_collector FROM compositions WHERE raid_id = ? AND character_id IS NOT NULL',
     [raidId]
   );
   const charsInComps = {};
+  const charCollectors = {}; // cid -> { sfs: [comp_nums], val: [comp_nums] }
   for (const row of allCompAssignments) {
     const cid = String(row.character_id);
     if (!charsInComps[cid]) charsInComps[cid] = [];
     charsInComps[cid].push(row.comp_number);
+
+    if (row.is_sfs_collector || row.is_val_collector) {
+        if (!charCollectors[cid]) charCollectors[cid] = { sfs: [], val: [] };
+        if (row.is_sfs_collector) charCollectors[cid].sfs.push(row.comp_number);
+        if (row.is_val_collector) charCollectors[cid].val.push(row.comp_number);
+    }
   }
 
   // Build per-comp role-count summaries for the post confirmation modal
@@ -1076,7 +1093,7 @@ router.get('/:raid_number/manage', async (req, res) => {
     current_comp: currentComp,
     next_comp: nextComp,
     comp_summaries: compSummaries,
-    chars_in_comps: charsInComps, emojis: EMOJIS, raid: raid,
+    chars_in_comps: charsInComps, char_collectors: charCollectors, emojis: EMOJIS, raid: raid,
     wotlk_buffs: WOTLK_BUFFS,
     flash: popFlash(req),
     user: currentUser(req),
@@ -1146,8 +1163,8 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
   for (const entry of charEntries) {
     const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
-      [raidId, parseInt(entry.character_id), entry.role_slot, slotRole, compNumber, userId]
+      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      [raidId, parseInt(entry.character_id), entry.role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
     );
   }
 
@@ -1252,16 +1269,18 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       savedSlots.push({ role_slot, cleared: true });
     } else if (charId !== null) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at)
+         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = VALUES(character_id),
            placeholder_text = NULL,
            discord_user_id  = NULL,
            slot_role       = VALUES(slot_role),
+           is_sfs_collector = VALUES(is_sfs_collector),
+           is_val_collector = VALUES(is_val_collector),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
-        [raidId, charId, role_slot, slotRole, compNumber, userId]
+        [raidId, charId, role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
       );
       savedSlots.push({ role_slot });
     } else if (discordUserId) {
@@ -1298,7 +1317,8 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
   // Return the full current composition so all clients can converge immediately
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
-            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
+            co.is_sfs_collector, co.is_val_collector,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count, c.discord_user_id AS char_discord_user_id,
             s.status AS signup_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
@@ -1321,6 +1341,10 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
     gearscore: r.gearscore || 0,
+    sfs_count: r.sfs_count,
+    val_count: r.val_count,
+    is_sfs_collector: !!r.is_sfs_collector,
+    is_val_collector: !!r.is_val_collector,
     status: r.signup_status || null,
   }));
 
@@ -1340,8 +1364,9 @@ router.get('/:raid_number/manage/json', async (req, res) => {
 
   const [rows] = await pool.query(
     `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
+            co.is_sfs_collector, co.is_val_collector,
             MAX(co.updated_at) OVER () AS max_updated_at,
-            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
+            c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count, c.discord_user_id AS char_discord_user_id,
             s.status AS signup_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
@@ -1371,6 +1396,10 @@ router.get('/:raid_number/manage/json', async (req, res) => {
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
     gearscore: r.gearscore || 0,
+    sfs_count: r.sfs_count,
+    val_count: r.val_count,
+    is_sfs_collector: !!r.is_sfs_collector,
+    is_val_collector: !!r.is_val_collector,
     status: r.signup_status || null,
   }));
 
@@ -1492,7 +1521,9 @@ router.get('/:raid_number/comp', async (req, res) => {
   const currentComp = parseInt(req.query.comp) || compNumbers[0];
 
   const [comps] = await pool.query(
-    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role, c.discord_user_id AS char_discord_user_id,
+    `SELECT co.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role,
+            c.sfs_count, c.val_count,
+            c.discord_user_id AS char_discord_user_id,
             s.status AS signup_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
@@ -1521,6 +1552,10 @@ router.get('/:raid_number/comp', async (req, res) => {
         spec: comp.spec,
         gearscore: comp.gearscore,
         role: comp.role,
+        sfs_count: comp.sfs_count,
+        val_count: comp.val_count,
+        is_sfs_collector: !!comp.is_sfs_collector,
+        is_val_collector: !!comp.is_val_collector,
         discord_user_id: comp.char_discord_user_id,
         status: comp.signup_status,
       } : null,
@@ -1598,6 +1633,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
       for (const cn of compsToPost) {
         const [comps] = await pool.query(
           `SELECT co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
+                  co.is_sfs_collector, co.is_val_collector,
                   c.char_name, c.char_class, c.spec, c.role, c.discord_user_id AS char_discord_user_id,
                   s.status AS signup_status,
                   du.username AS du_username, du.display_name AS du_display_name
@@ -1624,6 +1660,8 @@ router.post('/:raid_number/post_comp', async (req, res) => {
               char_class: comp.char_class,
               spec: comp.spec,
               role: comp.role,
+              is_sfs_collector: !!comp.is_sfs_collector,
+              is_val_collector: !!comp.is_val_collector,
               discord_user_id: comp.char_discord_user_id ? String(comp.char_discord_user_id) : null,
               status: comp.signup_status,
             } : null,

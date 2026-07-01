@@ -218,7 +218,10 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
       const c = e.character;
       const mention = c.discord_user_id ? ` <@${c.discord_user_id}>` : '';
       const tentative = c.status === 'tentative' ? ' [:question:]' : '';
-      return `${emoji} **${c.char_name}**${mention}${tentative}`;
+      let suffix = '';
+      if (c.is_sfs_collector) suffix += ' ❄️';
+      if (c.is_val_collector) suffix += ' 🔨';
+      return `${emoji} **${c.char_name}**${mention}${tentative}${suffix}`;
     });
 
     // Chunk strings to respect the strict 1024 character value limit per field
