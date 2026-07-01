@@ -268,13 +268,9 @@ class CharacterCog(commands.Cog):
             f"• **{spec}** – GS {gs:.0f}"
             for spec, gs in specs
         ]
-        prof_line = ""
-        if prof1 or prof2:
-            prof_line = f"**Professions:** {prof1 or '—'} / {prof2 or '—'}\n"
-
         embed = discord.Embed(
             title=f"✅ {name.capitalize()}-{realm.capitalize()} added!",
-            description=f"**Class:** {canonical_class}\n{prof_line}" + "\n".join(lines),
+            description=f"**Class:** {canonical_class}\n" + "\n".join(lines),
             color=discord.Color.green(),
         )
         embed.set_footer(text="Use /my_characters to see all your characters.")
@@ -376,10 +372,7 @@ class CharacterCog(commands.Cog):
                             c.prof_1 = new_prof1
                         if new_prof2 is not None:
                             c.prof_2 = new_prof2
-
-                    p1 = new_prof1 if new_prof1 is not None else chars[0].prof_1
-                    p2 = new_prof2 if new_prof2 is not None else chars[0].prof_2
-                    updates.append(f"Professions: **{p1 or '—'} / {p2 or '—'}**")
+                    updates.append("Professions updated")
 
                 if updates:
                     for c in chars:
@@ -554,14 +547,12 @@ class CharacterCog(commands.Cog):
             field_name = f"{char.char_name} ({char.realm})"
             if char.spec:
                 field_name += f" – {char.spec}"
-            profs_str = f"{char.prof_1 or '—'} / {char.prof_2 or '—'}"
             embed.add_field(
                 name=field_name,
                 value=(
                     f"**Class:** {char.char_class or 'Unknown'}\n"
                     f"**GS:** {format_gs(char.gearscore)}\n"
                     f"**Role:** {role_str}\n"
-                    f"**Profs:** {profs_str}\n"
                     f"**Realm:** {char.realm}"
                 ),
                 inline=True,
