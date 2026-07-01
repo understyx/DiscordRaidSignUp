@@ -102,6 +102,42 @@ router.get('/profile', (req, res) => {
   res.redirect('/characters');
 });
 
+// POST /characters/:char_id/update-name
+router.post('/characters/:char_id/update-name', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
+  const charId = parseInt(req.params.char_id);
+  const newName = (req.body.char_name || '').trim();
+
+  if (!newName) {
+    req.session.flash = '❌ Character name cannot be empty.';
+    return res.redirect('/characters');
+  }
+
+  const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
+
+  // Fetch the character to get its current name and realm
+  const [[char]] = await pool.query(
+    'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
+  );
+
+  if (char) {
+    // Update all specs for this character (matched by old name + realm)
+    await pool.query(
+      'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+      [newNameCap, userId, guildId, char.char_name, char.realm]
+    );
+    req.session.flash = `✅ Character renamed to ${newNameCap}.`;
+  } else {
+    req.session.flash = '❌ Character not found.';
+  }
+
+  res.redirect('/characters');
+});
+
 // POST /characters/register
 router.post('/characters/register', express.urlencoded({ extended: false }), async (req, res) => {
   if (!requireLogin(req, res)) return;

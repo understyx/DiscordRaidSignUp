@@ -45,10 +45,23 @@
           <tr class="{{ alt }}">
             {% if loop.index == 1 %}
             <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
-              {{ group.name }}
-              <button type="button" class="btn btn-sm btn-outline-secondary ms-1 py-0 px-1"
-                      data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
-                      title="Add Spec">➕</button>
+              <div class="d-flex align-items-center gap-1">
+                <span>{{ group.name }}</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        data-bs-toggle="collapse" data-bs-target="#edit-name-{{ group_id }}"
+                        title="Edit Name">✏️</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
+                        title="Add Spec">➕</button>
+              </div>
+              <div class="collapse mt-1" id="edit-name-{{ group_id }}">
+                <form method="post" action="/characters/{{ group_id }}/update-name" class="d-flex gap-1">
+                  <input type="text" name="char_name" value="{{ group.name }}"
+                         class="form-control form-control-sm bg-dark text-light border-secondary"
+                         style="width:100px" required />
+                  <button type="submit" class="btn btn-sm btn-outline-success">💾</button>
+                </form>
+              </div>
             </td>
             <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
             <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
