@@ -755,7 +755,8 @@ class SignupTestingPriorityView(discord.ui.View):
 
     def _build_components(self):
         self.clear_items()
-        for char in self.selected_chars:
+        # Discord limit: 25 components. Use 24 for chars, 1 for Finish.
+        for char in self.selected_chars[:24]:
             is_prio = char["id"] in self.priority_ids
             btn = discord.ui.Button(
                 label=_char_label(char),
