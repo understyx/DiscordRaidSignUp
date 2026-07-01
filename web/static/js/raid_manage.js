@@ -127,16 +127,22 @@ function updateCharInCompStatus() {
       // Rebuild one badge per assigned comp.
       badgesContainer.innerHTML = '';
 
-      // Add collector icons if applicable
-      const collectorData = CHAR_COLLECTORS[cid] || { sfs: [], val: [] };
-      // Check current live state for collectors
-      document.querySelectorAll(`.slot-card .assigned-char[data-char-id="${cid}"]`).forEach(el => {
-        const slotCard = el.closest('.slot-card');
-        const sfsBtn = slotCard.querySelector('.collector-btn.sfs-btn');
-        const valBtn = slotCard.querySelector('.collector-btn.val-btn');
-        if (sfsBtn && sfsBtn.classList.contains('active') && !collectorData.sfs.includes(CURRENT_COMP)) collectorData.sfs.push(CURRENT_COMP);
-        if (valBtn && valBtn.classList.contains('active') && !collectorData.val.includes(CURRENT_COMP)) collectorData.val.push(CURRENT_COMP);
-      });
+      // Add collector icons if applicable - check all spec IDs for this card
+      const collectorData = { sfs: [], val: [] };
+      for (const cid of allCharIds) {
+        const serverData = CHAR_COLLECTORS[cid] || { sfs: [], val: [] };
+        serverData.sfs.forEach(cn => { if (!collectorData.sfs.includes(cn)) collectorData.sfs.push(cn); });
+        serverData.val.forEach(cn => { if (!collectorData.val.includes(cn)) collectorData.val.push(cn); });
+
+        // Check current live state for collectors
+        document.querySelectorAll(`.slot-card .assigned-char[data-char-id="${cid}"]`).forEach(el => {
+          const slotCard = el.closest('.slot-card');
+          const sfsBtn = slotCard.querySelector('.collector-btn.sfs-btn');
+          const valBtn = slotCard.querySelector('.collector-btn.val-btn');
+          if (sfsBtn && sfsBtn.classList.contains('active') && !collectorData.sfs.includes(CURRENT_COMP)) collectorData.sfs.push(CURRENT_COMP);
+          if (valBtn && valBtn.classList.contains('active') && !collectorData.val.includes(CURRENT_COMP)) collectorData.val.push(CURRENT_COMP);
+        });
+      }
 
       if (collectorData.sfs.length > 0) {
         const sfsBadge = document.createElement('span');

@@ -160,7 +160,13 @@ class SignupPrioritySelectView(discord.ui.View):
     def _step_text(self) -> str:
         max_pages = self._max_pages()
         is_tentative = self.signup_status == SignupStatus.tentative
-        names = ", ".join(f"**{_char_label(c)}**" for c in self.selected_chars)
+
+        # Limit names to avoid 2000-char limit
+        display_chars = self.selected_chars[:15]
+        names = ", ".join(f"**{_char_label(c)}**" for c in display_chars)
+        if len(self.selected_chars) > 15:
+            names += f" and {len(self.selected_chars)-15} more..."
+
         text = (
             f"Selected: {names}\n\n"
             f"Optionally mark any as **preferred** below, then click "
