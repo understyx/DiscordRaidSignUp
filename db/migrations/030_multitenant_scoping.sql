@@ -4,6 +4,7 @@
 
 -- 1. Prepare spec_aliases
 ALTER TABLE spec_aliases ADD COLUMN guild_id BIGINT NULL;
+ALTER TABLE spec_aliases DROP INDEX uq_class_alias;
 
 -- Duplicate spec_aliases for each guild
 INSERT INTO spec_aliases (char_class, alias, canonical, guild_id)
@@ -16,7 +17,6 @@ WHERE sa.guild_id IS NULL;
 DELETE FROM spec_aliases WHERE guild_id IS NULL;
 
 ALTER TABLE spec_aliases MODIFY COLUMN guild_id BIGINT NOT NULL;
-ALTER TABLE spec_aliases DROP INDEX uq_class_alias;
 CREATE UNIQUE INDEX uq_guild_class_alias ON spec_aliases (guild_id, char_class, alias);
 
 

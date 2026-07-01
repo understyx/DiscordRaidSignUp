@@ -10,6 +10,7 @@ const ALREADY_APPLIED_CODES = new Set([
   1061, // ER_DUP_KEYNAME      – duplicate key name
   1050, // ER_TABLE_EXISTS_ERR – table already exists
   1068, // ER_MULTIPLE_PRI_KEY – multiple primary key defined
+  1091, // ER_CANT_DROP_FIELD_OR_KEY – column/key already dropped
 ]);
 
 async function runMigrations() {
