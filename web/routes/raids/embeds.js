@@ -8,9 +8,11 @@ const EMOJIS = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', '..', '..', 'emojis.json'), 'utf8')
 );
 
-async function fetchSpecAliases() {
+async function fetchSpecAliases(guildId) {
+  if (!guildId) return {};
   const [rows] = await pool.query(
-    'SELECT char_class, alias, canonical FROM spec_aliases'
+    'SELECT char_class, alias, canonical FROM spec_aliases WHERE guild_id = ?',
+    [guildId]
   );
   const map = {};
   for (const { char_class, alias, canonical } of rows) {

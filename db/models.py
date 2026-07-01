@@ -61,6 +61,7 @@ class Raid(Base):
 class Character(Base):
     __tablename__ = "characters"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False)
     discord_user_id = Column(BigInteger, nullable=False)
     char_name = Column(String(50), nullable=False)
     realm = Column(String(50), default="Icecrown")
@@ -98,6 +99,15 @@ class RaidLogMessage(Base):
                         default=lambda: datetime.datetime.now(datetime.timezone.utc),
                         onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid")
+
+
+class SpecAlias(Base):
+    __tablename__ = "spec_aliases"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False)
+    char_class = Column(String(50), nullable=False)
+    alias = Column(String(100), nullable=False)
+    canonical = Column(String(100), nullable=False)
 
 
 class Composition(Base):

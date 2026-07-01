@@ -1588,7 +1588,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
     const compLabels = await fetchCompLabels(raidId);
 
     // Fetch spec aliases for canonical spec mapping
-    const specAliasesMap = await fetchSpecAliases();
+    const specAliasesMap = await fetchSpecAliases(raid.guild_id);
 
     // Post the final composition to the main raid channel (not the log thread)
     const discordTargetId = raid.discord_channel_id;
