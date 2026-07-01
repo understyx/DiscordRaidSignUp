@@ -28,8 +28,13 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild_id:
+            await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
+            return
+
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
+        guild_id = interaction.guild_id
         loop = asyncio.get_event_loop()
 
         parsed, parse_errors = _parse_character_lines(self.characters.value)
@@ -52,6 +57,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
                     char = (
                         session.query(Character)
                         .filter_by(
+                            guild_id=guild_id,
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
                             spec=entry["spec"],
@@ -60,6 +66,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
                     )
                     if char is None:
                         char = Character(
+                            guild_id=guild_id,
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
                         )
@@ -132,6 +139,7 @@ class CharacterCog(commands.Cog):
         name="addcharacter",
         description="Manually add a character with spec and gearscore (no armory needed).",
     )
+    @app_commands.guild_only()
     @app_commands.describe(
         name="Character name",
         char_class="WoW class (e.g. Death Knight, Druid, Paladin…)",
@@ -170,6 +178,7 @@ class CharacterCog(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
+        guild_id = interaction.guild_id
         loop = asyncio.get_event_loop()
 
         try:
@@ -218,6 +227,7 @@ class CharacterCog(commands.Cog):
                     char = (
                         session.query(Character)
                         .filter_by(
+                            guild_id=guild_id,
                             discord_user_id=discord_user_id,
                             char_name=name.capitalize(),
                             realm=realm.capitalize(),
@@ -227,6 +237,7 @@ class CharacterCog(commands.Cog):
                     )
                     if char is None:
                         char = Character(
+                            guild_id=guild_id,
                             discord_user_id=discord_user_id,
                             char_name=name.capitalize(),
                             realm=realm.capitalize(),
@@ -267,6 +278,7 @@ class CharacterCog(commands.Cog):
         name="remove_character",
         description="Remove one of your registered characters.",
     )
+    @app_commands.guild_only()
     @app_commands.describe(
         name="Character name to remove",
         spec="Spec to remove (leave blank to remove all specs of this character)",
@@ -279,12 +291,14 @@ class CharacterCog(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
+        guild_id = interaction.guild_id
         loop = asyncio.get_event_loop()
 
         def _delete():
             session = get_session()
             try:
                 q = session.query(Character).filter(
+                    Character.guild_id == guild_id,
                     Character.discord_user_id == discord_user_id,
                     Character.char_name.ilike(name),
                     Character.is_deleted == False,  # noqa: E712
@@ -321,17 +335,21 @@ class CharacterCog(commands.Cog):
         name="my_characters",
         description="List all your registered characters.",
     )
+    @app_commands.guild_only()
     async def my_characters(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
         loop = asyncio.get_event_loop()
         discord_user_id = interaction.user.id
+        guild_id = interaction.guild_id
 
         def _fetch():
             session = get_session()
             try:
                 return (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
+                    .filter_by(
+                        guild_id=guild_id, discord_user_id=discord_user_id, is_deleted=False
+                    )
                     .all()
                 )
             finally:

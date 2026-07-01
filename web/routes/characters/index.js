@@ -25,10 +25,16 @@ router.get('/characters', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
+
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
 
   const [chars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC, id ASC',
-    [userId]
+    'SELECT * FROM characters WHERE discord_user_id = ? AND guild_id = ? AND is_deleted = 0 ORDER BY char_name ASC, id ASC',
+    [userId, guildId]
   );
 
   // Group rows by name+realm so characters with same name on different realms are distinct.
@@ -101,6 +107,13 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
+
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
   const charName = (req.body.char_name || '').trim();
   const realm = (req.body.realm || 'Icecrown').trim();
   const charClass = (req.body.char_class || '').trim() || null;
@@ -123,10 +136,10 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   // unlike = which returns NULL for NULL comparisons.
   const [[existing]] = await pool.query(
     `SELECT id FROM characters
-     WHERE discord_user_id = ? AND char_name = ? AND realm = ?
+     WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?
        AND (spec <=> ?)
      LIMIT 1`,
-    [userId, charNameCap, realmCap, specNorm]
+    [userId, guildId, charNameCap, realmCap, specNorm]
   );
 
   if (existing) {
@@ -136,9 +149,9 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
     );
   } else {
     await pool.query(
-      `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [userId, charNameCap, realmCap, charClass, spec, gearscore]
+      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [userId, guildId, charNameCap, realmCap, charClass, spec, gearscore]
     );
   }
 
@@ -151,13 +164,14 @@ router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: fal
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
   const charId = parseInt(req.params.char_id);
   const gsRaw = (req.body.gearscore || '').trim();
   const gearscore = parseGS(gsRaw);
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (char) {
@@ -175,12 +189,13 @@ router.post('/characters/:char_id/update-spec', express.urlencoded({ extended: f
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
   const charId = parseInt(req.params.char_id);
   const spec = (req.body.spec || '').trim() || null;
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (char) {
@@ -198,11 +213,12 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   if (!requireLogin(req, res)) return;
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
   const charId = parseInt(req.params.char_id);
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (char) {
@@ -222,6 +238,7 @@ router.post('/characters/saves/toggle', express.json(), async (req, res) => {
   if (!req.session.user_id) return res.status(401).json({ error: 'Not logged in' });
 
   const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id;
   const charId = parseInt(req.body.char_id);
   const instanceName = canonicalizeInstance(req.body.instance_name);
 
@@ -229,10 +246,10 @@ router.post('/characters/saves/toggle', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'char_id and instance_name are required' });
   }
 
-  // Verify this character belongs to the current user
+  // Verify this character belongs to the current user and the active guild
   const [[char]] = await pool.query(
-    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
   if (!char) return res.status(403).json({ error: 'Character not found' });
 

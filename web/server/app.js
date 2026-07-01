@@ -43,8 +43,13 @@ function createApp() {
   // Dynamic spec_aliases.js — served before static files so DB version takes priority
   app.get('/js/spec_aliases.js', async (req, res) => {
     try {
+      const guildId = req.session.active_guild_id;
+      if (!guildId) {
+        return res.type('application/javascript').send('const SPEC_ALIASES = {};\n');
+      }
       const [rows] = await pool.query(
-        'SELECT char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
+        'SELECT char_class, alias, canonical FROM spec_aliases WHERE guild_id = ? ORDER BY char_class, alias',
+        [guildId]
       );
       // Build nested map: { class: { alias: canonical, … }, … }
       const map = {};

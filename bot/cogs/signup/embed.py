@@ -265,7 +265,8 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             # Load spec aliases for canonical spec name resolution.
             try:
                 alias_rows = session.execute(
-                    text("SELECT char_class, alias, canonical FROM spec_aliases")
+                    text("SELECT char_class, alias, canonical FROM spec_aliases WHERE guild_id = :guild_id"),
+                    {"guild_id": raid.guild_id}
                 ).fetchall()
                 spec_aliases: dict = {}
                 for char_class, alias, canonical in alias_rows:

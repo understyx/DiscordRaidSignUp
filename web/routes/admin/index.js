@@ -43,8 +43,15 @@ router.get('/spec-aliases', async (req, res) => {
     return res.redirect('/raids');
   }
 
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
   const [rows] = await pool.query(
-    'SELECT id, char_class, alias, canonical FROM spec_aliases ORDER BY char_class, alias'
+    'SELECT id, char_class, alias, canonical FROM spec_aliases WHERE guild_id = ? ORDER BY char_class, alias',
+    [guildId]
   );
 
   // Group by class
@@ -77,6 +84,12 @@ router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async 
     return res.redirect('/raids');
   }
 
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
   const { char_class, alias, canonical } = req.body;
   if (!char_class || !alias || !canonical) {
     req.session.flash = '❌ All fields are required.';
@@ -94,8 +107,8 @@ router.post('/spec-aliases/add', express.urlencoded({ extended: false }), async 
 
   try {
     await pool.query(
-      'INSERT INTO spec_aliases (char_class, alias, canonical) VALUES (?, ?, ?)',
-      [cls, al, can]
+      'INSERT INTO spec_aliases (guild_id, char_class, alias, canonical) VALUES (?, ?, ?, ?)',
+      [guildId, cls, al, can]
     );
     req.session.flash = `✅ Alias "${al}" → "${can}" added for ${cls}.`;
   } catch (err) {
@@ -116,13 +129,19 @@ router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), asy
     return res.redirect('/raids');
   }
 
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
   const id = parseInt(req.body.id, 10);
   if (isNaN(id)) {
     req.session.flash = '❌ Invalid alias ID.';
     return res.redirect('/admin/spec-aliases');
   }
 
-  const [result] = await pool.query('DELETE FROM spec_aliases WHERE id = ?', [id]);
+  const [result] = await pool.query('DELETE FROM spec_aliases WHERE id = ? AND guild_id = ?', [id, guildId]);
   if (result.affectedRows === 0) {
     req.session.flash = '❌ Alias not found.';
   } else {
@@ -134,6 +153,12 @@ router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), asy
 // POST /admin/seed-fake-players
 router.post('/seed-fake-players', async (req, res) => {
   if (!requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/raids');
+  }
 
   const NUM_USERS = 25;
   const usedIds = new Set();
@@ -164,9 +189,9 @@ router.post('/seed-fake-players', async (req, res) => {
         const charName = _randomCharName(_randInt(5, 12));
 
         await conn.query(
-          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-          [fakeId, charName, realm, charClass, spec, role, gearscore]
+          `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+          [fakeId, guildId, charName, realm, charClass, spec, role, gearscore]
         );
         totalChars++;
       }
@@ -191,13 +216,20 @@ router.get('/all-characters', async (req, res) => {
     return res.redirect('/raids');
   }
 
-  // Fetch all characters and their owner's info
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
+  // Fetch all characters for active guild and their owner's info
   const [rows] = await pool.query(
     `SELECT c.*, du.username as discord_username, du.display_name as discord_display_name
      FROM characters c
      LEFT JOIN discord_users du ON c.discord_user_id = du.discord_user_id
-     WHERE c.is_deleted = 0
-     ORDER BY du.username ASC, c.char_name ASC`
+     WHERE c.is_deleted = 0 AND c.guild_id = ?
+     ORDER BY du.username ASC, c.char_name ASC`,
+    [guildId]
   );
 
   // Group by user
@@ -345,7 +377,7 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
   let createdUsers = 0;
   let totalChars = 0;
   try {
-    const [[raid]] = await conn.query('SELECT id FROM raids WHERE id = ?', [raidId]);
+    const [[raid]] = await conn.query('SELECT id, guild_id FROM raids WHERE id = ?', [raidId]);
     if (!raid) {
       req.session.flash = '❌ Raid not found.';
       return res.redirect('/raids');
@@ -378,9 +410,9 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
         const charName = _randomCharName(_randInt(5, 12));
 
         const [charResult] = await conn.query(
-          `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-          [fakeId, charName, realm, charClass, spec, role, gearscore]
+          `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+          [fakeId, raid.guild_id, charName, realm, charClass, spec, role, gearscore]
         );
         const charId = charResult.insertId;
 
