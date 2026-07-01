@@ -8,6 +8,7 @@ from typing import Optional
 import discord
 
 from bot.db import get_session
+from bot.role_utils import get_role_from_spec
 from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus
 from .parser import (
     _find_random_text_lines,
@@ -134,6 +135,7 @@ async def process_text_signup(
                     session.add(char)
                 char.char_class = entry["char_class"]
                 char.spec = entry["spec"]
+                char.role = get_role_from_spec(entry["char_class"], entry["spec"])
                 char.gearscore = entry["gearscore"]
                 char.is_deleted = False
                 char.last_updated = datetime.datetime.now(datetime.timezone.utc)

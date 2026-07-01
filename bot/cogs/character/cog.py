@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from bot.db import get_session
 from bot.class_utils import normalize_class
+from bot.role_utils import get_role_from_spec
 from bot.cogs.signup import parse_gs, format_gs
 from bot.cogs.signup.parser import _parse_character_lines
 from db.models import Character, CharacterSuggestion, SuggestionStatus
@@ -73,6 +74,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
                         session.add(char)
                     char.char_class = entry["char_class"]
                     char.spec = entry["spec"]
+                    char.role = get_role_from_spec(entry["char_class"], entry["spec"])
                     char.gearscore = entry["gearscore"]
                     char.is_deleted = False
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
@@ -248,7 +250,9 @@ class CharacterCog(commands.Cog):
                         session.add(char)
 
                     char.gearscore = gs
-                    char.char_class = normalize_class(char_class)
+                    canonical_class = normalize_class(char_class)
+                    char.char_class = canonical_class
+                    char.role = get_role_from_spec(canonical_class, spec)
                     char.prof_1 = prof1
                     char.prof_2 = prof2
                     char.is_deleted = False
