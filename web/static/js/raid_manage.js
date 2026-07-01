@@ -837,6 +837,7 @@ function showPostConfirmModal() {
     .then(r => r.json())
     .then(data => {
       if (!data.ok) {
+        console.error('[postPreview] Error from server:', data.error);
         summaryEl.innerHTML = `<p class="text-danger">Failed to load preview: ${escapeHtml(data.error || 'Unknown error')}</p>`;
         return;
       }
@@ -879,10 +880,16 @@ function showPostConfirmModal() {
 /* ── Right-panel tab switching ────────────────────────────────────── */
 function switchRightTab(tab) {
   const isBuffs = tab === 'buffs';
-  document.getElementById('panelPlaceholders').style.display = isBuffs ? 'none' : '';
-  document.getElementById('panelBuffs').style.display = isBuffs ? '' : 'none';
-  document.getElementById('tabBtnPlaceholders').classList.toggle('active', !isBuffs);
-  document.getElementById('tabBtnBuffs').classList.toggle('active', isBuffs);
+  const panelPh = document.getElementById('panelPlaceholders');
+  const panelBf = document.getElementById('panelBuffs');
+  if (panelPh) panelPh.style.display = isBuffs ? 'none' : '';
+  if (panelBf) panelBf.style.display = isBuffs ? '' : 'none';
+
+  const tabPh = document.getElementById('tabBtnPlaceholders');
+  const tabBf = document.getElementById('tabBtnBuffs');
+  if (tabPh) tabPh.classList.toggle('active', !isBuffs);
+  if (tabBf) tabBf.classList.toggle('active', isBuffs);
+
   if (isBuffs) renderBuffPanel();
 }
 
@@ -975,7 +982,12 @@ function collectRosterBuffs() {
 
     if (charId && charClass) {
       const specEl  = assignedDiv.querySelector('small');
-      const rawSpec = specEl ? specEl.textContent.trim() : '';
+      // Strip trailing gearscore and BiS (e.g. "Protection 6200 BiS" -> "Protection")
+      let rawSpec = specEl ? specEl.textContent.trim() : '';
+      rawSpec = rawSpec.replace(/\s+\d+\s+BiS$/i, '')
+                      .replace(/\s+\d+$/i, '')
+                      .replace(/\s+BiS$/i, '');
+
       const { preferred, canBring } = getBuffTiersFromEntry(charClass, rawSpec);
       preferred.forEach(id => charPref.add(id));
       canBring.forEach(id => charCb.add(id));

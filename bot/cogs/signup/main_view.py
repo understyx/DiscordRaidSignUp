@@ -74,7 +74,11 @@ class SignupView(discord.ui.View):
                     .all()
                 )
                 signup_ids = {s.character_id for s in signups}
-                return raid.status, _chars_to_dicts(chars), signup_ids
+                signup_types = {s.character_id: s.signup_type for s in signups}
+                char_dicts = _chars_to_dicts(chars)
+                for c in char_dicts:
+                    c["signup_type"] = signup_types.get(c["id"])
+                return raid.status, char_dicts, signup_ids
             finally:
                 session.close()
 
