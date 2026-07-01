@@ -742,21 +742,137 @@ class EditNotesModal(discord.ui.Modal):
         await update_raid_embed(interaction.client, raid_id)
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
 
+
+async def _finish_raid_helper_signup(
+    interaction: discord.Interaction,
+    raid_id: int,
+    selected_chars: list[dict],
+    priority_ids: set[int]
+):
+    discord_user_id = interaction.user.id
+    signup_status = SignupStatus.signed
+    loop = asyncio.get_event_loop()
+
+    def _upsert_all():
+        session = get_session()
+        try:
+            _upsert_discord_user(session, interaction.user)
+            raid = session.get(Raid, raid_id)
+            raid_name = raid.name if raid else None
+            # Remove ALL existing signups for this user+raid so the new selection
+            # fully overwrites the old sign-up instead of merging with it.
+            session.query(Signup).filter_by(
+                raid_id=raid_id,
+                discord_user_id=discord_user_id,
+            ).delete()
+            for char in selected_chars:
+                signup_type = (
+                    SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
+                )
+                session.add(
+                    Signup(
+                        raid_id=raid_id,
+                        discord_user_id=discord_user_id,
+                        character_id=char["id"],
+                        signup_type=signup_type,
+                        status=signup_status,
+                    )
+                )
+            session.commit()
+            return raid_name
+        finally:
+            session.close()
+
+    raid_name = await loop.run_in_executor(None, _upsert_all)
+
+    lines = []
+    for c in selected_chars:
+        prio_str = " ⭐ preferred" if c["id"] in priority_ids else ""
+        lines.append(f"• **{_char_label(c)}**{prio_str}")
+
+    await interaction.response.edit_message(
+        content=f"✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
+        view=None,
+    )
+
+    grouped: dict[str, dict] = {}
+    for c in selected_chars:
+        key = c["char_name"].lower()
+        if key not in grouped:
+            grouped[key] = {
+                "char_name": c["char_name"],
+                "char_class": c.get("char_class") or "?",
+                "specs": [],
+            }
+        star = " ⭐" if c["id"] in priority_ids else ""
+        grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
+    bullets = []
+    for key, d in grouped.items():
+        bullets.append(
+            f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
+        )
+    log_message = format_user_raid_log_message(
+        raid_id=raid_id,
+        discord_user_id=interaction.user.id,
+        user_mention=interaction.user.mention,
+        emoji="🧪",
+        action="signed up (raid helper)",
+        raid_name=raid_name,
+        detail_lines=bullets,
+    )
+    await _post_to_raid_log(
+        interaction.client,
+        raid_id,
+        log_message,
+        discord_user_id=interaction.user.id,
+    )
+    await update_raid_embed(interaction.client, raid_id)
+
+
 class SignupTestingPriorityView(discord.ui.View):
     """
     Raid helper flow Step 2: Mark preferred characters using buttons.
     """
-    def __init__(self, selected_chars: list[dict], raid_id: int):
+    def __init__(
+        self,
+        all_char_dicts: list[dict],
+        raid_id: int,
+        selected_ids: set[int] | None = None,
+        priority_ids: set[int] | None = None,
+        page: int = 0
+    ):
         super().__init__(timeout=120)
-        self.selected_chars = selected_chars
+        self.all_char_dicts = all_char_dicts
         self.raid_id = raid_id
-        self.priority_ids: set[int] = set()
+        self.selected_ids: set[int] = selected_ids or set()
+        self.selected_chars = [c for c in all_char_dicts if c["id"] in self.selected_ids]
+        self.priority_ids: set[int] = priority_ids or set()
+        self.page = page
         self._build_components()
 
     def _build_components(self):
         self.clear_items()
-        # Discord limit: 25 components. Use 24 for chars, 1 for Finish.
-        for char in self.selected_chars[:24]:
+
+        total_chars = len(self.selected_chars)
+        # We need 2 spots for Back and Finish.
+        if total_chars <= 23:
+            start, end = 0, total_chars
+            has_next, has_prev = False, False
+        else:
+            if self.page == 0:
+                start, end = 0, 22
+                has_next, has_prev = True, False
+            else:
+                start = 22 + (self.page - 1) * 21
+                remaining = total_chars - start
+                if remaining <= 22:
+                    end = total_chars
+                    has_next, has_prev = False, True
+                else:
+                    end = start + 21
+                    has_next, has_prev = True, True
+
+        for char in self.selected_chars[start:end]:
             is_prio = char["id"] in self.priority_ids
             btn = discord.ui.Button(
                 label=_char_label(char),
@@ -766,7 +882,21 @@ class SignupTestingPriorityView(discord.ui.View):
             btn.callback = self._create_callback(char["id"])
             self.add_item(btn)
 
-        finish_btn = discord.ui.Button(label="Finish", style=discord.ButtonStyle.primary, emoji="✅")
+        if has_prev:
+            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn.callback = self._on_prev_page
+            self.add_item(prev_btn)
+
+        if has_next:
+            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn.callback = self._on_next_page
+            self.add_item(next_btn)
+
+        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="↩️", row=4)
+        back_btn.callback = self._on_back
+        self.add_item(back_btn)
+
+        finish_btn = discord.ui.Button(label="Finish", style=discord.ButtonStyle.primary, emoji="✅", row=4)
         finish_btn.callback = self.finish
         self.add_item(finish_btn)
 
@@ -781,99 +911,70 @@ class SignupTestingPriorityView(discord.ui.View):
         return callback
 
     def _step_text(self) -> str:
-        return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+        total_chars = len(self.selected_chars)
+        if total_chars <= 23:
+            return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+
+        # Calculate total pages
+        if total_chars <= 23:
+            total_pages = 1
+        else:
+            # Page 0: 22. Subsequent: 21.
+            total_pages = 1 + (total_chars - 22 + 20) // 21
+
+        return f"**Step 2 (Page {self.page + 1}/{total_pages}):** Mark characters as preferred (⭐), then click Finish."
+
+    async def _on_prev_page(self, interaction: discord.Interaction):
+        self.page -= 1
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
+
+    async def _on_next_page(self, interaction: discord.Interaction):
+        self.page += 1
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
+
+    async def _on_back(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        view = SignupTesting2ClassSelectView(
+            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+        )
+        await interaction.followup.send(
+            "**Step 1:** Select a class:",
+            view=view,
+            ephemeral=True
+        )
 
     async def finish(self, interaction: discord.Interaction):
-        priority_ids = self.priority_ids
-        discord_user_id = interaction.user.id
-        raid_id = self.raid_id
-        signup_status = SignupStatus.signed
-        loop = asyncio.get_event_loop()
-
-        def _upsert_all():
-            session = get_session()
-            try:
-                _upsert_discord_user(session, interaction.user)
-                raid = session.get(Raid, raid_id)
-                raid_name = raid.name if raid else None
-                # Remove ALL existing signups for this user+raid so the new selection
-                # fully overwrites the old sign-up instead of merging with it.
-                session.query(Signup).filter_by(
-                    raid_id=raid_id,
-                    discord_user_id=discord_user_id,
-                ).delete()
-                for char in self.selected_chars:
-                    signup_type = (
-                        SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
-                    )
-                    session.add(
-                        Signup(
-                            raid_id=raid_id,
-                            discord_user_id=discord_user_id,
-                            character_id=char["id"],
-                            signup_type=signup_type,
-                            status=signup_status,
-                        )
-                    )
-                session.commit()
-                return raid_name
-            finally:
-                session.close()
-
-        raid_name = await loop.run_in_executor(None, _upsert_all)
-
-        lines = []
-        for c in self.selected_chars:
-            prio_str = " ⭐ preferred" if c["id"] in priority_ids else ""
-            lines.append(f"• **{_char_label(c)}**{prio_str}")
-
-        await interaction.response.edit_message(
-            content=f"✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
-            view=None,
-        )
-
-        grouped: dict[str, dict] = {}
-        for c in self.selected_chars:
-            key = c["char_name"].lower()
-            if key not in grouped:
-                grouped[key] = {
-                    "char_name": c["char_name"],
-                    "char_class": c.get("char_class") or "?",
-                    "specs": [],
-                }
-            star = " ⭐" if c["id"] in priority_ids else ""
-            grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
-        bullets = []
-        for key, d in grouped.items():
-            bullets.append(
-                f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
-            )
-        log_message = format_user_raid_log_message(
-            raid_id=raid_id,
-            discord_user_id=interaction.user.id,
-            user_mention=interaction.user.mention,
-            emoji="🧪",
-            action="signed up (raid helper)",
-            raid_name=raid_name,
-            detail_lines=bullets,
-        )
-        await _post_to_raid_log(
-            interaction.client,
-            raid_id,
-            log_message,
-            discord_user_id=interaction.user.id,
-        )
-        await update_raid_embed(interaction.client, raid_id)
+        await _finish_raid_helper_signup(interaction, self.raid_id, self.selected_chars, self.priority_ids)
 
 class SignupTesting2ClassSelectView(discord.ui.View):
     """
     Raid helper flow Step 1: Select class via buttons.
     """
-    def __init__(self, char_dicts: list[dict], raid_id: int, selected_ids: set[int] | None = None):
+    def __init__(
+        self,
+        char_dicts: list[dict],
+        raid_id: int,
+        selected_ids: set[int] | None = None,
+        priority_ids: set[int] | None = None
+    ):
         super().__init__(timeout=120)
         self.char_dicts = char_dicts
         self.raid_id = raid_id
         self.selected_ids: set[int] = selected_ids or set()
+
+        if priority_ids is not None:
+            self.priority_ids: set[int] = priority_ids
+        else:
+            # Fallback: check char_dicts for existing priority signup types
+            self.priority_ids = {
+                c["id"] for c in char_dicts
+                if c.get("signup_type") == SignupType.prio_character
+            }
+
         self._build_components()
 
     def _build_components(self):
@@ -904,15 +1005,25 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             btn.callback = self._create_class_callback(class_name)
             self.add_item(btn)
 
-        next_btn = discord.ui.Button(
-            label="Next Step",
-            style=discord.ButtonStyle.primary,
-            emoji="➡️",
+        finish_btn = discord.ui.Button(
+            label="Finish",
+            style=discord.ButtonStyle.success,
+            emoji="✅",
             disabled=not self.selected_ids,
-            row=4  # Classes might take up many rows
+            row=4
         )
-        next_btn.callback = self._on_next_step
-        self.add_item(next_btn)
+        finish_btn.callback = self._on_finish
+        self.add_item(finish_btn)
+
+        prio_btn = discord.ui.Button(
+            label="Select preferred characters",
+            style=discord.ButtonStyle.secondary,
+            emoji="⭐",
+            disabled=not self.selected_ids,
+            row=4
+        )
+        prio_btn.callback = self._on_select_preferred
+        self.add_item(prio_btn)
 
     def _create_class_callback(self, class_name: str):
         async def callback(interaction: discord.Interaction):
@@ -922,7 +1033,8 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             await interaction.delete_original_response()
 
             view = SignupTesting2CharacterSelectView(
-                self.char_dicts, class_chars, self.raid_id, class_name, selected_ids=self.selected_ids
+                self.char_dicts, class_chars, self.raid_id, class_name,
+                selected_ids=self.selected_ids, priority_ids=self.priority_ids
             )
             await interaction.followup.send(
                 f"**Step 2:** Select characters for **{class_name}**:",
@@ -931,13 +1043,17 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             )
         return callback
 
-    async def _on_next_step(self, interaction: discord.Interaction):
+    async def _on_finish(self, interaction: discord.Interaction):
         selected_chars = [c for c in self.char_dicts if c["id"] in self.selected_ids]
+        await _finish_raid_helper_signup(interaction, self.raid_id, selected_chars, self.priority_ids)
 
+    async def _on_select_preferred(self, interaction: discord.Interaction):
         await interaction.response.defer()
         await interaction.delete_original_response()
 
-        view = SignupTestingPriorityView(selected_chars, self.raid_id)
+        view = SignupTestingPriorityView(
+            self.char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+        )
         await interaction.followup.send(
             view._step_text(),
             view=view,
@@ -955,7 +1071,9 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         class_chars: list[dict],
         raid_id: int,
         class_name: str,
-        selected_ids: set[int] | None = None
+        selected_ids: set[int] | None = None,
+        priority_ids: set[int] | None = None,
+        page: int = 0
     ):
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
@@ -963,14 +1081,33 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         self.raid_id = raid_id
         self.class_name = class_name
         self.selected_ids: set[int] = selected_ids or set()
+        self.priority_ids: set[int] = priority_ids or set()
+        self.page = page
         self._build_components()
 
     def _build_components(self):
         self.clear_items()
 
-        # Discord allows up to 25 components.
-        # Use up to 23 buttons for characters, 1 for Back, 1 for Next Step.
-        for char in self.class_chars[:23]:
+        total_chars = len(self.class_chars)
+        # We need 1 spot for Next Step.
+        if total_chars <= 24:
+            start, end = 0, total_chars
+            has_next, has_prev = False, False
+        else:
+            if self.page == 0:
+                start, end = 0, 23
+                has_next, has_prev = True, False
+            else:
+                start = 23 + (self.page - 1) * 22
+                remaining = total_chars - start
+                if remaining <= 23:
+                    end = total_chars
+                    has_next, has_prev = False, True
+                else:
+                    end = start + 22
+                    has_next, has_prev = True, True
+
+        for char in self.class_chars[start:end]:
             is_selected = char["id"] in self.selected_ids
             btn = discord.ui.Button(
                 label=_char_label(char),
@@ -980,15 +1117,23 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
             btn.callback = self._create_toggle_callback(char["id"])
             self.add_item(btn)
 
-        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="⬅️")
-        back_btn.callback = self._on_back
-        self.add_item(back_btn)
+        if has_prev:
+            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn.callback = self._on_prev_page
+            self.add_item(prev_btn)
 
+        if has_next:
+            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn.callback = self._on_next_page
+            self.add_item(next_btn)
+
+        # "Next Step" here returns to class selection.
         next_btn = discord.ui.Button(
             label="Next Step",
             style=discord.ButtonStyle.primary,
-            emoji="➡️",
-            disabled=not self.selected_ids
+            emoji="↩️",
+            disabled=not self.selected_ids,
+            row=4
         )
         next_btn.callback = self._on_next_step
         self.add_item(next_btn)
@@ -997,32 +1142,34 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         async def callback(interaction: discord.Interaction):
             if char_id in self.selected_ids:
                 self.selected_ids.remove(char_id)
+                # If deselected, also remove from priority
+                if char_id in self.priority_ids:
+                    self.priority_ids.remove(char_id)
             else:
                 self.selected_ids.add(char_id)
             self._build_components()
             await interaction.response.edit_message(view=self)
         return callback
 
-    async def _on_back(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        await interaction.delete_original_response()
+    async def _on_prev_page(self, interaction: discord.Interaction):
+        self.page -= 1
+        self._build_components()
+        await interaction.response.edit_message(view=self)
 
-        view = SignupTesting2ClassSelectView(self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids)
-        await interaction.followup.send(
-            "**Step 1:** Select a class:",
-            view=view,
-            ephemeral=True
-        )
+    async def _on_next_page(self, interaction: discord.Interaction):
+        self.page += 1
+        self._build_components()
+        await interaction.response.edit_message(view=self)
 
     async def _on_next_step(self, interaction: discord.Interaction):
-        selected_chars = [c for c in self.all_char_dicts if c["id"] in self.selected_ids]
-
         await interaction.response.defer()
         await interaction.delete_original_response()
 
-        view = SignupTestingPriorityView(selected_chars, self.raid_id)
+        view = SignupTesting2ClassSelectView(
+            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+        )
         await interaction.followup.send(
-            view._step_text(),
+            "**Step 1:** Select a class:",
             view=view,
             ephemeral=True
         )
