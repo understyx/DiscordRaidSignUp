@@ -838,7 +838,8 @@ class SignupTestingPriorityView(discord.ui.View):
         all_char_dicts: list[dict],
         raid_id: int,
         selected_ids: set[int] | None = None,
-        priority_ids: set[int] | None = None
+        priority_ids: set[int] | None = None,
+        page: int = 0
     ):
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
@@ -846,12 +847,32 @@ class SignupTestingPriorityView(discord.ui.View):
         self.selected_ids: set[int] = selected_ids or set()
         self.selected_chars = [c for c in all_char_dicts if c["id"] in self.selected_ids]
         self.priority_ids: set[int] = priority_ids or set()
+        self.page = page
         self._build_components()
 
     def _build_components(self):
         self.clear_items()
-        # Discord limit: 25 components. Use 23 for chars, 1 for Back, 1 for Finish.
-        for char in self.selected_chars[:23]:
+
+        total_chars = len(self.selected_chars)
+        # We need 2 spots for Back and Finish.
+        if total_chars <= 23:
+            start, end = 0, total_chars
+            has_next, has_prev = False, False
+        else:
+            if self.page == 0:
+                start, end = 0, 22
+                has_next, has_prev = True, False
+            else:
+                start = 22 + (self.page - 1) * 21
+                remaining = total_chars - start
+                if remaining <= 22:
+                    end = total_chars
+                    has_next, has_prev = False, True
+                else:
+                    end = start + 21
+                    has_next, has_prev = True, True
+
+        for char in self.selected_chars[start:end]:
             is_prio = char["id"] in self.priority_ids
             btn = discord.ui.Button(
                 label=_char_label(char),
@@ -861,7 +882,17 @@ class SignupTestingPriorityView(discord.ui.View):
             btn.callback = self._create_callback(char["id"])
             self.add_item(btn)
 
-        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="⬅️", row=4)
+        if has_prev:
+            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn.callback = self._on_prev_page
+            self.add_item(prev_btn)
+
+        if has_next:
+            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn.callback = self._on_next_page
+            self.add_item(next_btn)
+
+        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="↩️", row=4)
         back_btn.callback = self._on_back
         self.add_item(back_btn)
 
@@ -880,7 +911,28 @@ class SignupTestingPriorityView(discord.ui.View):
         return callback
 
     def _step_text(self) -> str:
-        return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+        total_chars = len(self.selected_chars)
+        if total_chars <= 23:
+            return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+
+        # Calculate total pages
+        if total_chars <= 23:
+            total_pages = 1
+        else:
+            # Page 0: 22. Subsequent: 21.
+            total_pages = 1 + (total_chars - 22 + 20) // 21
+
+        return f"**Step 2 (Page {self.page + 1}/{total_pages}):** Mark characters as preferred (⭐), then click Finish."
+
+    async def _on_prev_page(self, interaction: discord.Interaction):
+        self.page -= 1
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
+
+    async def _on_next_page(self, interaction: discord.Interaction):
+        self.page += 1
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
 
     async def _on_back(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -1020,7 +1072,8 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         raid_id: int,
         class_name: str,
         selected_ids: set[int] | None = None,
-        priority_ids: set[int] | None = None
+        priority_ids: set[int] | None = None,
+        page: int = 0
     ):
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
@@ -1029,14 +1082,32 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         self.class_name = class_name
         self.selected_ids: set[int] = selected_ids or set()
         self.priority_ids: set[int] = priority_ids or set()
+        self.page = page
         self._build_components()
 
     def _build_components(self):
         self.clear_items()
 
-        # Discord allows up to 25 components.
-        # Use up to 23 buttons for characters, 1 for Back, 1 for Next Step.
-        for char in self.class_chars[:23]:
+        total_chars = len(self.class_chars)
+        # We need 1 spot for Next Step.
+        if total_chars <= 24:
+            start, end = 0, total_chars
+            has_next, has_prev = False, False
+        else:
+            if self.page == 0:
+                start, end = 0, 23
+                has_next, has_prev = True, False
+            else:
+                start = 23 + (self.page - 1) * 22
+                remaining = total_chars - start
+                if remaining <= 23:
+                    end = total_chars
+                    has_next, has_prev = False, True
+                else:
+                    end = start + 22
+                    has_next, has_prev = True, True
+
+        for char in self.class_chars[start:end]:
             is_selected = char["id"] in self.selected_ids
             btn = discord.ui.Button(
                 label=_char_label(char),
@@ -1046,15 +1117,23 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
             btn.callback = self._create_toggle_callback(char["id"])
             self.add_item(btn)
 
-        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="⬅️")
-        back_btn.callback = self._on_back
-        self.add_item(back_btn)
+        if has_prev:
+            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn.callback = self._on_prev_page
+            self.add_item(prev_btn)
 
+        if has_next:
+            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn.callback = self._on_next_page
+            self.add_item(next_btn)
+
+        # "Next Step" here returns to class selection.
         next_btn = discord.ui.Button(
             label="Next Step",
             style=discord.ButtonStyle.primary,
-            emoji="➡️",
-            disabled=not self.selected_ids
+            emoji="↩️",
+            disabled=not self.selected_ids,
+            row=4
         )
         next_btn.callback = self._on_next_step
         self.add_item(next_btn)
@@ -1072,18 +1151,15 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
             await interaction.response.edit_message(view=self)
         return callback
 
-    async def _on_back(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        await interaction.delete_original_response()
+    async def _on_prev_page(self, interaction: discord.Interaction):
+        self.page -= 1
+        self._build_components()
+        await interaction.response.edit_message(view=self)
 
-        view = SignupTesting2ClassSelectView(
-            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
-        )
-        await interaction.followup.send(
-            "**Step 1:** Select a class:",
-            view=view,
-            ephemeral=True
-        )
+    async def _on_next_page(self, interaction: discord.Interaction):
+        self.page += 1
+        self._build_components()
+        await interaction.response.edit_message(view=self)
 
     async def _on_next_step(self, interaction: discord.Interaction):
         await interaction.response.defer()
