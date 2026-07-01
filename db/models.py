@@ -69,6 +69,8 @@ class Character(Base):
     char_class = Column(String(50), nullable=True)
     spec = Column(String(100), nullable=True)
     gearscore = Column(Float, default=0.0)
+    prof_1 = Column(String(50), nullable=True)
+    prof_2 = Column(String(50), nullable=True)
     last_updated = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     is_deleted = Column(Boolean, default=False, nullable=False)
     signups = relationship("Signup", back_populates="character")
