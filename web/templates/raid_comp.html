@@ -58,6 +58,12 @@
             <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if c.status == 'tentative' %} [?]{% endif %}</span>
             <small class="cls-{{ cls_key }} d-block" style="opacity:0.8;">{{ c.spec or "?" }}</small>
             <small class="text-muted d-block" style="font-size:0.7rem;">GS {{ c.gearscore | gsformat }}</small>
+            {% if c.is_sfs_collector %}
+            <small class="text-warning d-block" style="font-size:0.65rem; font-weight:600;">❄️ Collecting shards</small>
+            {% endif %}
+            {% if c.is_val_collector %}
+            <small class="text-warning d-block" style="font-size:0.65rem; font-weight:600;">🔨 Collecting fragments</small>
+            {% endif %}
           </div>
           {% endif %}
         </div>

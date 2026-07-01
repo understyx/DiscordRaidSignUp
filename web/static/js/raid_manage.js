@@ -10,6 +10,7 @@ let COMP_NUMBERS_ALL = [];
 let COMP_SUMMARIES = {};
 let COMP_LABELS = {};
 let CHARS_IN_COMPS = {};
+let CHAR_COLLECTORS = {};
 let WOTLK_RAID_BUFFS = [];
 let EMOJIS = {};
 let RAID_DATA = {};
@@ -26,6 +27,7 @@ if (configEl) {
     COMP_SUMMARIES = config.COMP_SUMMARIES;
     COMP_LABELS = config.COMP_LABELS;
     CHARS_IN_COMPS = config.CHARS_IN_COMPS;
+    CHAR_COLLECTORS = config.CHAR_COLLECTORS || {};
     WOTLK_RAID_BUFFS = config.WOTLK_RAID_BUFFS;
     EMOJIS = config.EMOJIS || {};
     RAID_DATA = config.RAID || {};
@@ -124,6 +126,33 @@ function updateCharInCompStatus() {
       }
       // Rebuild one badge per assigned comp.
       badgesContainer.innerHTML = '';
+
+      // Add collector icons if applicable
+      const collectorData = CHAR_COLLECTORS[cid] || { sfs: [], val: [] };
+      // Check current live state for collectors
+      document.querySelectorAll(`.slot-card .assigned-char[data-char-id="${cid}"]`).forEach(el => {
+        const slotCard = el.closest('.slot-card');
+        const sfsBtn = slotCard.querySelector('.collector-btn.sfs-btn');
+        const valBtn = slotCard.querySelector('.collector-btn.val-btn');
+        if (sfsBtn && sfsBtn.classList.contains('active') && !collectorData.sfs.includes(CURRENT_COMP)) collectorData.sfs.push(CURRENT_COMP);
+        if (valBtn && valBtn.classList.contains('active') && !collectorData.val.includes(CURRENT_COMP)) collectorData.val.push(CURRENT_COMP);
+      });
+
+      if (collectorData.sfs.length > 0) {
+        const sfsBadge = document.createElement('span');
+        sfsBadge.className = 'char-in-comp-badge sfs-collector-badge';
+        sfsBadge.textContent = '❄️';
+        sfsBadge.title = 'Collecting Shards';
+        badgesContainer.appendChild(sfsBadge);
+      }
+      if (collectorData.val.length > 0) {
+        const valBadge = document.createElement('span');
+        valBadge.className = 'char-in-comp-badge val-collector-badge';
+        valBadge.textContent = '🔨';
+        valBadge.title = 'Collecting Fragments';
+        badgesContainer.appendChild(valBadge);
+      }
+
       for (const cn of assignedComps) {
         const badge = document.createElement('span');
         badge.className = 'char-in-comp-badge';
@@ -219,6 +248,25 @@ function selectSpec(btn) {
 }
 
 /* ── Collapse / expand sign-up user groups ─────────────────────────── */
+function toggleCollector(btn, type) {
+  btn.classList.toggle('active');
+  const slotCard = btn.closest('.slot-card');
+  const assignedDiv = slotCard.querySelector('.assigned-char');
+  const charId = assignedDiv.dataset.charId;
+  const role = slotCard.dataset.slotRole || 'dps';
+
+  const sfsBtn = slotCard.querySelector('.collector-btn.sfs-btn');
+  const valBtn = slotCard.querySelector('.collector-btn.val-btn');
+
+  addDirtyChange(slotCard.dataset.slot, {
+    slot_role: role,
+    character_id: charId,
+    is_sfs_collector: sfsBtn ? sfsBtn.classList.contains('active') : false,
+    is_val_collector: valBtn ? valBtn.classList.contains('active') : false
+  });
+  updateCharInCompStatus();
+}
+
 function toggleUserGroup(id, header) {
   const body    = document.getElementById(id);
   const chevron = header.querySelector('.ug-chevron');
@@ -547,7 +595,15 @@ function buildPayload() {
     const discordUserId = assignedDiv.dataset.discordUserId && !charId ? assignedDiv.dataset.discordUserId : null;
     const placeholder = assignedDiv.dataset.placeholder;
     if (charId) {
-      payload.push({ character_id: parseInt(charId), role_slot: slot.dataset.slot, slot_role: slot.dataset.slotRole });
+      const sfsBtn = slot.querySelector('.collector-btn.sfs-btn');
+      const valBtn = slot.querySelector('.collector-btn.val-btn');
+      payload.push({
+        character_id: parseInt(charId),
+        role_slot: slot.dataset.slot,
+        slot_role: slot.dataset.slotRole,
+        is_sfs_collector: sfsBtn ? sfsBtn.classList.contains('active') : false,
+        is_val_collector: valBtn ? valBtn.classList.contains('active') : false
+      });
     } else if (discordUserId) {
       payload.push({ discord_user_id: discordUserId, role_slot: slot.dataset.slot, slot_role: slot.dataset.slotRole });
     } else if (placeholder) {

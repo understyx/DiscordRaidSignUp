@@ -71,6 +71,8 @@ class Character(Base):
     gearscore = Column(Float, default=0.0)
     prof_1 = Column(String(50), nullable=True)
     prof_2 = Column(String(50), nullable=True)
+    sfs_count = Column(Integer, nullable=True)
+    val_count = Column(Integer, nullable=True)
     last_updated = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     is_deleted = Column(Boolean, default=False, nullable=False)
     signups = relationship("Signup", back_populates="character")
@@ -121,6 +123,8 @@ class Composition(Base):
     role_slot = Column(String(50), nullable=False)  # e.g. "slot_1", "slot_3", "slot_10"
     slot_role = Column(String(20), nullable=False, default="dps")  # "tank", "healer", or "dps"
     comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
+    is_sfs_collector = Column(Boolean, nullable=False, default=False)
+    is_val_collector = Column(Boolean, nullable=False, default=False)
     created_by = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False,
