@@ -160,12 +160,36 @@ class SignupPrioritySelectView(discord.ui.View):
     def _step_text(self) -> str:
         max_pages = self._max_pages()
         is_tentative = self.signup_status == SignupStatus.tentative
-        names = ", ".join(f"**{_char_label(c)}**" for c in self.selected_chars)
-        text = (
-            f"Selected: {names}\n\n"
-            f"Optionally mark any as **preferred** below, then click "
+
+        # Smart character list formatting to avoid 2000-char limit while showing as many as possible
+        prefix = "Selected: "
+        suffix = (
+            f"\n\nOptionally mark any as **preferred** below, then click "
             f"**{'Confirm Tentative Sign Up' if is_tentative else 'Confirm Sign Up'}**."
         )
+
+        # Reserve space for suffix and other potential additions (approx 500 chars)
+        max_names_len = 2000 - len(prefix) - len(suffix) - 500
+
+        names_list = []
+        current_len = 0
+        truncated_count = 0
+
+        for i, c in enumerate(self.selected_chars):
+            label = f"**{_char_label(c)}**"
+            # Add comma if not first
+            item = (", " if names_list else "") + label
+            if current_len + len(item) > max_names_len:
+                truncated_count = len(self.selected_chars) - i
+                break
+            names_list.append(item)
+            current_len += len(item)
+
+        names = "".join(names_list)
+        if truncated_count > 0:
+            names += f" and {truncated_count} more..."
+
+        text = f"{prefix}{names}{suffix}"
         if max_pages > 1:
             marked = ", ".join(
                 _char_label(c) for c in self.selected_chars if c["id"] in self.priority_ids
@@ -430,14 +454,33 @@ class SignupCharacterSelectView(discord.ui.View):
             "**Step 1 of 2:** Select the spec(s) you want to sign up with:"
         )
         if max_pages > 1:
-            selected_names = ", ".join(
-                _char_label(self.chars_by_id[sid])
-                for sid in self.selected_ids
-                if sid in self.chars_by_id
-            )
+            # Smart character list formatting to avoid 2000-char limit
+            prefix = "\n\n**Selected:** "
+            suffix = f"\n\n*Page {self.page + 1} of {max_pages} — use ← Prev / Next → to browse all characters.*"
+
+            max_names_len = 2000 - len(base) - len(prefix) - len(suffix) - 100
+
+            names_list = []
+            current_len = 0
+            selected_list = [sid for sid in self.selected_ids if sid in self.chars_by_id]
+            truncated_count = 0
+
+            for i, sid in enumerate(selected_list):
+                label = _char_label(self.chars_by_id[sid])
+                item = (", " if names_list else "") + label
+                if current_len + len(item) > max_names_len:
+                    truncated_count = len(selected_list) - i
+                    break
+                names_list.append(item)
+                current_len += len(item)
+
+            selected_names = "".join(names_list)
+            if truncated_count > 0:
+                selected_names += f" and {truncated_count} more..."
+
             if selected_names:
-                base += f"\n\n**Selected:** {selected_names}"
-            base += f"\n\n*Page {self.page + 1} of {max_pages} — use ← Prev / Next → to browse all characters.*"
+                base += f"{prefix}{selected_names}"
+            base += suffix
         return base
 
     async def _on_select(self, interaction: discord.Interaction):

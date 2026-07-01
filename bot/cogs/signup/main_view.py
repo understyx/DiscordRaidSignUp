@@ -65,7 +65,11 @@ class SignupView(discord.ui.View):
                     return None, [], set()
                 chars = (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
+                    .filter_by(
+                        discord_user_id=discord_user_id,
+                        guild_id=raid.guild_id,
+                        is_deleted=False,
+                    )
                     .all()
                 )
                 signups = (
@@ -174,7 +178,11 @@ class SignupView(discord.ui.View):
                     return None, [], set()
                 chars = (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
+                    .filter_by(
+                        discord_user_id=discord_user_id,
+                        guild_id=raid.guild_id,
+                        is_deleted=False,
+                    )
                     .all()
                 )
                 signups = (
@@ -183,7 +191,11 @@ class SignupView(discord.ui.View):
                     .all()
                 )
                 signup_ids = {s.character_id for s in signups}
-                return raid.status, _chars_to_dicts(chars), signup_ids
+                signup_types = {s.character_id: s.signup_type for s in signups}
+                char_dicts = _chars_to_dicts(chars)
+                for c in char_dicts:
+                    c["signup_type"] = signup_types.get(c["id"])
+                return raid.status, char_dicts, signup_ids
             finally:
                 session.close()
 
@@ -258,9 +270,15 @@ class SignupView(discord.ui.View):
             session = get_session()
             try:
                 raid = session.get(Raid, raid_id)
+                if not raid:
+                    return None, None, None, []
                 chars = (
                     session.query(Character)
-                    .filter_by(discord_user_id=discord_user_id, is_deleted=False)
+                    .filter_by(
+                        discord_user_id=discord_user_id,
+                        guild_id=raid.guild_id,
+                        is_deleted=False,
+                    )
                     .order_by(Character.char_name, Character.gearscore.desc())
                     .all()
                 )
