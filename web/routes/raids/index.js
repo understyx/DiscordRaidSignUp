@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('../../db');
 const { resolveIsAdmin } = require('../adminCheck');
-const { requireLogin, popFlash, currentUser } = require('../helpers');
+const { requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
 const {
   postToDiscordChannel,
   postToRaidLogThread,
@@ -681,6 +681,13 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   const charById = {};
   for (const c of charRows) charById[String(c.id)] = c;
 
+  // Fetch discord role
+  let topRoleName = null;
+  const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
+  if (userGuildRolesMap[userId]) {
+    topRoleName = userGuildRolesMap[userId];
+  }
+
   // Delete all existing signups for this user in this raid, then re-insert
   await pool.query('DELETE FROM signups WHERE raid_id = ? AND discord_user_id = ?', [raidId, userId]);
 
@@ -692,7 +699,23 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
       "INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, note) VALUES (?, ?, ?, ?, ?, ?)",
       [raidId, userId, charId, stype, sstatus, note]
     );
+
+    // Update character's auto-detected role
+    const c = charById[String(charId)];
+    if (c) {
+        const charRole = getRoleFromSpec(c.char_class, c.spec);
+        await pool.query(
+            'UPDATE characters SET role = ?, last_updated = NOW() WHERE id = ?',
+            [charRole, charId]
+        );
+    }
   }
+
+  // Update ALL characters for this user in this guild with the latest Discord info
+  await pool.query(
+    'UPDATE characters SET discord_role = ?, membership_status = "active", last_updated = NOW() WHERE guild_id = ? AND discord_user_id = ?',
+    [topRoleName, guildId, userId]
+  );
 
   // Build log message matching the text sign-up format:
   // • **CharName** (CharClass) – Spec ⭐ GS 6200 / Spec2 GS 6300
@@ -795,7 +818,7 @@ router.get('/:raid_number/manage', async (req, res) => {
 
   const [allSignups] = await pool.query(
     `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role,
-            c.sfs_count, c.val_count,
+            c.sfs_count, c.val_count, c.discord_role, c.membership_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM signups s
      JOIN characters c ON s.character_id = c.id
@@ -838,7 +861,14 @@ router.get('/:raid_number/manage', async (req, res) => {
       } else {
         label = uid;
       }
-      userSignupMap[uid] = { discord_user_id: uid, display_label: label, is_tentative: false, characters: [] };
+      userSignupMap[uid] = {
+        discord_user_id: uid,
+        display_label: label,
+        is_tentative: false,
+        guild_role: s.discord_role,
+        membership_status: s.membership_status,
+        characters: []
+      };
     }
 
     // Tentative is a user-level flag: true if any of the user's signups is tentative
@@ -932,12 +962,19 @@ router.get('/:raid_number/manage', async (req, res) => {
     return 0;
   });
 
-  // Fetch each signed-up user's top Discord guild role for display in the sidebar
+  // If some users don't have a persisted guild_role, try to fetch it dynamically (optional optimization)
   const signedUpUserIds = signupsByUser.map(u => u.discord_user_id);
-  const userGuildRoles = await fetchUserGuildRoles(raidGuildId, signedUpUserIds);
-  for (const userGroup of signupsByUser) {
-    userGroup.guild_role = userGuildRoles[userGroup.discord_user_id] || null;
+  const needsRoleFetch = signupsByUser.filter(u => !u.guild_role).map(u => u.discord_user_id);
+
+  if (needsRoleFetch.length > 0) {
+    const userGuildRoles = await fetchUserGuildRoles(raidGuildId, needsRoleFetch);
+    for (const userGroup of signupsByUser) {
+        if (!userGroup.guild_role && userGuildRoles[userGroup.discord_user_id]) {
+            userGroup.guild_role = userGuildRoles[userGroup.discord_user_id];
+        }
+    }
   }
+
   if (signedUpUserIds.length > 0) {
     const [officerNoteRows] = await pool.query(
       'SELECT discord_user_id, note FROM guild_player_notes WHERE guild_id = ? AND discord_user_id IN (?)',
@@ -967,6 +1004,7 @@ router.get('/:raid_number/manage', async (req, res) => {
   const [existingComp] = await pool.query(
     `SELECT co.*, s.status AS signup_status,
             c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count,
+            c.discord_role, c.membership_status,
             du.username AS du_username, du.display_name AS du_display_name
      FROM compositions co
      LEFT JOIN characters c ON c.id = co.character_id

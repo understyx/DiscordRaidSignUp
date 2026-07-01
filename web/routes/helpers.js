@@ -98,4 +98,62 @@ function currentUser(req) {
   };
 }
 
-module.exports = { BIS_GS, parseGS, requireLogin, requireAdmin, popFlash, currentUser };
+const CLASS_SPEC_ROLES = {
+  'Death Knight': { 'Blood': 'tank', 'Frost': 'dps', 'Unholy': 'dps' },
+  'Druid': { 'Balance': 'dps', 'Feral (Cat)': 'dps', 'Feral (Bear)': 'tank', 'Restoration': 'healer' },
+  'Hunter': { 'Beast Mastery': 'dps', 'Marksmanship': 'dps', 'Survival': 'dps' },
+  'Mage': { 'Arcane': 'dps', 'Fire': 'dps', 'Frost': 'dps' },
+  'Paladin': { 'Holy': 'healer', 'Protection': 'tank', 'Retribution': 'dps' },
+  'Priest': { 'Discipline': 'healer', 'Holy': 'healer', 'Shadow': 'dps' },
+  'Rogue': { 'Assassination': 'dps', 'Combat': 'dps', 'Subtlety': 'dps' },
+  'Shaman': { 'Elemental': 'dps', 'Enhancement': 'dps', 'Restoration': 'healer' },
+  'Warlock': { 'Affliction': 'dps', 'Demonology': 'dps', 'Destruction': 'dps' },
+  'Warrior': { 'Arms': 'dps', 'Fury': 'dps', 'Protection': 'tank' },
+};
+
+/**
+ * Determine role from class and spec names.
+ *
+ * @param {string} charClass
+ * @param {string} spec
+ * @returns {string} 'tank', 'healer', or 'dps'
+ */
+function getRoleFromSpec(charClass, spec) {
+  if (!charClass || !spec) return 'dps';
+
+  let c = charClass.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  if (c === 'Dk') c = 'Death Knight';
+
+  let s = spec.trim();
+  s = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+  // Normalize common aliases
+  if (s.includes('Prot')) s = 'Protection';
+  if (s.includes('Ret')) s = 'Retribution';
+  if (s.includes('Disc')) s = 'Discipline';
+  if (s.includes('Resto')) s = 'Restoration';
+  if (s.includes('Ele')) s = 'Elemental';
+  if (s.includes('Enha')) s = 'Enhancement';
+
+  if (c === 'Death Knight') {
+    if (s.includes('Blood')) s = 'Blood';
+    if (s.includes('Frost')) s = 'Frost';
+    if (s.includes('Unholy')) s = 'Unholy';
+  }
+  if (c === 'Druid') {
+    if (s.includes('Bear')) s = 'Feral (Bear)';
+    if (s.includes('Cat')) s = 'Feral (Cat)';
+  }
+
+  if (CLASS_SPEC_ROLES[c] && CLASS_SPEC_ROLES[c][s]) {
+    return CLASS_SPEC_ROLES[c][s];
+  }
+
+  const sLow = s.toLowerCase();
+  if (sLow.includes('tank') || sLow.includes('protection') || sLow.includes('blood') || sLow.includes('bear')) return 'tank';
+  if (sLow.includes('heal') || sLow.includes('holy') || sLow.includes('restoration') || sLow.includes('discipline')) return 'healer';
+
+  return 'dps';
+}
+
+module.exports = { BIS_GS, parseGS, requireLogin, requireAdmin, popFlash, currentUser, getRoleFromSpec };

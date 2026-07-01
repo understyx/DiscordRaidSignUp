@@ -36,6 +36,9 @@
         <span class="fw-bold fs-5">{{ user_group.displayName }}</span>
         <span class="text-muted ms-2">(@{{ user_group.username }})</span>
         <code class="ms-2 small text-secondary">{{ user_group.userId | discordId }}</code>
+        {% if user_group.membershipStatus != 'active' %}
+          <span class="badge bg-danger ms-2">{{ user_group.membershipStatus | capitalize }}</span>
+        {% endif %}
       </div>
       <div>
         <button class="btn btn-sm btn-outline-wow me-2" type="button" data-bs-toggle="collapse" data-bs-target="#addChar-{{ user_group.userId }}">

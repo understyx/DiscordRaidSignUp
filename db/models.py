@@ -75,6 +75,8 @@ class Character(Base):
     val_count = Column(Integer, nullable=True)
     last_updated = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     is_deleted = Column(Boolean, default=False, nullable=False)
+    membership_status = Column(String(20), default="active", nullable=False)
+    discord_role = Column(String(100), nullable=True)
     signups = relationship("Signup", back_populates="character")
 
 

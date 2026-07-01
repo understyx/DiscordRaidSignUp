@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../../db');
-const { BIS_GS, parseGS, requireLogin, popFlash, currentUser } = require('../helpers');
+const { BIS_GS, parseGS, requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
 
 const router = express.Router();
 
@@ -180,16 +180,23 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
     [userId, guildId, charNameCap, realmCap, specNorm]
   );
 
+  const role = getRoleFromSpec(charClass, spec);
+
+  // Try to get discord role if possible
+  const { fetchUserGuildRoles } = require('../raids/embeds');
+  const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
+  const discordRole = userGuildRolesMap[userId] || null;
+
   if (existing) {
     await pool.query(
-      'UPDATE characters SET char_class = ?, gearscore = ?, prof_1 = ?, prof_2 = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-      [charClass, gearscore, prof1, prof2, existing.id]
+      'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, prof_1 = ?, prof_2 = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+      [charClass, role, discordRole, gearscore, prof1, prof2, existing.id]
     );
   } else {
     await pool.query(
-      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, gearscore, prof_1, prof_2, is_deleted, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [userId, guildId, charNameCap, realmCap, charClass, spec, gearscore, prof1, prof2]
+      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, discord_role, membership_status, gearscore, prof_1, prof_2, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, "active", ?, ?, ?, 0, NOW())`,
+      [userId, guildId, charNameCap, realmCap, charClass, spec, role, discordRole, gearscore, prof1, prof2]
     );
   }
 
@@ -266,12 +273,17 @@ router.post('/characters/:char_id/update-spec', express.urlencoded({ extended: f
   const spec = (req.body.spec || '').trim() || null;
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    'SELECT id, char_name, char_class FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
     [charId, userId, guildId]
   );
 
   if (char) {
-    await pool.query('UPDATE characters SET spec = ?, last_updated = NOW() WHERE id = ?', [spec, char.id]);
+    const role = getRoleFromSpec(char.char_class, spec);
+    const { fetchUserGuildRoles } = require('../raids/embeds');
+    const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
+    const discordRole = userGuildRolesMap[userId] || null;
+
+    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ?', [spec, role, discordRole, char.id]);
     req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } else {
     req.session.flash = '❌ Character not found.';
