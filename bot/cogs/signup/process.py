@@ -7,9 +7,10 @@ from typing import Optional
 
 import discord
 
+from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus, Raid
 from bot.db import get_session
 from bot.role_utils import get_role_from_spec
-from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus
+from bot.discord_utils import get_top_role_name
 from .parser import (
     _find_random_text_lines,
     _parse_character_lines,
@@ -21,6 +22,12 @@ from .embed import update_raid_embed
 from .log_thread import _post_to_raid_log, _create_log_thread, format_user_raid_log_message
 
 logger = logging.getLogger(__name__)
+
+
+def _raid_id_to_guild_id(session, raid_id: int) -> Optional[int]:
+    """Helper to get guild_id from a raid_id."""
+    raid = session.get(Raid, raid_id)
+    return raid.guild_id if raid else None
 
 
 def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
@@ -117,6 +124,8 @@ async def process_text_signup(
             ).delete()
 
             char_spec_info: dict[str, dict] = {}
+            top_role = get_top_role_name(user) if isinstance(user, discord.Member) else None
+
             for entry in parsed:
                 char = (
                     session.query(Character)
@@ -141,6 +150,17 @@ async def process_text_signup(
                 char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                 session.flush()
 
+            # Update ALL characters for this user in this guild with the latest Discord info
+            session.query(Character).filter_by(
+                guild_id=_raid_id_to_guild_id(session, raid_id),
+                discord_user_id=discord_user_id,
+            ).update({
+                "discord_role": top_role,
+                "membership_status": "active",
+                "last_updated": datetime.datetime.now(datetime.timezone.utc)
+            })
+
+            for entry in parsed:
                 signup_type = (
                     SignupType.prio_character if entry["is_prio"] else SignupType.fill
                 )

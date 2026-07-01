@@ -101,7 +101,14 @@
                style="cursor:pointer;" onclick="toggleUserGroup('{{ grp_id }}', this)"
                title="Click to expand/collapse">
             <span>👤</span>
-            <span class="flex-grow-1" style="font-size:0.82rem;">{{ userGroup.display_label }}<br><small class="text-muted" style="font-size:0.75rem;">{{ userGroup.guild_role if userGroup.guild_role else "No role" }}</small></span>
+            <span class="flex-grow-1" style="font-size:0.82rem;">
+              {{ userGroup.display_label }}
+              {% if userGroup.membership_status != 'active' %}
+                <span class="badge bg-danger ms-1" style="font-size:0.65rem; vertical-align:middle;">{{ userGroup.membership_status | capitalize }}</span>
+              {% endif %}
+              <br>
+              <small class="text-muted" style="font-size:0.75rem;">{{ userGroup.guild_role if userGroup.guild_role else "No role" }}</small>
+            </span>
             {% if can_edit %}
             <button type="button" class="officer-note-btn{% if userGroup.officer_note %} has-note{% endif %}"
                     data-discord-user-id="{{ userGroup.discord_user_id }}"

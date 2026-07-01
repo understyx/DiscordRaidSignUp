@@ -12,6 +12,7 @@ from discord.ext import commands
 from bot.db import get_session
 from bot.class_utils import normalize_class
 from bot.role_utils import get_role_from_spec
+from bot.discord_utils import get_top_role_name
 from bot.cogs.signup import parse_gs, format_gs
 from bot.cogs.signup.parser import _parse_character_lines
 from db.models import Character, CharacterSuggestion, SuggestionStatus
@@ -50,7 +51,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             await interaction.followup.send(error_text, ephemeral=True)
             return
 
-        def _upsert_all():
+        def _upsert_all(top_role: Optional[str]):
             session = get_session()
             try:
                 char_spec_info: dict[str, dict] = {}
@@ -80,6 +81,17 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
                     char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                     session.flush()
 
+                # Update ALL characters for this user in this guild with the latest Discord info
+                session.query(Character).filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                ).update({
+                    "discord_role": top_role,
+                    "membership_status": "active",
+                    "last_updated": datetime.datetime.now(datetime.timezone.utc)
+                })
+
+                for entry in parsed:
                     key = entry["char_name"].lower()
                     if key not in char_spec_info:
                         char_spec_info[key] = {
@@ -96,8 +108,9 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             finally:
                 session.close()
 
+        top_role = get_top_role_name(interaction.user) if isinstance(interaction.user, discord.Member) else None
         try:
-            char_spec_info = await loop.run_in_executor(None, _upsert_all)
+            char_spec_info = await loop.run_in_executor(None, _upsert_all, top_role)
         except Exception:
             logger.exception("Failed to save characters for user %s", discord_user_id)
             await interaction.followup.send(
@@ -223,7 +236,7 @@ class CharacterCog(commands.Cog):
                 await interaction.followup.send(f"❌ Invalid gearscore for spec 6: `{gs6}`.", ephemeral=True)
                 return
 
-        def _upsert_all():
+        def _upsert_all(top_role: Optional[str]):
             session = get_session()
             try:
                 saved_ids = []
@@ -260,12 +273,23 @@ class CharacterCog(commands.Cog):
                     session.flush()
                     saved_ids.append(char.id)
 
+                # Update ALL characters for this user in this guild with the latest Discord info
+                session.query(Character).filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                ).update({
+                    "discord_role": top_role,
+                    "membership_status": "active",
+                    "last_updated": datetime.datetime.now(datetime.timezone.utc)
+                })
+
                 session.commit()
                 return saved_ids
             finally:
                 session.close()
 
-        char_ids = await loop.run_in_executor(None, _upsert_all)
+        top_role = get_top_role_name(interaction.user) if isinstance(interaction.user, discord.Member) else None
+        char_ids = await loop.run_in_executor(None, _upsert_all, top_role)
 
         canonical_class = normalize_class(char_class)
         lines = [

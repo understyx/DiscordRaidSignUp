@@ -41,14 +41,18 @@ def _delete_guild_sync(guild_id: int) -> None:
         session.close()
 
 
-def _update_membership_status_sync(guild_id: int, user_id: int, status: str) -> None:
+def _update_membership_status_sync(guild_id: int, user_id: int, status: str, discord_role: str = None) -> None:
     """Update membership_status for all characters of a user in a guild."""
     session = get_session()
     try:
+        update_data = {"membership_status": status}
+        if discord_role is not None:
+            update_data["discord_role"] = discord_role
+
         session.query(Character).filter_by(
             guild_id=guild_id,
             discord_user_id=user_id,
-        ).update({"membership_status": status})
+        ).update(update_data)
         session.commit()
     finally:
         session.close()
@@ -118,8 +122,10 @@ class RaidBot(commands.Bot):
 
     async def on_member_join(self, member: discord.Member):
         loop = asyncio.get_running_loop()
+        from bot.discord_utils import get_top_role_name
+        top_role = get_top_role_name(member)
         try:
-            await loop.run_in_executor(None, _update_membership_status_sync, member.guild.id, member.id, "active")
+            await loop.run_in_executor(None, _update_membership_status_sync, member.guild.id, member.id, "active", top_role)
             logger.info("Member %s joined guild %s — marked characters as active.", member.id, member.guild.id)
         except Exception:
             logger.warning("Failed to update membership status for member %s on join", member.id, exc_info=True)

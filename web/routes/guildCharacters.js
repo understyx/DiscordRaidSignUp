@@ -134,7 +134,11 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
     }
 
     const role = getRoleFromSpec(char.char_class, spec);
-    await pool.query('UPDATE characters SET spec = ?, role = ?, last_updated = NOW() WHERE id = ?', [spec, role, charId]);
+    const { fetchUserGuildRoles } = require('./raids/embeds');
+    const userGuildRolesMap = await fetchUserGuildRoles(guildId, [char.discord_user_id]);
+    const discordRole = userGuildRolesMap[char.discord_user_id] || null;
+
+    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ?', [spec, role, discordRole, charId]);
     req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } catch (err) {
     console.error('[guild-characters] Update spec error:', err);
@@ -280,17 +284,20 @@ router.post('/register', express.urlencoded({ extended: false }), async (req, re
     );
 
     const role = getRoleFromSpec(charClass, spec);
+    const { fetchUserGuildRoles } = require('./raids/embeds');
+    const userGuildRolesMap = await fetchUserGuildRoles(guildId, [targetUserId]);
+    const discordRole = userGuildRolesMap[targetUserId] || null;
 
     if (existing) {
       await pool.query(
-        'UPDATE characters SET char_class = ?, role = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-        [charClass, role, gearscore, existing.id]
+        'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
+        [charClass, role, discordRole, gearscore, existing.id]
       );
     } else {
       await pool.query(
-        `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, gearscore, is_deleted, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-        [targetUserId, guildId, charNameCap, realmCap, charClass, spec, role, gearscore]
+        `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, discord_role, membership_status, gearscore, is_deleted, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, "active", ?, 0, NOW())`,
+        [targetUserId, guildId, charNameCap, realmCap, charClass, spec, role, discordRole, gearscore]
       );
     }
 
