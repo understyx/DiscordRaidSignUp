@@ -444,8 +444,8 @@ router.get('/:raid_number', async (req, res) => {
   raid.signup_tentative_count = counts.tentative_count;
 
   const [userChars] = await pool.query(
-    'SELECT * FROM characters WHERE discord_user_id = ? AND is_deleted = 0',
-    [userId]
+    'SELECT * FROM characters WHERE discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+    [userId, raid.guild_id]
   );
 
   // Fetch ALL signups for this user in this raid (one per character/spec)
@@ -659,12 +659,12 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     return res.redirect(raidUrl);
   }
 
-  // Verify all selected characters belong to this user
+  // Verify all selected characters belong to this user and the active guild
   if (characterIds.length > 0) {
     const placeholders = characterIds.map(() => '?').join(', ');
     const [owned] = await pool.query(
-      `SELECT id FROM characters WHERE id IN (${placeholders}) AND discord_user_id = ? AND is_deleted = 0`,
-      [...characterIds, userId]
+      `SELECT id FROM characters WHERE id IN (${placeholders}) AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0`,
+      [...characterIds, userId, raid.guild_id]
     );
     if (owned.length !== characterIds.length) {
       req.session.flash = '❌ Invalid character selection.';
@@ -675,8 +675,8 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
   // Fetch character details for the log message before deleting existing signups
   const charPlaceholders = characterIds.map(() => '?').join(', ');
   const [charRows] = await pool.query(
-    `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${charPlaceholders}) AND is_deleted = 0`,
-    characterIds
+    `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${charPlaceholders}) AND guild_id = ? AND is_deleted = 0`,
+    [...characterIds, raid.guild_id]
   );
   const charById = {};
   for (const c of charRows) charById[String(c.id)] = c;
@@ -705,8 +705,8 @@ router.post('/:raid_number/signup', express.urlencoded({ extended: false }), asy
     if (c) {
         const charRole = getRoleFromSpec(c.char_class, c.spec);
         await pool.query(
-            'UPDATE characters SET role = ?, last_updated = NOW() WHERE id = ?',
-            [charRole, charId]
+            'UPDATE characters SET role = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?',
+            [charRole, charId, raid.guild_id]
         );
     }
   }
@@ -1177,12 +1177,13 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
   const placeholderEntries = body.filter(e => !e.character_id && !e.discord_user_id && e.placeholder_text);
 
   if (charEntries.length > 0) {
-    // Validate: each Discord user may only appear once in the composition
+    // Validate: each Discord user may only appear once in the composition,
+    // and all characters must belong to the active guild.
     const charIds = charEntries.map(e => parseInt(e.character_id));
     const placeholders = charIds.map(() => '?').join(', ');
     const [chars] = await pool.query(
-      `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
-      charIds
+      `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders}) AND guild_id = ? AND is_deleted = 0`,
+      [...charIds, raid.guild_id]
     );
     const seenUsers = new Set();
     for (const char of chars) {
