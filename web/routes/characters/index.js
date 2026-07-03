@@ -189,8 +189,8 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
 
   if (existing) {
     await pool.query(
-      'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, prof_1 = ?, prof_2 = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-      [charClass, role, discordRole, gearscore, prof1, prof2, existing.id]
+      'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, prof_1 = ?, prof_2 = ?, is_deleted = 0, last_updated = NOW() WHERE id = ? AND guild_id = ?',
+      [charClass, role, discordRole, gearscore, prof1, prof2, existing.id, guildId]
     );
   } else {
     await pool.query(
@@ -226,7 +226,7 @@ router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: fal
   );
 
   if (char) {
-    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, char.id]);
+    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?', [gearscore, char.id, guildId]);
     req.session.flash = `✅ GS updated for ${char.char_name}.`;
   } else {
     req.session.flash = '❌ Character not found.';
@@ -283,7 +283,7 @@ router.post('/characters/:char_id/update-spec', express.urlencoded({ extended: f
     const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
     const discordRole = userGuildRolesMap[userId] || null;
 
-    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ?', [spec, role, discordRole, char.id]);
+    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?', [spec, role, discordRole, char.id, guildId]);
     req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } else {
     req.session.flash = '❌ Character not found.';
@@ -306,7 +306,7 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   );
 
   if (char) {
-    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ?', [char.id]);
+    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [char.id, guildId]);
     req.session.flash = `✅ Character '${char.char_name}' hidden.`;
   } else {
     req.session.flash = '❌ Character not found.';

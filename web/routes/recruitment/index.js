@@ -70,33 +70,35 @@ router.post('/characters/register', express.json(), async (req, res) => {
   const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
   const specNorm = spec || null;
 
+  const guildId = req.session.recruit_guild_id || null;
+
   const [[existing]] = await pool.query(
     `SELECT id FROM characters
-     WHERE discord_user_id = ? AND char_name = ? AND realm = ?
+     WHERE discord_user_id = ? AND guild_id <=> ? AND char_name = ? AND realm = ?
        AND (spec <=> ?)
      LIMIT 1`,
-    [userId, charNameCap, realmCap, specNorm]
+    [userId, guildId, charNameCap, realmCap, specNorm]
   );
 
   let charId;
   if (existing) {
     await pool.query(
-      'UPDATE characters SET char_class = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-      [charClass, gearscore, existing.id]
+      'UPDATE characters SET char_class = ?, gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ? AND guild_id <=> ?',
+      [charClass, gearscore, existing.id, guildId]
     );
     charId = existing.id;
   } else {
     const [result] = await pool.query(
-      `INSERT INTO characters (discord_user_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [userId, charNameCap, realmCap, charClass, specNorm, gearscore]
+      `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, gearscore, is_deleted, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [userId, guildId, charNameCap, realmCap, charClass, specNorm, gearscore]
     );
     charId = result.insertId;
   }
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE id = ?',
-    [charId]
+    'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE id = ? AND guild_id <=> ?',
+    [charId, guildId]
   );
 
   return res.json({ ok: true, character: char });
@@ -109,6 +111,7 @@ router.post('/characters/:char_id/update-name', express.json(), async (req, res)
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
   const newName = (req.body.char_name || '').trim();
 
@@ -117,8 +120,8 @@ router.post('/characters/:char_id/update-name', express.json(), async (req, res)
   }
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
@@ -128,8 +131,8 @@ router.post('/characters/:char_id/update-name', express.json(), async (req, res)
   const nameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
 
   await pool.query(
-    'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
-    [nameCap, char.char_name, userId]
+    'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [nameCap, char.char_name, userId, guildId]
   );
 
   return res.json({ ok: true });
@@ -142,12 +145,13 @@ router.post('/characters/:char_id/update-realm', express.json(), async (req, res
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
   const realm = (req.body.realm || 'Icecrown').trim();
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
@@ -157,8 +161,8 @@ router.post('/characters/:char_id/update-realm', express.json(), async (req, res
   const realmCap = realm.charAt(0).toUpperCase() + realm.slice(1).toLowerCase();
 
   await pool.query(
-    'UPDATE characters SET realm = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
-    [realmCap, char.char_name, userId]
+    'UPDATE characters SET realm = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [realmCap, char.char_name, userId, guildId]
   );
 
   return res.json({ ok: true });
@@ -171,12 +175,13 @@ router.post('/characters/:char_id/update-class', express.json(), async (req, res
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
   const charClass = (req.body.char_class || '').trim() || null;
 
   const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
@@ -184,8 +189,8 @@ router.post('/characters/:char_id/update-class', express.json(), async (req, res
   }
 
   await pool.query(
-    'UPDATE characters SET char_class = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charClass, char.char_name, userId]
+    'UPDATE characters SET char_class = ?, last_updated = NOW() WHERE char_name = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charClass, char.char_name, userId, guildId]
   );
 
   return res.json({ ok: true });
@@ -198,19 +203,20 @@ router.post('/characters/:char_id/update-spec', express.json(), async (req, res)
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
   const spec = (req.body.spec || '').trim() || null;
 
   const [[char]] = await pool.query(
-    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
     return res.status(404).json({ error: 'Character not found.' });
   }
 
-  await pool.query('UPDATE characters SET spec = ?, last_updated = NOW() WHERE id = ?', [spec, charId]);
+  await pool.query('UPDATE characters SET spec = ?, last_updated = NOW() WHERE id = ? AND guild_id <=> ?', [spec, charId, guildId]);
 
   return res.json({ ok: true });
 });
@@ -222,19 +228,20 @@ router.post('/characters/:char_id/update-gs', express.json(), async (req, res) =
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
   const gearscore = parseGS(req.body.gearscore);
 
   const [[char]] = await pool.query(
-    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
     return res.status(404).json({ error: 'Character not found.' });
   }
 
-  await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, charId]);
+  await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id <=> ?', [gearscore, charId, guildId]);
 
   return res.json({ ok: true });
 });
@@ -246,18 +253,19 @@ router.post('/characters/:char_id/delete', express.json(), async (req, res) => {
   }
 
   const userId = req.session.recruit_discord_id;
+  const guildId = req.session.recruit_guild_id || null;
   const charId = parseInt(req.params.char_id);
 
   const [[char]] = await pool.query(
-    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND is_deleted = 0',
-    [charId, userId]
+    'SELECT id FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id <=> ? AND is_deleted = 0',
+    [charId, userId, guildId]
   );
 
   if (!char) {
     return res.status(404).json({ error: 'Character not found.' });
   }
 
-  await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ?', [charId]);
+  await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id <=> ?', [charId, guildId]);
 
   return res.json({ ok: true });
 });
@@ -624,8 +632,8 @@ router.get('/:form_id/applications/:app_id', requireAdmin, async (req, res) => {
   if (allCharIds.length > 0) {
     const placeholders = allCharIds.map(() => '?').join(',');
     const [charRows] = await pool.query(
-      `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
-      allCharIds
+      `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND guild_id = ? AND is_deleted = 0`,
+      [...allCharIds, form.guild_id]
     );
     for (const c of charRows) charsById[c.id] = c;
   }
@@ -791,6 +799,9 @@ router.get('/:form_id', async (req, res) => {
     return redirectToRecruitmentOAuth(req, res, formId);
   }
 
+  // Store the guild context for character registration/updates
+  req.session.recruit_guild_id = form.guild_id;
+
   // Duplicate application guard: pending or accepted → redirect to edit
   const [[existing]] = await pool.query(
     `SELECT id FROM recruitment_applications
@@ -827,8 +838,8 @@ router.get('/:form_id', async (req, res) => {
   const hasCharsQuestion = questionsForTemplate.some(q => q.question_type === 'characters');
   if (hasCharsQuestion) {
     [applicantCharacters] = await pool.query(
-      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
-      [req.session.recruit_discord_id]
+      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND guild_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
+      [req.session.recruit_discord_id, form.guild_id]
     );
     for (const q of questionsForTemplate.filter(q => q.question_type === 'characters')) {
       preselectedCharsByQuestion[String(q.id)] = applicantCharacters.map(c => c.id);
@@ -866,6 +877,9 @@ router.post('/:form_id/submit', async (req, res) => {
     req.session.recruit_return_form_id = formId;
     return redirectToRecruitmentOAuth(req, res, formId);
   }
+
+  // Store the guild context for character registration/updates
+  req.session.recruit_guild_id = form.guild_id;
 
   // Duplicate guard
   const [[existing]] = await pool.query(
@@ -986,6 +1000,9 @@ router.get('/:form_id/edit', async (req, res) => {
     return redirectToRecruitmentOAuth(req, res, formId);
   }
 
+  // Store the guild context for character registration/updates
+  req.session.recruit_guild_id = form.guild_id;
+
   const [[application]] = await pool.query(
     `SELECT * FROM recruitment_applications
       WHERE form_id = ? AND applicant_discord_id = ?
@@ -1032,8 +1049,8 @@ router.get('/:form_id/edit', async (req, res) => {
   const hasCharsQuestion = questionsForTemplate.some(q => q.question_type === 'characters');
   if (hasCharsQuestion) {
     [applicantCharacters] = await pool.query(
-      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
-      [req.session.recruit_discord_id]
+      'SELECT id, char_name, realm, char_class, spec, gearscore FROM characters WHERE discord_user_id = ? AND guild_id = ? AND is_deleted = 0 ORDER BY char_name ASC',
+      [req.session.recruit_discord_id, form.guild_id]
     );
     for (const q of questionsForTemplate.filter(q => q.question_type === 'characters')) {
       const raw = existingAnswers[String(q.id)];
@@ -1068,8 +1085,8 @@ router.get('/:form_id/edit', async (req, res) => {
           if (missingIds.length > 0) {
             const placeholders = missingIds.map(() => '?').join(',');
             [extraChars] = await pool.query(
-              `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND is_deleted = 0`,
-              missingIds
+              `SELECT id, char_name, char_class, spec, gearscore FROM characters WHERE id IN (${placeholders}) AND guild_id = ? AND is_deleted = 0`,
+              [...missingIds, form.guild_id]
             );
             for (const c of extraChars) charsById[c.id] = c;
           }
@@ -1127,6 +1144,9 @@ router.post('/:form_id/edit', async (req, res) => {
     req.session.recruit_return_form_id = formId;
     return redirectToRecruitmentOAuth(req, res, formId);
   }
+
+  // Store the guild context for character registration/updates
+  req.session.recruit_guild_id = form.guild_id;
 
   const [[application]] = await pool.query(
     `SELECT * FROM recruitment_applications

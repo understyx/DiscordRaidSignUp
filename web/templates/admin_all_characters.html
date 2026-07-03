@@ -64,51 +64,7 @@
             <td class="cls-{{ cls_key }}">{{ char.char_class or "—" }}</td>
             <td>{{ char.spec or "—" }}</td>
             <td>{{ char.gearscore | gsformat if char.gearscore else "—" }}</td>
-            <td>
-              <button class="btn btn-sm btn-outline-warning" onclick="toggleSuggestionForm('{{ char.id }}')">
-                💡 Suggest Change
-              </button>
-            </td>
-          </tr>
-          <tr id="suggestion-row-{{ char.id }}" style="display: none;">
-            <td colspan="6" class="bg-dark">
-              <div class="p-3 border border-warning rounded">
-                <h6>Suggest changes for <strong>{{ char.char_name }}</strong></h6>
-                <form method="POST" action="/admin/suggest-character-change" class="row g-2 align-items-end">
-                  <input type="hidden" name="char_id" value="{{ char.id }}">
-                  <div class="col-md-3">
-                    <label class="form-label small">Class</label>
-                    <select name="char_class" class="form-select form-select-sm bg-dark text-light border-secondary">
-                      <option value="">(No change)</option>
-                      <option {% if char.char_class == 'Death Knight' %}selected{% endif %}>Death Knight</option>
-                      <option {% if char.char_class == 'Druid' %}selected{% endif %}>Druid</option>
-                      <option {% if char.char_class == 'Hunter' %}selected{% endif %}>Hunter</option>
-                      <option {% if char.char_class == 'Mage' %}selected{% endif %}>Mage</option>
-                      <option {% if char.char_class == 'Paladin' %}selected{% endif %}>Paladin</option>
-                      <option {% if char.char_class == 'Priest' %}selected{% endif %}>Priest</option>
-                      <option {% if char.char_class == 'Rogue' %}selected{% endif %}>Rogue</option>
-                      <option {% if char.char_class == 'Shaman' %}selected{% endif %}>Shaman</option>
-                      <option {% if char.char_class == 'Warlock' %}selected{% endif %}>Warlock</option>
-                      <option {% if char.char_class == 'Warrior' %}selected{% endif %}>Warrior</option>
-                    </select>
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label small">Spec</label>
-                    <input type="text" name="spec" class="form-control form-control-sm bg-dark text-light border-secondary"
-                           placeholder="New spec" value="{{ char.spec or '' }}">
-                  </div>
-                  <div class="col-md-2">
-                    <label class="form-label small">GS</label>
-                    <input type="text" name="gearscore" class="form-control form-control-sm bg-dark text-light border-secondary"
-                           placeholder="GS" value="{{ char.gearscore | gsformat if char.gearscore else '' }}">
-                  </div>
-                  <div class="col-md-4 d-flex gap-2">
-                    <button type="submit" class="btn btn-sm btn-warning">Send Suggestion</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSuggestionForm('{{ char.id }}')">Cancel</button>
-                  </div>
-                </form>
-              </div>
-            </td>
+            <td></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -122,15 +78,3 @@
 
 {% endblock %}
 
-{% block scripts %}
-<script>
-function toggleSuggestionForm(charId) {
-  const row = document.getElementById('suggestion-row-' + charId);
-  if (row.style.display === 'none') {
-    row.style.display = 'table-row';
-  } else {
-    row.style.display = 'none';
-  }
-}
-</script>
-{% endblock %}

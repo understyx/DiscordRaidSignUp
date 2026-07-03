@@ -138,7 +138,7 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
     const userGuildRolesMap = await fetchUserGuildRoles(guildId, [char.discord_user_id]);
     const discordRole = userGuildRolesMap[char.discord_user_id] || null;
 
-    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ?', [spec, role, discordRole, charId]);
+    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?', [spec, role, discordRole, charId, guildId]);
     req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } catch (err) {
     console.error('[guild-characters] Update spec error:', err);
@@ -209,7 +209,7 @@ router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), asyn
       return res.redirect('/guild-characters');
     }
 
-    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ?', [gearscore, charId]);
+    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?', [gearscore, charId, guildId]);
     req.session.flash = `✅ GS updated for ${char.char_name}.`;
   } catch (err) {
     console.error('[guild-characters] Update GS error:', err);
@@ -238,7 +238,7 @@ router.post('/delete/:char_id', express.urlencoded({ extended: false }), async (
       return res.redirect('/guild-characters');
     }
 
-    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ?', [charId]);
+    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [charId, guildId]);
     req.session.flash = `✅ Character ${char.char_name} hidden.`;
   } catch (err) {
     console.error('[guild-characters] Delete error:', err);
@@ -290,8 +290,8 @@ router.post('/register', express.urlencoded({ extended: false }), async (req, re
 
     if (existing) {
       await pool.query(
-        'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ?',
-        [charClass, role, discordRole, gearscore, existing.id]
+        'UPDATE characters SET char_class = ?, role = ?, discord_role = ?, membership_status = "active", gearscore = ?, is_deleted = 0, last_updated = NOW() WHERE id = ? AND guild_id = ?',
+        [charClass, role, discordRole, gearscore, existing.id, guildId]
       );
     } else {
       await pool.query(
