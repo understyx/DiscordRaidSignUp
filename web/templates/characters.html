@@ -16,6 +16,10 @@
     <button class="nav-link" id="saves-tab" data-bs-toggle="tab" data-bs-target="#saves-pane"
             type="button" role="tab">🔒 Raid Saves</button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security-pane"
+            type="button" role="tab">🔑 Security</button>
+  </li>
 </ul>
 
 <div class="tab-content" id="charTabsContent">
@@ -301,6 +305,37 @@
     {% endif %}
 
   </div>{# /saves-pane #}
+
+  <!-- ── Tab 3: Security ─────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="security-pane" role="tabpanel">
+    <div class="row justify-content-center">
+      <div class="col-md-6">
+        <div class="card p-4">
+          <h5 class="mb-3">🔑 Fallback Credentials</h5>
+          <p class="text-muted small mb-4">
+            Set a fallback username and password to log in when Discord OAuth is unavailable.
+            These credentials are unique to you and stored securely.
+          </p>
+          <form method="post" action="/characters/update-fallback-credentials">
+            <div class="mb-3">
+              <label class="form-label small">Fallback Username</label>
+              <input type="text" name="fallback_username" class="form-control bg-dark text-light border-secondary"
+                     value="{{ user_fallback_username or '' }}" maxlength="100" placeholder="Choose a unique username" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">New Password</label>
+              <input type="password" name="fallback_password" class="form-control bg-dark text-light border-secondary"
+                     placeholder="Enter a secure password" required />
+              <div class="form-text text-muted small">Passwords are hashed before storage.</div>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-wow">Update Fallback Credentials</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>{# /security-pane #}
 
 </div>{# /tab-content #}
 

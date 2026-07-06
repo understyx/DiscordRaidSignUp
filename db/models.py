@@ -141,6 +141,8 @@ class DiscordUser(Base):
     discord_user_id = Column(BigInteger, primary_key=True)
     username = Column(String(100), nullable=False)
     display_name = Column(String(100), nullable=True)
+    fallback_username = Column(String(100), unique=True, nullable=True)
+    fallback_password_hash = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 

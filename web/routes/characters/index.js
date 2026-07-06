@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const pool = require('../../db');
 const { BIS_GS, parseGS, requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
 
@@ -87,11 +88,24 @@ router.get('/characters', async (req, res) => {
     }
   }
 
+  // Fetch fallback username for the current user
+  let userFallbackUsername = null;
+  try {
+    const [[userRow]] = await pool.query(
+      'SELECT fallback_username FROM discord_users WHERE discord_user_id = ?',
+      [userId]
+    );
+    if (userRow) userFallbackUsername = userRow.fallback_username;
+  } catch (_dbErr) {
+    // Non-fatal
+  }
+
   res.render('characters.html', {
     charGroups,
     instances,
     gridChars,
     savesMap,
+    user_fallback_username: userFallbackUsername,
     flash: popFlash(req),
     user: currentUser(req),
   });
@@ -313,6 +327,40 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   }
 
   res.redirect('/characters');
+});
+
+router.post('/update-fallback-credentials', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const userId = req.session.user_id;
+  const { fallback_username, fallback_password } = req.body;
+
+  if (!fallback_username || !fallback_password) {
+    req.session.flash = '❌ Both username and password are required.';
+    return res.redirect('/characters#security-pane');
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(fallback_password, salt);
+
+    await pool.query(
+      `UPDATE discord_users SET fallback_username = ?, fallback_password_hash = ?, updated_at = NOW()
+       WHERE discord_user_id = ?`,
+      [fallback_username, hash, userId]
+    );
+
+    req.session.flash = '✅ Fallback credentials updated successfully.';
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      req.session.flash = '❌ This username is already taken. Please choose another.';
+    } else {
+      console.error('[update-fallback-credentials] Error:', err);
+      req.session.flash = '❌ An error occurred while updating credentials.';
+    }
+  }
+
+  res.redirect('/characters#security-pane');
 });
 
 // POST /characters/saves/toggle  { char_id, instance_name }
