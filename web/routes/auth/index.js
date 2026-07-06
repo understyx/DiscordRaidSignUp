@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const bcrypt = require('bcryptjs');
 const { URLSearchParams } = require('url');
 const pool = require('../../db');
 const { resolveIsAdmin } = require('../adminCheck');
@@ -262,6 +263,92 @@ router.get('/callback', async (req, res) => {
 
     res.redirect(redirectTo);
   } catch (_err) {
+    res.redirect('/auth/login');
+  }
+});
+
+router.post('/fallback-login', express.urlencoded({ extended: false }), async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    req.session.flash = '❌ Username and password are required.';
+    return res.redirect('/auth/login');
+  }
+
+  try {
+    const [[user]] = await pool.query(
+      'SELECT discord_user_id, username, fallback_password_hash FROM discord_users WHERE fallback_username = ?',
+      [username]
+    );
+
+    if (!user || !user.fallback_password_hash) {
+      req.session.flash = '❌ Invalid credentials or fallback login not set up.';
+      return res.redirect('/auth/login');
+    }
+
+    const match = await bcrypt.compare(password, user.fallback_password_hash);
+    if (!match) {
+      req.session.flash = '❌ Invalid credentials.';
+      return res.redirect('/auth/login');
+    }
+
+    // Success! Setup session similar to Discord callback
+    req.session.user_id = String(user.discord_user_id);
+    req.session.username = user.username;
+    req.session.flash = `Welcome back, ${user.username}! (Fallback Login)`;
+
+    // Guild handling logic: since Discord is unavailable, we filter guilds based
+    // on where the user already has registered characters.
+    let activeGuildId = null;
+    let activeGuildName = null;
+
+    try {
+      const [userGuildRows] = await pool.query(
+        'SELECT DISTINCT guild_id FROM characters WHERE discord_user_id = ? AND is_deleted = 0',
+        [user.discord_user_id]
+      );
+      const userGuildIds = userGuildRows.map(r => String(r.guild_id));
+
+      if (userGuildIds.length > 0) {
+        const placeholders = userGuildIds.map(() => '?').join(', ');
+        const [botGuildRows] = await pool.query(
+          `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
+          userGuildIds
+        );
+
+        const guilds = botGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID).map(r => ({
+          guild_id: String(r.guild_id),
+          guild_name: r.guild_name,
+          is_dev_only: false
+        }));
+
+        if (guilds.length === 1) {
+          activeGuildId = guilds[0].guild_id;
+          activeGuildName = guilds[0].guild_name;
+        } else if (guilds.length > 1) {
+          req.session.available_guilds = guilds;
+          return res.redirect('/select-guild');
+        }
+      }
+    } catch (_dbErr) {
+      // Non-fatal
+    }
+
+    req.session.active_guild_id = activeGuildId;
+    req.session.active_guild_name = activeGuildName;
+
+    if (activeGuildId) {
+      try {
+        req.session.is_admin = await resolveIsAdmin(user.discord_user_id, activeGuildId);
+      } catch (_adminErr) {
+        req.session.is_admin = false;
+      }
+    }
+
+    res.redirect('/raids');
+  } catch (err) {
+    console.error('[fallback-login] Error:', err);
+    req.session.flash = '❌ An error occurred during login.';
     res.redirect('/auth/login');
   }
 });
