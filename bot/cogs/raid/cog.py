@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
-from db.models import Raid, RaidStatus
+from db.models import Raid, RaidStatus, GuildAdminRole
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,35 @@ class _RaidEmbed:
 
 
 def is_officer():
-    """App-command check: user must have OFFICER_ROLE_NAME or manage_guild permission."""
+    """App-command check: user must have OFFICER_ROLE_NAME, manage_guild permission, or be a Raid Admin."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
         if interaction.user.guild_permissions.manage_guild:
             return True
-        return any(r.name == OFFICER_ROLE_NAME for r in interaction.user.roles)
+
+        if any(r.name == OFFICER_ROLE_NAME for r in interaction.user.roles):
+            return True
+
+        if interaction.guild_id:
+            import asyncio
+            loop = asyncio.get_running_loop()
+
+            def _get_admin_roles():
+                session = get_session()
+                try:
+                    return session.execute(
+                        select(GuildAdminRole.role_id).where(GuildAdminRole.guild_id == interaction.guild_id)
+                    ).scalars().all()
+                finally:
+                    session.close()
+
+            admin_role_ids = await loop.run_in_executor(None, _get_admin_roles)
+            if admin_role_ids:
+                user_role_ids = {r.id for r in interaction.user.roles}
+                if any(rid in user_role_ids for rid in admin_role_ids):
+                    return True
+
+        return False
 
     return app_commands.check(predicate)
 
