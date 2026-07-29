@@ -343,6 +343,12 @@ class CharacterCog(commands.Cog):
         prof2: Optional[str] = None,
         realm: str = "Icecrown",
     ):
+        if not interaction.guild_id:
+            await interaction.response.send_message(
+                "❌ This command can only be used inside a server.", ephemeral=True
+            )
+            return
+
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
         guild_id = interaction.guild_id

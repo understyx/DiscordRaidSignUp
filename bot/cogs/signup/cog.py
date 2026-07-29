@@ -34,6 +34,10 @@ class SignupCog(commands.Cog):
         Parses character lines in the same format as the channel parser but
         only registers the character(s) in the database — it does not sign the
         player up for any specific raid.
+
+        If the user shares exactly one guild with the bot the guild is chosen
+        automatically. If they share multiple guilds a button picker is shown
+        so they can pick which guild to associate the characters with.
         """
         content = message.content
         # Silently ignore DMs that contain no character sign-up lines
@@ -71,6 +75,63 @@ class SignupCog(commands.Cog):
             return
 
         discord_user_id = message.author.id
+
+        # ── Resolve which guild to register characters under ───────────────
+        mutual_guilds = [
+            guild for guild in self.bot.guilds
+            if guild.get_member(discord_user_id) is not None
+        ]
+
+        if not mutual_guilds:
+            try:
+                await message.channel.send(
+                    "❌ You don't appear to be a member of any server managed by this bot. "
+                    "Please join a server first, then try again."
+                )
+            except Exception:
+                pass
+            return
+
+        if len(mutual_guilds) == 1:
+            # Auto-pick — no prompt needed
+            await self._dm_register_and_reply(message, parsed, mutual_guilds[0])
+        else:
+            # Multiple guilds: show picker embed with buttons
+            embed = discord.Embed(
+                title="🏰 Which server should these characters be added to?",
+                description=(
+                    "You're registering characters via DM. "
+                    "Pick the server you'd like to associate them with:"
+                ),
+                color=discord.Color.blurple(),
+            )
+            embed.set_footer(text="This prompt expires in 2 minutes.")
+            view = DmGuildPickerView(
+                guilds=mutual_guilds,
+                parsed=parsed,
+                message=message,
+                cog=self,
+            )
+            try:
+                await message.channel.send(embed=embed, view=view)
+            except Exception:
+                pass
+
+    async def _dm_register_and_reply(
+        self,
+        message: discord.Message,
+        parsed: list[dict],
+        guild: discord.Guild,
+        *,
+        reply_target=None,
+    ):
+        """Save parsed characters to *guild* and send a success reply.
+
+        *reply_target* is where the success/error message is sent.  When
+        called from a button callback it is the interaction; otherwise it is
+        the original DM message channel.
+        """
+        discord_user_id = message.author.id
         loop = asyncio.get_event_loop()
 
         def _register():
@@ -82,6 +143,7 @@ class SignupCog(commands.Cog):
                     char = (
                         session.query(Character)
                         .filter_by(
+                            guild_id=guild.id,
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
                             spec=entry["spec"],
@@ -90,6 +152,7 @@ class SignupCog(commands.Cog):
                     )
                     if char is None:
                         char = Character(
+                            guild_id=guild.id,
                             discord_user_id=discord_user_id,
                             char_name=entry["char_name"],
                         )
@@ -115,40 +178,56 @@ class SignupCog(commands.Cog):
                         }
                     )
                 session.commit()
-
-                summaries = []
-                for data in char_spec_info.values():
-                    spec_parts = [
-                        f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
-                    ]
-                    summaries.append(
-                        f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
-                    )
-                return summaries
+                return char_spec_info
             finally:
                 session.close()
 
         try:
-            summaries = await loop.run_in_executor(None, _register)
+            char_spec_info = await loop.run_in_executor(None, _register)
         except Exception:
-            logger.exception("Failed to process DM character registration from %s", discord_user_id)
+            logger.exception(
+                "Failed to process DM character registration from %s in guild %s",
+                discord_user_id,
+                guild.id,
+            )
+            err = "❌ An error occurred while registering your character(s). Please try again later."
             try:
-                await message.channel.send(
-                    "❌ An error occurred while registering your character(s). Please try again later."
-                )
+                if reply_target is not None:
+                    await reply_target.edit_original_response(content=err, embed=None, view=None)
+                else:
+                    await message.channel.send(err)
             except Exception:
                 pass
             return
 
-        reply = (
-            "✅ Character(s) registered successfully:\n"
-            + "\n".join(summaries)
-            + "\n\n⚠️ **Note:** This only registered your character(s) — "
+        summaries = []
+        for data in char_spec_info.values():
+            spec_parts = [
+                f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
+            ]
+            summaries.append(
+                f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
+            )
+
+        lines = "\n".join(summaries)
+        note = (
+            "\n\n⚠️ **Note:** This only registered your character(s) — "
             "it did **not** sign you up for any raid. "
             "Use the **✅ Sign Up** button on the raid message to sign up."
         )
+
         try:
-            await message.channel.send(reply)
+            if reply_target is not None:
+                embed = discord.Embed(
+                    title=f"✅ Character(s) registered! → {guild.name}",
+                    description=lines + note,
+                    color=discord.Color.green(),
+                )
+                await reply_target.edit_original_response(content=None, embed=embed, view=None)
+            else:
+                await message.channel.send(
+                    f"✅ Character(s) registered for **{guild.name}**:\n{lines}{note}"
+                )
         except Exception:
             pass
 
@@ -233,3 +312,62 @@ class SignupCog(commands.Cog):
             message.channel,
             message_to_delete=message,
         )
+
+
+class DmGuildButton(discord.ui.Button):
+    """A button for one guild in the DM character-registration guild picker."""
+
+    def __init__(
+        self,
+        guild: discord.Guild,
+        parsed: list[dict],
+        message: discord.Message,
+        cog: "SignupCog",
+    ):
+        super().__init__(
+            label=guild.name,
+            style=discord.ButtonStyle.primary,
+            emoji="🏰",
+        )
+        self.guild = guild
+        self.parsed = parsed
+        self.dm_message = message
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        # Disable all buttons immediately to prevent double-clicks
+        for item in self.view.children:
+            item.disabled = True
+        await interaction.response.defer()
+        await self.cog._dm_register_and_reply(
+            self.dm_message,
+            self.parsed,
+            self.guild,
+            reply_target=interaction,
+        )
+
+
+class DmGuildPickerView(discord.ui.View):
+    """Shown in DMs when the user belongs to multiple bot-managed guilds."""
+
+    def __init__(
+        self,
+        guilds: list[discord.Guild],
+        parsed: list[dict],
+        message: discord.Message,
+        cog: "SignupCog",
+    ):
+        super().__init__(timeout=120)
+        for guild in guilds[:25]:  # Discord hard-cap: 25 components per message
+            self.add_item(
+                DmGuildButton(
+                    guild=guild,
+                    parsed=parsed,
+                    message=message,
+                    cog=cog,
+                )
+            )
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
