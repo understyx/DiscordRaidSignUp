@@ -20,6 +20,183 @@ from db.models import Character, CharacterSuggestion, SuggestionStatus
 logger = logging.getLogger(__name__)
 
 
+def get_mutual_guilds(bot: commands.Bot, user_id: int) -> list[discord.Guild]:
+    """Return all guilds where the bot is present AND the given user is a member."""
+    return [
+        guild for guild in bot.guilds
+        if guild.get_member(user_id) is not None
+    ]
+
+
+def _build_success_embed(
+    char_spec_info: dict,
+    guild_name: str | None = None,
+) -> discord.Embed:
+    """Build the success embed shown after characters are saved."""
+    lines = []
+    for data in char_spec_info.values():
+        spec_parts = [
+            f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
+        ]
+        lines.append(
+            f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
+        )
+    title = "✅ Character(s) added!"
+    if guild_name:
+        title += f" → {guild_name}"
+    embed = discord.Embed(
+        title=title,
+        description="\n".join(lines),
+        color=discord.Color.green(),
+    )
+    embed.set_footer(text="Use /my_characters to see all your characters.")
+    return embed
+
+
+def _upsert_parsed_characters(
+    parsed: list[dict],
+    guild_id: int,
+    discord_user_id: int,
+    top_role: Optional[str],
+) -> dict[str, dict]:
+    """Persist parsed character entries to DB. Returns char_spec_info dict."""
+    session = get_session()
+    try:
+        char_spec_info: dict[str, dict] = {}
+        for entry in parsed:
+            char = (
+                session.query(Character)
+                .filter_by(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    char_name=entry["char_name"],
+                    spec=entry["spec"],
+                )
+                .first()
+            )
+            if char is None:
+                char = Character(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    char_name=entry["char_name"],
+                )
+                session.add(char)
+            char.char_class = entry["char_class"]
+            char.spec = entry["spec"]
+            char.role = get_role_from_spec(entry["char_class"], entry["spec"])
+            char.gearscore = entry["gearscore"]
+            char.is_deleted = False
+            char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+            session.flush()
+
+        # Update ALL characters for this user in this guild with the latest Discord info
+        session.query(Character).filter_by(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+        ).update({
+            "discord_role": top_role,
+            "membership_status": "active",
+            "last_updated": datetime.datetime.now(datetime.timezone.utc)
+        })
+
+        for entry in parsed:
+            key = entry["char_name"].lower()
+            if key not in char_spec_info:
+                char_spec_info[key] = {
+                    "char_name": entry["char_name"],
+                    "char_class": entry["char_class"],
+                    "specs": [],
+                }
+            char_spec_info[key]["specs"].append(
+                {"spec": entry["spec"], "gearscore": entry["gearscore"]}
+            )
+
+        session.commit()
+        return char_spec_info
+    finally:
+        session.close()
+
+
+class GuildButton(discord.ui.Button):
+    """A button representing one guild for the DM guild-picker flow."""
+
+    def __init__(
+        self,
+        guild: discord.Guild,
+        parsed: list[dict],
+        discord_user_id: int,
+        top_role: Optional[str],
+    ):
+        super().__init__(
+            label=guild.name,
+            style=discord.ButtonStyle.primary,
+            emoji="🏰",
+        )
+        self.guild = guild
+        self.parsed = parsed
+        self.discord_user_id = discord_user_id
+        self.top_role = top_role
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        # Disable all buttons immediately to prevent double-clicks
+        for item in self.view.children:
+            item.disabled = True
+        await interaction.response.defer()
+
+        loop = asyncio.get_event_loop()
+        try:
+            char_spec_info = await loop.run_in_executor(
+                None,
+                _upsert_parsed_characters,
+                self.parsed,
+                self.guild.id,
+                self.discord_user_id,
+                self.top_role,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to save characters for user %s in guild %s",
+                self.discord_user_id,
+                self.guild.id,
+            )
+            await interaction.edit_original_response(
+                content="❌ An error occurred while saving your character(s). Please try again later.",
+                embed=None,
+                view=None,
+            )
+            return
+
+        embed = _build_success_embed(char_spec_info, guild_name=self.guild.name)
+        await interaction.edit_original_response(content=None, embed=embed, view=None)
+
+
+class GuildPickerView(discord.ui.View):
+    """Shown in DMs when the user belongs to multiple bot-managed guilds."""
+
+    def __init__(
+        self,
+        guilds: list[discord.Guild],
+        parsed: list[dict],
+        discord_user_id: int,
+        top_role: Optional[str],
+    ):
+        super().__init__(timeout=120)
+        for guild in guilds[:25]:  # Discord hard-cap: 25 components per message
+            self.add_item(
+                GuildButton(
+                    guild=guild,
+                    parsed=parsed,
+                    discord_user_id=discord_user_id,
+                    top_role=top_role,
+                )
+            )
+
+    async def on_timeout(self) -> None:
+        # Disable all buttons when the view times out
+        for item in self.children:
+            item.disabled = True
+
+
 class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
     characters = discord.ui.TextInput(
         label="Character Sign-up Lines",
@@ -30,10 +207,6 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.guild_id:
-            await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
-            return
-
         await interaction.response.defer(ephemeral=True, thinking=True)
         discord_user_id = interaction.user.id
         guild_id = interaction.guild_id
@@ -51,66 +224,57 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             await interaction.followup.send(error_text, ephemeral=True)
             return
 
-        def _upsert_all(top_role: Optional[str]):
-            session = get_session()
-            try:
-                char_spec_info: dict[str, dict] = {}
-                for entry in parsed:
-                    char = (
-                        session.query(Character)
-                        .filter_by(
-                            guild_id=guild_id,
-                            discord_user_id=discord_user_id,
-                            char_name=entry["char_name"],
-                            spec=entry["spec"],
-                        )
-                        .first()
-                    )
-                    if char is None:
-                        char = Character(
-                            guild_id=guild_id,
-                            discord_user_id=discord_user_id,
-                            char_name=entry["char_name"],
-                        )
-                        session.add(char)
-                    char.char_class = entry["char_class"]
-                    char.spec = entry["spec"]
-                    char.role = get_role_from_spec(entry["char_class"], entry["spec"])
-                    char.gearscore = entry["gearscore"]
-                    char.is_deleted = False
-                    char.last_updated = datetime.datetime.now(datetime.timezone.utc)
-                    session.flush()
-
-                # Update ALL characters for this user in this guild with the latest Discord info
-                session.query(Character).filter_by(
-                    guild_id=guild_id,
-                    discord_user_id=discord_user_id,
-                ).update({
-                    "discord_role": top_role,
-                    "membership_status": "active",
-                    "last_updated": datetime.datetime.now(datetime.timezone.utc)
-                })
-
-                for entry in parsed:
-                    key = entry["char_name"].lower()
-                    if key not in char_spec_info:
-                        char_spec_info[key] = {
-                            "char_name": entry["char_name"],
-                            "char_class": entry["char_class"],
-                            "specs": [],
-                        }
-                    char_spec_info[key]["specs"].append(
-                        {"spec": entry["spec"], "gearscore": entry["gearscore"]}
-                    )
-
-                session.commit()
-                return char_spec_info
-            finally:
-                session.close()
-
         top_role = get_top_role_name(interaction.user) if isinstance(interaction.user, discord.Member) else None
+
+        # ── DM context: no guild_id on the interaction ─────────────────────
+        if guild_id is None:
+            # We need the bot instance; walk up through the cog if available,
+            # otherwise fall back via the client stored on the interaction.
+            bot = interaction.client
+            mutual_guilds = get_mutual_guilds(bot, discord_user_id)
+
+            if not mutual_guilds:
+                await interaction.followup.send(
+                    "❌ You don't appear to be a member of any server managed by this bot. "
+                    "Please join a server first, then try again.",
+                    ephemeral=True,
+                )
+                return
+
+            if len(mutual_guilds) == 1:
+                # Auto-pick the only guild — no prompt needed
+                guild_id = mutual_guilds[0].id
+                # Fall through to the normal save path below
+            else:
+                # Multiple guilds: show picker embed with buttons
+                embed = discord.Embed(
+                    title="🏰 Which server should these characters be added to?",
+                    description=(
+                        "You're adding characters via DM. "
+                        "Pick the server you'd like to associate them with:"
+                    ),
+                    color=discord.Color.blurple(),
+                )
+                embed.set_footer(text="This prompt expires in 2 minutes.")
+                view = GuildPickerView(
+                    guilds=mutual_guilds,
+                    parsed=parsed,
+                    discord_user_id=discord_user_id,
+                    top_role=top_role,
+                )
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                return
+        # ── End DM branch ───────────────────────────────────────────────────
+
         try:
-            char_spec_info = await loop.run_in_executor(None, _upsert_all, top_role)
+            char_spec_info = await loop.run_in_executor(
+                None,
+                _upsert_parsed_characters,
+                parsed,
+                guild_id,
+                discord_user_id,
+                top_role,
+            )
         except Exception:
             logger.exception("Failed to save characters for user %s", discord_user_id)
             await interaction.followup.send(
@@ -119,21 +283,7 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             )
             return
 
-        lines = []
-        for data in char_spec_info.values():
-            spec_parts = [
-                f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
-            ]
-            lines.append(
-                f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
-            )
-
-        embed = discord.Embed(
-            title="✅ Character(s) added!",
-            description="\n".join(lines),
-            color=discord.Color.green(),
-        )
-        embed.set_footer(text="Use /my_characters to see all your characters.")
+        embed = _build_success_embed(char_spec_info)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
