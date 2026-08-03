@@ -9,6 +9,24 @@
     rel="stylesheet"
   />
   <link rel="stylesheet" href="/css/base.css" />
+  {% if custom_embed %}
+    {% if custom_embed.title %}
+      <meta property="og:title" content="{{ custom_embed.title }}" />
+      <meta name="twitter:title" content="{{ custom_embed.title }}" />
+    {% endif %}
+    {% if custom_embed.description %}
+      <meta property="og:description" content="{{ custom_embed.description }}" />
+      <meta name="twitter:description" content="{{ custom_embed.description }}" />
+    {% endif %}
+    {% if custom_embed.image_url %}
+      <meta property="og:image" content="{{ custom_embed.image_url }}" />
+      <meta name="twitter:image" content="{{ custom_embed.image_url }}" />
+      <meta name="twitter:card" content="summary_large_image" />
+    {% endif %}
+    {% if custom_embed.color %}
+      <meta name="theme-color" content="#{{ custom_embed.color | replace('#', '') }}" />
+    {% endif %}
+  {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
 <body>

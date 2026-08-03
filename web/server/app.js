@@ -97,19 +97,35 @@ function createApp() {
   
     try {
       let [[row]] = await pool.query(
-        'SELECT guild_id, guild_name FROM bot_guilds WHERE subdomain = ?',
+        `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
+         FROM bot_guilds bg
+         LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
+         WHERE bg.subdomain = ?`,
         [slug]
       );
       // Fallback: if no named subdomain matches, treat a purely numeric slug as a guild snowflake ID.
       if (!row && /^\d+$/.test(slug)) {
         [[row]] = await pool.query(
-          'SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id = ?',
+          `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
+           FROM bot_guilds bg
+           LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
+           WHERE bg.guild_id = ?`,
           [slug]
         );
       }
       if (!row) return next();
   
-      req.subdomainGuild = { guild_id: String(row.guild_id), guild_name: row.guild_name, slug };
+      req.subdomainGuild = {
+        guild_id: String(row.guild_id),
+        guild_name: row.guild_name,
+        slug,
+        custom_embed: {
+          title: row.embed_title,
+          description: row.embed_description,
+          image_url: row.embed_image_url,
+          color: row.embed_color,
+        }
+      };
   
       // Override the active guild in the session when the subdomain guild differs
       // from what the session currently holds (or when the session has none).
@@ -144,6 +160,11 @@ function createApp() {
     res.locals.dev_full_admin = isDevFullAdminEnabled();
     res.locals.active_guild_id = req.session.active_guild_id || null;
     res.locals.active_guild_name = req.session.active_guild_name || null;
+    if (req.subdomainGuild && req.subdomainGuild.custom_embed) {
+      res.locals.custom_embed = req.subdomainGuild.custom_embed;
+    } else {
+      res.locals.custom_embed = null;
+    }
     res.locals.has_any_guild = !!(
       req.session.active_guild_id ||
       (req.session.available_guilds && req.session.available_guilds.length > 0)

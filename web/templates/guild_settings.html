@@ -263,4 +263,81 @@
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════════════
+   Section 4 – Custom Link Embed
+   ══════════════════════════════════════════════════════════════════════════ #}
+<h5 class="mt-4 mb-3 border-bottom border-secondary pb-2">🖼️ Custom Link Embed</h5>
+<p class="text-muted">
+  Customize how your guild's raid site looks when the link is shared on platforms like Discord.
+</p>
+
+<div class="card" style="max-width: 600px;">
+  <div class="card-body">
+    {% if not guild_id %}
+    <p class="text-muted mb-0">Select a guild first to configure a custom embed.</p>
+    {% else %}
+    <form method="post" action="/guild-settings/custom-embed">
+      <div class="mb-3">
+        <label for="embedTitle" class="form-label">Embed Title</label>
+        <input type="text" class="form-control" id="embedTitle" name="embed_title"
+               placeholder="e.g. My Awesome Guild Raids"
+               value="{{ settings.embed_title or '' }}"
+               maxlength="255">
+      </div>
+
+      <div class="mb-3">
+        <label for="embedDescription" class="form-label">Embed Description</label>
+        <textarea class="form-control" id="embedDescription" name="embed_description"
+                  rows="3" placeholder="e.g. Sign up for our upcoming raids!"
+                  maxlength="1024">{{ settings.embed_description or '' }}</textarea>
+      </div>
+
+      <div class="mb-3">
+        <label for="embedImageUrl" class="form-label">Image URL</label>
+        <input type="url" class="form-control" id="embedImageUrl" name="embed_image_url"
+               placeholder="https://example.com/image.png"
+               value="{{ settings.embed_image_url or '' }}"
+               maxlength="255">
+        <div class="form-text">Provide a direct link to an image (PNG, JPG, GIF).</div>
+      </div>
+
+      <div class="mb-4">
+        <label for="embedColor" class="form-label">Embed Color</label>
+        <div class="d-flex align-items-center gap-2">
+          <input type="color" class="form-control form-control-color" id="embedColorPicker"
+                 value="#{{ settings.embed_color or '000000' }}" title="Choose your color">
+          <input type="text" class="form-control" id="embedColor" name="embed_color"
+                 placeholder="e.g. #FF5500" pattern="^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$"
+                 value="{% if settings.embed_color %}#{{ settings.embed_color }}{% endif %}"
+                 style="width: 120px;">
+        </div>
+        <div class="form-text">Choose a color to accent the embed.</div>
+      </div>
+
+      <button type="submit" class="btn btn-wow">Save Custom Embed</button>
+    </form>
+
+    <script>
+      // Sync color picker with text input
+      const colorPicker = document.getElementById('embedColorPicker');
+      const colorInput = document.getElementById('embedColor');
+
+      colorPicker.addEventListener('input', (e) => {
+        colorInput.value = e.target.value.toUpperCase();
+      });
+
+      colorInput.addEventListener('input', (e) => {
+        let val = e.target.value;
+        if (!val.startsWith('#') && val.length > 0) {
+          val = '#' + val;
+        }
+        if (/^#[0-9A-F]{6}$/i.test(val)) {
+          colorPicker.value = val;
+        }
+      });
+    </script>
+    {% endif %}
+  </div>
+</div>
+
 {% endblock %}

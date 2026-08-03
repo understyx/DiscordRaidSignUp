@@ -47,17 +47,28 @@ router.get('/', async (req, res) => {
     if (bgRow) guildSubdomain = bgRow.subdomain || null;
   }
 
-  // Fetch current guild settings (signup restriction)
-  let settings = { signup_restriction: 'all', signup_role_id: null };
+  // Fetch current guild settings
+  let settings = {
+    signup_restriction: 'all',
+    signup_role_id: null,
+    embed_title: null,
+    embed_description: null,
+    embed_image_url: null,
+    embed_color: null
+  };
   if (guildId) {
     const [[row]] = await pool.query(
-      'SELECT signup_restriction, signup_role_id FROM guild_settings WHERE guild_id = ?',
+      'SELECT signup_restriction, signup_role_id, embed_title, embed_description, embed_image_url, embed_color FROM guild_settings WHERE guild_id = ?',
       [guildId]
     );
     if (row) {
       settings = {
         signup_restriction: row.signup_restriction,
         signup_role_id: row.signup_role_id ? String(row.signup_role_id) : null,
+        embed_title: row.embed_title,
+        embed_description: row.embed_description,
+        embed_image_url: row.embed_image_url,
+        embed_color: row.embed_color
       };
     }
   }
@@ -227,6 +238,57 @@ router.post('/subdomain', express.urlencoded({ extended: false }), async (req, r
     }
   }
 
+  res.redirect('/guild-settings');
+});
+
+// ── POST /guild-settings/custom-embed ─────────────────────────────────────────
+
+router.post('/custom-embed', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/guild-settings');
+  }
+
+  const title = (req.body.embed_title || '').trim() || null;
+  const description = (req.body.embed_description || '').trim() || null;
+  const imageUrl = (req.body.embed_image_url || '').trim() || null;
+  let color = (req.body.embed_color || '').trim() || null;
+
+  // Validate color is hex format if provided
+  if (color && !/^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/.test(color)) {
+    req.session.flash = '❌ Invalid color format. Use HEX code (e.g., #FF5500).';
+    return res.redirect('/guild-settings');
+  }
+
+  if (color && color.startsWith('#')) {
+    color = color.substring(1);
+  }
+
+  // Validate URL format if provided
+  if (imageUrl) {
+    try {
+      new URL(imageUrl);
+    } catch (_) {
+      req.session.flash = '❌ Invalid image URL format.';
+      return res.redirect('/guild-settings');
+    }
+  }
+
+  await pool.query(
+    `INSERT INTO guild_settings (guild_id, embed_title, embed_description, embed_image_url, embed_color)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       embed_title = VALUES(embed_title),
+       embed_description = VALUES(embed_description),
+       embed_image_url = VALUES(embed_image_url),
+       embed_color = VALUES(embed_color)`,
+    [guildId, title, description, imageUrl, color]
+  );
+
+  req.session.flash = '✅ Custom embed settings updated.';
   res.redirect('/guild-settings');
 });
 
