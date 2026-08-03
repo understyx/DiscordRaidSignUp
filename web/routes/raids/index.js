@@ -827,8 +827,19 @@ router.get('/:raid_number/manage', async (req, res) => {
     [raidId]
   );
 
-  const signups = allSignups.map(s => ({
-    ...s,
+  const signups = allSignups.map(s => {
+    let label;
+    const uid = String(s.discord_user_id);
+    if (s.du_username && s.du_display_name && s.du_display_name !== s.du_username) {
+      label = `${s.du_username} – ${s.du_display_name}`;
+    } else if (s.du_username) {
+      label = s.du_username;
+    } else {
+      label = uid;
+    }
+    return {
+      ...s,
+      display_label: label,
     character: {
       id: s.c_id,
       char_name: s.char_name,
@@ -840,7 +851,8 @@ router.get('/:raid_number/manage', async (req, res) => {
         sfs_count: s.sfs_count,
         val_count: s.val_count,
     },
-  }));
+  };
+  });
 
   // Build a direct character_id → signup lookup for the roster slot rendering
   const signupByCharId = {};
@@ -1042,7 +1054,7 @@ router.get('/:raid_number/manage', async (req, res) => {
         is_val_collector: !!c.is_val_collector
       };
     } else if (c.discord_user_id) {
-      let displayLabel = c.du_display_name || c.du_username || String(c.discord_user_id);
+      let displayLabel = (c.du_username && c.du_display_name && c.du_display_name !== c.du_username) ? `${c.du_username} – ${c.du_display_name}` : (c.du_display_name || c.du_username || String(c.discord_user_id));
       playerPlaceholderMap[slotKey] = {
         discord_user_id: String(c.discord_user_id),
         display_label: displayLabel,
@@ -1248,10 +1260,12 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     const [emptyRows] = await pool.query(
       `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
             c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
-              s.status AS signup_status
+              s.status AS signup_status,
+            du.username AS du_username, du.display_name AS du_display_name
        FROM compositions co
        LEFT JOIN characters c ON co.character_id = c.id
        LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
+       LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
        WHERE co.raid_id = ? AND co.comp_number = ?
        ORDER BY co.role_slot`,
       [raidId, compNumber]
@@ -1266,6 +1280,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       spec: r.spec || null,
     gearscore: r.gearscore || 0,
       discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
+      display_label: (r.du_username && r.du_display_name && r.du_display_name !== r.du_username) ? `${r.du_username} – ${r.du_display_name}` : (r.du_display_name || r.du_username || null),
       status: r.signup_status || null,
     }));
     return res.json({ ok: true, saved: [], entries: emptyEntries });
@@ -1375,7 +1390,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     character_id: r.character_id ? String(r.character_id) : null,
     placeholder_text: r.placeholder_text || null,
     discord_user_id: r.discord_user_id ? String(r.discord_user_id) : (r.char_discord_user_id ? String(r.char_discord_user_id) : null),
-    display_label: r.du_display_name || r.du_username || null,
+    display_label: (r.du_username && r.du_display_name && r.du_display_name !== r.du_username) ? `${r.du_username} – ${r.du_display_name}` : (r.du_display_name || r.du_username || null),
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
@@ -1430,7 +1445,7 @@ router.get('/:raid_number/manage/json', async (req, res) => {
     character_id: r.character_id ? String(r.character_id) : null,
     placeholder_text: r.placeholder_text || null,
     discord_user_id: r.discord_user_id ? String(r.discord_user_id) : (r.char_discord_user_id ? String(r.char_discord_user_id) : null),
-    display_label: r.du_display_name || r.du_username || null,
+    display_label: (r.du_username && r.du_display_name && r.du_display_name !== r.du_username) ? `${r.du_username} – ${r.du_display_name}` : (r.du_display_name || r.du_username || null),
     char_name: r.char_name || null,
     char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
     spec: r.spec || null,
@@ -1490,7 +1505,7 @@ router.get('/:raid_number/comp_preview', async (req, res) => {
         is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
         placeholder_text: comp.placeholder_text || null,
         discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
-        display_label: comp.du_display_name || comp.du_username || null,
+        display_label: (comp.du_username && comp.du_display_name && comp.du_display_name !== comp.du_username) ? `${comp.du_username} – ${comp.du_display_name}` : (comp.du_display_name || comp.du_username || null),
         character: comp.character_id ? {
           char_name: comp.char_name,
           char_class: comp.char_class,
@@ -1582,7 +1597,7 @@ router.get('/:raid_number/comp', async (req, res) => {
       is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
       placeholder_text: comp.placeholder_text || null,
       discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
-      display_label: comp.du_display_name || comp.du_username || null,
+      display_label: (comp.du_username && comp.du_display_name && comp.du_display_name !== comp.du_username) ? `${comp.du_username} – ${comp.du_display_name}` : (comp.du_display_name || comp.du_username || null),
       character: comp.character_id ? {
         id: comp.c_id,
         char_name: comp.char_name,
@@ -1693,7 +1708,7 @@ router.post('/:raid_number/post_comp', async (req, res) => {
             is_player_placeholder: !!comp.discord_user_id && !comp.character_id,
             placeholder_text: comp.placeholder_text || null,
             discord_user_id: comp.discord_user_id ? String(comp.discord_user_id) : null,
-            display_label: comp.du_display_name || comp.du_username || null,
+            display_label: (comp.du_username && comp.du_display_name && comp.du_display_name !== comp.du_username) ? `${comp.du_username} – ${comp.du_display_name}` : (comp.du_display_name || comp.du_username || null),
             character: comp.character_id ? {
               char_name: comp.char_name,
               char_class: comp.char_class,

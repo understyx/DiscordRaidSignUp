@@ -350,6 +350,7 @@ function onDragStart(event) {
   draggedCharName         = event.currentTarget.dataset.charName;
   draggedCharClass        = event.currentTarget.dataset.charClass || null;
   draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
+  draggedDisplayLabel     = event.currentTarget.dataset.displayLabel || null;
   draggedSpec             = event.currentTarget.dataset.spec || null;
   draggedGearscore        = event.currentTarget.dataset.gearscore || null;
   draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec), draggedCharClass);
@@ -502,7 +503,7 @@ function onDrop(event) {
     }
   }
 
-  nameSpan.textContent = draggedCharName + (isTentative ? ' [?]' : '');
+  nameSpan.textContent = draggedCharName + (draggedDisplayLabel ? ` (${draggedDisplayLabel})` : '') + (isTentative ? ' [?]' : '');
   const specSmall = document.createElement('small');
   specSmall.className   = 'text-muted d-block';
   specSmall.textContent = `${draggedSpec || '?'} ${formatGearscore(draggedGearscore)}`;
@@ -740,7 +741,7 @@ function applyRemoteState(entries) {
             }
           }
 
-          nameSpan.textContent = (remote.char_name || '?') + (remoteIsTentative ? ' [?]' : '');
+          nameSpan.textContent = (remote.char_name || '?') + (remote.display_label ? ` (${remote.display_label})` : '') + (remoteIsTentative ? ' [?]' : '');
           const specSmall = document.createElement('small');
           specSmall.className   = 'text-muted d-block';
           specSmall.textContent = `${remote.spec || '?'} ${formatGearscore(remote.gearscore)}`;

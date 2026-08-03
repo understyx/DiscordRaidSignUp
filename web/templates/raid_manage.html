@@ -133,6 +133,7 @@
                    data-char-name="{{ charGroup.char_name }}"
                    data-char-class="{{ cls_key }}"
                    data-discord-user-id="{{ charGroup.discord_user_id }}"
+                   data-display-label="{{ userGroup.display_label }}"
                    data-spec="{{ firstSpec.spec or '' }}"
                    data-gearscore="{{ firstSpec.gearscore }}"
                    data-sfs-count="{{ charGroup.sfs_count if charGroup.sfs_count != null else '' }}"
@@ -230,7 +231,7 @@
                     {% set c = s.character %}
                     {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
                     <div class="assigned-char" data-char-id="{{ c.id }}" data-discord-user-id="{{ s.discord_user_id }}" data-char-class="{{ cls_key }}">
-                      <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }}{% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
+                      <span class="fw-bold cls-{{ cls_key }}">{{ c.char_name }} ({{ s.display_label }}){% if comp_status_map[slot] == 'tentative' %} [?]{% endif %}</span><br>
                       <small class="text-muted">{{ c.spec or "?" }} {{ c.gearscore | gsformat }}</small>
                     </div>
                   {% else %}
