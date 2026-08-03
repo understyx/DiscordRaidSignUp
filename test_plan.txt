@@ -1,0 +1,5 @@
+I need to run the application to verify the new feature works.
+To do this:
+1. Initialize the database and seed it.
+2. Run the application.
+3. Use a playwright script to open the raid manage page and verify the name format.
