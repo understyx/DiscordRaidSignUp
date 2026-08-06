@@ -12,6 +12,9 @@ from .parser import format_gs
 from .char_helpers import _char_label, _char_display_description
 from .process import process_text_signup, _upsert_discord_user
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
+from .services import RaidSignupService, SegmentSignupInput, CharacterAvailabilityInput
+from .draft import MultiRaidSignupDraft, SegmentDraftState, get_draft, set_draft
+from db.models import RaidSegment
 from .embed import update_raid_embed, _EMOJIS
 
 logger = logging.getLogger(__name__)
@@ -743,74 +746,233 @@ class EditNotesModal(discord.ui.Modal):
         await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
 
 
-async def _finish_raid_helper_signup(
-    interaction: discord.Interaction,
-    raid_id: int,
-    selected_chars: list[dict],
-    priority_ids: set[int]
-):
-    discord_user_id = interaction.user.id
-    signup_status = SignupStatus.signed
-    loop = asyncio.get_event_loop()
 
-    def _upsert_all():
-        session = get_session()
-        try:
-            _upsert_discord_user(session, interaction.user)
-            raid = session.get(Raid, raid_id)
-            raid_name = raid.name if raid else None
-            # Remove ALL existing signups for this user+raid so the new selection
-            # fully overwrites the old sign-up instead of merging with it.
-            session.query(Signup).filter_by(
-                raid_id=raid_id,
-                discord_user_id=discord_user_id,
-            ).delete()
-            for char in selected_chars:
-                signup_type = (
-                    SignupType.prio_character if char["id"] in priority_ids else SignupType.fill
+class SignupSegmentModeView(discord.ui.View):
+    def __init__(self, draft: MultiRaidSignupDraft, all_char_dicts: list[dict]):
+        super().__init__(timeout=120)
+        self.draft = draft
+        self.all_char_dicts = all_char_dicts
+        self._build_components()
+
+    def _build_components(self):
+        self.clear_items()
+
+        apply_all_btn = discord.ui.Button(
+            label="Apply to all raids",
+            style=discord.ButtonStyle.primary,
+            emoji="✅",
+        )
+        apply_all_btn.callback = self._on_apply_all
+        self.add_item(apply_all_btn)
+
+        customize_btn = discord.ui.Button(
+            label="Customize by raid",
+            style=discord.ButtonStyle.secondary,
+            emoji="⚙️",
+        )
+        customize_btn.callback = self._on_customize
+        self.add_item(customize_btn)
+
+    async def _on_apply_all(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        char_avail_inputs = [
+            CharacterAvailabilityInput(character_id=cid, is_preferred=(cid in self.draft.preferred_character_ids))
+            for cid in self.draft.selected_character_ids
+        ]
+
+        segments_inputs = []
+        for seg in self.draft.segment_data:
+            segments_inputs.append(SegmentSignupInput(
+                raid_segment_id=seg["id"],
+                attendance="attending",
+                characters=char_avail_inputs,
+                note=self.draft.general_note
+            ))
+
+        loop = asyncio.get_event_loop()
+        def _upsert():
+            svc = RaidSignupService()
+            svc.create_or_update_signup(
+                raid_id=self.draft.raid_id,
+                user_id=self.draft.user_id,
+                general_note=self.draft.general_note,
+                application_mode="apply_all",
+                segments=segments_inputs,
+                source="discord_ui"
+            )
+            session = get_session()
+            try:
+                _upsert_discord_user(session, interaction.user)
+                raid = session.get(Raid, self.draft.raid_id)
+                return raid.name if raid else "Unknown Raid"
+            finally:
+                session.close()
+
+        raid_name = await loop.run_in_executor(None, _upsert)
+
+        selected_chars = [c for c in self.all_char_dicts if c["id"] in self.draft.selected_character_ids]
+        await _post_helper_success(interaction, self.draft.raid_id, raid_name, selected_chars, self.draft.preferred_character_ids, segments_inputs)
+
+    async def _on_customize(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        for seg in self.draft.segment_data:
+            self.draft.segment_states[seg["id"]] = SegmentDraftState(
+                attendance="attending",
+                selected_character_ids=set(self.draft.selected_character_ids),
+                preferred_character_ids=set(self.draft.preferred_character_ids)
+            )
+        self.draft.current_segment_index = 0
+        set_draft(self.draft)
+
+        view = CustomSegmentView(self.draft, self.all_char_dicts)
+        await interaction.followup.send(view._step_text(), view=view, ephemeral=True)
+
+
+class CustomSegmentView(discord.ui.View):
+    def __init__(self, draft: MultiRaidSignupDraft, all_char_dicts: list[dict]):
+        super().__init__(timeout=120)
+        self.draft = draft
+        self.all_char_dicts = all_char_dicts
+        self.seg = self.draft.segment_data[self.draft.current_segment_index]
+        self.seg_state = self.draft.segment_states[self.seg["id"]]
+        self._build_components()
+
+    def _step_text(self):
+        txt = f"**Customize:** {self.seg['name']}\n"
+        selected_chars = [c for c in self.all_char_dicts if c["id"] in self.seg_state.selected_character_ids]
+        if not selected_chars:
+            txt += "No characters selected."
+        else:
+            lines = []
+            for c in selected_chars:
+                prio_str = " ⭐ preferred" if c["id"] in self.seg_state.preferred_character_ids else ""
+                lines.append(f"• **{_char_label(c)}**{prio_str}")
+            txt += "\n".join(lines)
+        txt += f"\n\nAttendance: **{self.seg_state.attendance}**"
+        return txt
+
+    def _build_components(self):
+        self.clear_items()
+
+        att_btn = discord.ui.Button(
+            label="Attending" if self.seg_state.attendance == "attending" else "Maybe/Not Attending",
+            style=discord.ButtonStyle.success if self.seg_state.attendance == "attending" else discord.ButtonStyle.secondary,
+            row=0
+        )
+        att_btn.callback = self._on_toggle_attendance
+        self.add_item(att_btn)
+
+        change_chars_btn = discord.ui.Button(
+            label="Change Characters",
+            style=discord.ButtonStyle.secondary,
+            row=0
+        )
+        change_chars_btn.callback = self._on_change_chars
+        self.add_item(change_chars_btn)
+
+        is_last = (self.draft.current_segment_index == len(self.draft.segment_data) - 1)
+        next_btn = discord.ui.Button(
+            label="Finish" if is_last else "Next Raid",
+            style=discord.ButtonStyle.primary,
+            row=1
+        )
+        next_btn.callback = self._on_next
+        self.add_item(next_btn)
+
+    async def _on_toggle_attendance(self, interaction: discord.Interaction):
+        self.seg_state.attendance = "not_attending" if self.seg_state.attendance == "attending" else "attending"
+        set_draft(self.draft)
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
+
+    async def _on_change_chars(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+        view = SignupTesting2ClassSelectView(
+            self.all_char_dicts,
+            self.draft.raid_id,
+            selected_ids=self.seg_state.selected_character_ids,
+            priority_ids=self.seg_state.preferred_character_ids,
+            is_segment_customization=True,
+            segment_index=self.draft.current_segment_index
+        )
+        await interaction.followup.send(
+            f"**{self.seg['name']}** - Select class:",
+            view=view,
+            ephemeral=True
+        )
+
+    async def _on_next(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+
+        is_last = (self.draft.current_segment_index == len(self.draft.segment_data) - 1)
+        if is_last:
+            segments_inputs = []
+            for seg in self.draft.segment_data:
+                state = self.draft.segment_states[seg["id"]]
+                char_avail_inputs = [
+                    CharacterAvailabilityInput(character_id=cid, is_preferred=(cid in state.preferred_character_ids))
+                    for cid in state.selected_character_ids
+                ]
+                segments_inputs.append(SegmentSignupInput(
+                    raid_segment_id=seg["id"],
+                    attendance=state.attendance,
+                    characters=char_avail_inputs,
+                    note=self.draft.general_note
+                ))
+
+            loop = asyncio.get_event_loop()
+            def _upsert():
+                svc = RaidSignupService()
+                svc.create_or_update_signup(
+                    raid_id=self.draft.raid_id,
+                    user_id=self.draft.user_id,
+                    general_note=self.draft.general_note,
+                    application_mode="customized",
+                    segments=segments_inputs,
+                    source="discord_ui"
                 )
-                session.add(
-                    Signup(
-                        raid_id=raid_id,
-                        discord_user_id=discord_user_id,
-                        character_id=char["id"],
-                        signup_type=signup_type,
-                        status=signup_status,
-                    )
-                )
-            session.commit()
-            return raid_name
-        finally:
-            session.close()
+                session = get_session()
+                try:
+                    _upsert_discord_user(session, interaction.user)
+                    raid = session.get(Raid, self.draft.raid_id)
+                    return raid.name if raid else "Unknown Raid"
+                finally:
+                    session.close()
 
-    raid_name = await loop.run_in_executor(None, _upsert_all)
+            raid_name = await loop.run_in_executor(None, _upsert)
+            selected_chars = [c for c in self.all_char_dicts if c["id"] in self.draft.selected_character_ids]
+            await _post_helper_success(interaction, self.draft.raid_id, raid_name, selected_chars, set(), segments_inputs)
+        else:
+            self.draft.current_segment_index += 1
+            set_draft(self.draft)
+            view = CustomSegmentView(self.draft, self.all_char_dicts)
+            await interaction.followup.send(view._step_text(), view=view, ephemeral=True)
 
+
+async def _post_helper_success(interaction, raid_id, raid_name, selected_chars, priority_ids, segments_inputs):
     lines = []
-    for c in selected_chars:
-        prio_str = " ⭐ preferred" if c["id"] in priority_ids else ""
-        lines.append(f"• **{_char_label(c)}**{prio_str}")
+    lines.append(f"✅ Signed up for the raid: **{raid_name}**")
 
-    await interaction.response.edit_message(
-        content=f"✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
+    await interaction.followup.send(
+        content="\n".join(lines),
         view=None,
+        ephemeral=True
     )
 
-    grouped: dict[str, dict] = {}
-    for c in selected_chars:
-        key = c["char_name"].lower()
-        if key not in grouped:
-            grouped[key] = {
-                "char_name": c["char_name"],
-                "char_class": c.get("char_class") or "?",
-                "specs": [],
-            }
-        star = " ⭐" if c["id"] in priority_ids else ""
-        grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
     bullets = []
-    for key, d in grouped.items():
-        bullets.append(
-            f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
-        )
+    if segments_inputs:
+        for seg in segments_inputs:
+            bullets.append(f"**Segment ID {seg.raid_segment_id}:** {seg.attendance}")
+            for c in seg.characters:
+                 prio = " ⭐ preferred" if c.is_preferred else ""
+                 bullets.append(f"  - Char {c.character_id}{prio}")
+
     log_message = format_user_raid_log_message(
         raid_id=raid_id,
         discord_user_id=interaction.user.id,
@@ -820,27 +982,111 @@ async def _finish_raid_helper_signup(
         raid_name=raid_name,
         detail_lines=bullets,
     )
-    await _post_to_raid_log(
-        interaction.client,
-        raid_id,
-        log_message,
-        discord_user_id=interaction.user.id,
-    )
+    await _post_to_raid_log(interaction.client, raid_id, log_message, discord_user_id=interaction.user.id)
     await update_raid_embed(interaction.client, raid_id)
 
 
+async def _finish_raid_helper_signup(
+    interaction: discord.Interaction,
+    raid_id: int,
+    selected_chars: list[dict],
+    priority_ids: set[int],
+    is_segment_customization: bool = False,
+    segment_index: int = 0
+):
+    if is_segment_customization:
+        draft = get_draft(raid_id, interaction.user.id)
+        if not draft:
+            await interaction.response.send_message("Draft expired.", ephemeral=True)
+            return
+
+        seg = draft.segment_data[draft.current_segment_index]
+        draft.segment_states[seg["id"]].selected_character_ids = {c["id"] for c in selected_chars}
+        draft.segment_states[seg["id"]].preferred_character_ids = priority_ids
+        set_draft(draft)
+
+        view = CustomSegmentView(draft, draft.segment_data) # we actually need char_dicts here
+        await interaction.response.edit_message(content=view._step_text(), view=view)
+        return
+
+    loop = asyncio.get_event_loop()
+    def _fetch_segments():
+        session = get_session()
+        try:
+            segs = session.query(RaidSegment).filter_by(raid_id=raid_id, is_active=True).order_by(RaidSegment.sort_order).all()
+            return [{"id": s.id, "name": s.name} for s in segs]
+        finally:
+            session.close()
+
+    segments = await loop.run_in_executor(None, _fetch_segments)
+
+    if len(segments) > 1:
+        draft = MultiRaidSignupDraft(
+            raid_id=raid_id,
+            user_id=interaction.user.id,
+            selected_character_ids={c["id"] for c in selected_chars},
+            preferred_character_ids=priority_ids,
+            segment_data=segments
+        )
+        set_draft(draft)
+
+        view = SignupSegmentModeView(draft, selected_chars)
+        await interaction.response.edit_message(
+            content="This raid has multiple activities. Do you want to apply these characters to all of them?",
+            view=view
+        )
+    else:
+        char_avail_inputs = [
+            CharacterAvailabilityInput(character_id=c["id"], is_preferred=(c["id"] in priority_ids))
+            for c in selected_chars
+        ]
+        segments_inputs = []
+        if segments:
+            segments_inputs.append(SegmentSignupInput(
+                raid_segment_id=segments[0]["id"],
+                attendance="attending",
+                characters=char_avail_inputs,
+                note=None
+            ))
+
+        def _upsert():
+            svc = RaidSignupService()
+            svc.create_or_update_signup(
+                raid_id=raid_id,
+                user_id=interaction.user.id,
+                general_note=None,
+                application_mode="apply_all",
+                segments=segments_inputs,
+                source="discord_ui"
+            )
+            session = get_session()
+            try:
+                _upsert_discord_user(session, interaction.user)
+                raid = session.get(Raid, raid_id)
+                return raid.name if raid else "Unknown Raid"
+            finally:
+                session.close()
+
+        raid_name = await loop.run_in_executor(None, _upsert)
+
+        await interaction.response.edit_message(content="✅ Signed up.", view=None)
+        await _post_helper_success(interaction, raid_id, raid_name, selected_chars, priority_ids, segments_inputs)
+
+
+
 class SignupTestingPriorityView(discord.ui.View):
-    """
-    Raid helper flow Step 2: Mark preferred characters using buttons.
-    """
     def __init__(
         self,
         all_char_dicts: list[dict],
         raid_id: int,
         selected_ids: set[int] | None = None,
         priority_ids: set[int] | None = None,
-        page: int = 0
+        page: int = 0,
+        is_segment_customization: bool = False,
+        segment_index: int = 0
     ):
+        self.is_segment_customization = is_segment_customization
+        self.segment_index = segment_index
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
         self.raid_id = raid_id
@@ -939,7 +1185,8 @@ class SignupTestingPriorityView(discord.ui.View):
         await interaction.delete_original_response()
 
         view = SignupTesting2ClassSelectView(
-            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids,
+            is_segment_customization=getattr(self, 'is_segment_customization', False), segment_index=getattr(self, 'segment_index', 0)
         )
         await interaction.followup.send(
             "**Step 1:** Select a class:",
@@ -948,19 +1195,20 @@ class SignupTestingPriorityView(discord.ui.View):
         )
 
     async def finish(self, interaction: discord.Interaction):
-        await _finish_raid_helper_signup(interaction, self.raid_id, self.selected_chars, self.priority_ids)
+        await _finish_raid_helper_signup(interaction, self.raid_id, self.selected_chars, self.priority_ids, getattr(self, 'is_segment_customization', False), getattr(self, 'segment_index', 0))
 
 class SignupTesting2ClassSelectView(discord.ui.View):
-    """
-    Raid helper flow Step 1: Select class via buttons.
-    """
     def __init__(
         self,
         char_dicts: list[dict],
         raid_id: int,
         selected_ids: set[int] | None = None,
-        priority_ids: set[int] | None = None
+        priority_ids: set[int] | None = None,
+        is_segment_customization: bool = False,
+        segment_index: int = 0
     ):
+        self.is_segment_customization = is_segment_customization
+        self.segment_index = segment_index
         super().__init__(timeout=120)
         self.char_dicts = char_dicts
         self.raid_id = raid_id
@@ -1034,7 +1282,8 @@ class SignupTesting2ClassSelectView(discord.ui.View):
 
             view = SignupTesting2CharacterSelectView(
                 self.char_dicts, class_chars, self.raid_id, class_name,
-                selected_ids=self.selected_ids, priority_ids=self.priority_ids
+                selected_ids=self.selected_ids, priority_ids=self.priority_ids,
+                is_segment_customization=getattr(self, 'is_segment_customization', False), segment_index=getattr(self, 'segment_index', 0)
             )
             await interaction.followup.send(
                 f"**Step 2:** Select characters for **{class_name}**:",
@@ -1045,14 +1294,15 @@ class SignupTesting2ClassSelectView(discord.ui.View):
 
     async def _on_finish(self, interaction: discord.Interaction):
         selected_chars = [c for c in self.char_dicts if c["id"] in self.selected_ids]
-        await _finish_raid_helper_signup(interaction, self.raid_id, selected_chars, self.priority_ids)
+        await _finish_raid_helper_signup(interaction, self.raid_id, selected_chars, self.priority_ids, getattr(self, 'is_segment_customization', False), getattr(self, 'segment_index', 0))
 
     async def _on_select_preferred(self, interaction: discord.Interaction):
         await interaction.response.defer()
         await interaction.delete_original_response()
 
         view = SignupTestingPriorityView(
-            self.char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids,
+            is_segment_customization=getattr(self, 'is_segment_customization', False), segment_index=getattr(self, 'segment_index', 0)
         )
         await interaction.followup.send(
             view._step_text(),
@@ -1062,9 +1312,6 @@ class SignupTesting2ClassSelectView(discord.ui.View):
 
 
 class SignupTesting2CharacterSelectView(discord.ui.View):
-    """
-    Raid helper flow Step 2: Select characters of a specific class via buttons.
-    """
     def __init__(
         self,
         all_char_dicts: list[dict],
@@ -1073,8 +1320,12 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         class_name: str,
         selected_ids: set[int] | None = None,
         priority_ids: set[int] | None = None,
-        page: int = 0
+        page: int = 0,
+        is_segment_customization: bool = False,
+        segment_index: int = 0
     ):
+        self.is_segment_customization = is_segment_customization
+        self.segment_index = segment_index
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
         self.class_chars = class_chars
@@ -1166,7 +1417,8 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         await interaction.delete_original_response()
 
         view = SignupTesting2ClassSelectView(
-            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids,
+            is_segment_customization=getattr(self, 'is_segment_customization', False), segment_index=getattr(self, 'segment_index', 0)
         )
         await interaction.followup.send(
             "**Step 1:** Select a class:",

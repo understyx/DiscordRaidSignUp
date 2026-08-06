@@ -7,10 +7,11 @@ from typing import Optional
 
 import discord
 
-from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus, Raid
+from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus, Raid, RaidSegment
 from bot.db import get_session
 from bot.role_utils import get_role_from_spec
 from bot.discord_utils import get_top_role_name
+from .services import RaidSignupService, SegmentSignupInput, CharacterAvailabilityInput
 from .parser import (
     _find_random_text_lines,
     _parse_character_lines,
@@ -116,15 +117,11 @@ async def process_text_signup(
         session = get_session()
         try:
             _upsert_discord_user(session, user)
-            # Remove ALL existing signups for this user+raid so the new message
-            # fully overwrites the old sign-up instead of merging with it.
-            session.query(Signup).filter_by(
-                raid_id=raid_id,
-                discord_user_id=discord_user_id,
-            ).delete()
 
             char_spec_info: dict[str, dict] = {}
             top_role = get_top_role_name(user) if isinstance(user, discord.Member) else None
+
+            char_avail_inputs = []
 
             for entry in parsed:
                 char = (
@@ -150,31 +147,10 @@ async def process_text_signup(
                 char.last_updated = datetime.datetime.now(datetime.timezone.utc)
                 session.flush()
 
-            # Update ALL characters for this user in this guild with the latest Discord info
-            session.query(Character).filter_by(
-                guild_id=_raid_id_to_guild_id(session, raid_id),
-                discord_user_id=discord_user_id,
-            ).update({
-                "discord_role": top_role,
-                "membership_status": "active",
-                "last_updated": datetime.datetime.now(datetime.timezone.utc)
-            })
-
-            for entry in parsed:
-                signup_type = (
-                    SignupType.prio_character if entry["is_prio"] else SignupType.fill
-                )
-                session.add(
-                    Signup(
-                        raid_id=raid_id,
-                        discord_user_id=discord_user_id,
-                        character_id=char.id,
-                        signup_type=signup_type,
-                        status=signup_status,
-                        is_saved=entry["is_saved"],
-                        note=entry.get("note") or None,
-                    )
-                )
+                char_avail_inputs.append(CharacterAvailabilityInput(
+                    character_id=char.id,
+                    is_preferred=entry["is_prio"]
+                ))
 
                 key = entry["char_name"].lower()
                 if key not in char_spec_info:
@@ -192,7 +168,44 @@ async def process_text_signup(
                         "is_prio": entry["is_prio"],
                     }
                 )
-            session.commit()
+
+            # Update ALL characters for this user in this guild with the latest Discord info
+            session.query(Character).filter_by(
+                guild_id=_raid_id_to_guild_id(session, raid_id),
+                discord_user_id=discord_user_id,
+            ).update({
+                "discord_role": top_role,
+                "membership_status": "active",
+                "last_updated": datetime.datetime.now(datetime.timezone.utc)
+            })
+
+            active_segments = session.query(RaidSegment).filter_by(raid_id=raid_id, is_active=True).all()
+
+            attendance_str = "maybe" if is_tentative_msg else "attending"
+
+            general_note = parsed[0].get("note") if parsed else None # using the first character's note as general note for text signup
+
+            segments_inputs = []
+            for seg in active_segments:
+                segments_inputs.append(SegmentSignupInput(
+                    raid_segment_id=seg.id,
+                    attendance=attendance_str,
+                    characters=char_avail_inputs,
+                    note=None
+                ))
+
+            session.commit() # commit characters
+
+            # call service
+            svc = RaidSignupService()
+            svc.create_or_update_signup(
+                raid_id=raid_id,
+                user_id=discord_user_id,
+                general_note=general_note,
+                application_mode="apply_all",
+                segments=segments_inputs,
+                source="text"
+            )
 
             summaries = []
             for data in char_spec_info.values():

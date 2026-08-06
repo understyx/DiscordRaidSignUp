@@ -1,4 +1,10 @@
 const express = require('express');
+
+async function getDefaultSegmentId(raidId) {
+  const [rows] = await pool.query('SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1', [raidId]);
+  return rows[0] ? rows[0].id : null;
+}
+
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
@@ -1214,24 +1220,24 @@ router.post('/:raid_number/manage', express.json(), async (req, res) => {
   for (const entry of charEntries) {
     const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
-      [raidId, parseInt(entry.character_id), entry.role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
+      'INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at) VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      [raidId, raidId, parseInt(entry.character_id), entry.role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
     );
   }
 
   for (const entry of playerEntries) {
     const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
-      [raidId, entry.discord_user_id, entry.role_slot, slotRole, compNumber, userId]
+      'INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      [raidId, raidId, entry.discord_user_id, entry.role_slot, slotRole, compNumber, userId]
     );
   }
 
   for (const entry of placeholderEntries) {
     const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
     await pool.query(
-      'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
-      [raidId, entry.placeholder_text, entry.role_slot, slotRole, compNumber, userId]
+      'INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
+      [raidId, raidId, entry.placeholder_text, entry.role_slot, slotRole, compNumber, userId]
     );
   }
 
@@ -1323,8 +1329,8 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
       savedSlots.push({ role_slot, cleared: true });
     } else if (charId !== null) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at)
-         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at)
+         VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = VALUES(character_id),
            placeholder_text = NULL,
@@ -1334,13 +1340,13 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
            is_val_collector = VALUES(is_val_collector),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
-        [raidId, charId, role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
+        [raidId, raidId, charId, role_slot, slotRole, compNumber, !!entry.is_sfs_collector, !!entry.is_val_collector, userId]
       );
       savedSlots.push({ role_slot });
     } else if (discordUserId) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
+         VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = NULL,
            placeholder_text = NULL,
@@ -1348,13 +1354,13 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
            slot_role       = VALUES(slot_role),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
-        [raidId, discordUserId, role_slot, slotRole, compNumber, userId]
+        [raidId, raidId, discordUserId, role_slot, slotRole, compNumber, userId]
       );
       savedSlots.push({ role_slot });
     } else if (placeholderText) {
       await pool.query(
-        `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
+        `INSERT INTO compositions (raid_id, raid_segment_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
+         VALUES (?, (SELECT id FROM raid_segments WHERE raid_id = ? ORDER BY sort_order ASC LIMIT 1), NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
          ON DUPLICATE KEY UPDATE
            character_id    = NULL,
            placeholder_text = VALUES(placeholder_text),
@@ -1362,7 +1368,7 @@ router.patch('/:raid_number/manage', express.json(), async (req, res) => {
            slot_role       = VALUES(slot_role),
            created_by      = VALUES(created_by),
            updated_at      = NOW(3)`,
-        [raidId, placeholderText, role_slot, slotRole, compNumber, userId]
+        [raidId, raidId, placeholderText, role_slot, slotRole, compNumber, userId]
       );
       savedSlots.push({ role_slot });
     }

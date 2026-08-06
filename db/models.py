@@ -56,6 +56,22 @@ class Raid(Base):
     discord_log_thread_id = Column(BigInteger, nullable=True)
     signups = relationship("Signup", back_populates="raid", cascade="all, delete-orphan")
     compositions = relationship("Composition", back_populates="raid", cascade="all, delete-orphan")
+    segments = relationship("RaidSegment", back_populates="raid", cascade="all, delete-orphan", order_by="RaidSegment.sort_order")
+
+
+class RaidSegment(Base):
+    __tablename__ = "raid_segments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    raid_id = Column(Integer, ForeignKey("raids.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    starts_at = Column(DateTime, nullable=True)
+    ends_at = Column(DateTime, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    raid = relationship("Raid", back_populates="segments")
 
 
 class Character(Base):
@@ -80,19 +96,48 @@ class Character(Base):
     signups = relationship("Signup", back_populates="character")
 
 
+class SignupSegmentApplicationMode(str, enum.Enum):
+    apply_all = "apply_all"
+    customized = "customized"
+
+
 class Signup(Base):
     __tablename__ = "signups"
     id = Column(Integer, primary_key=True, autoincrement=True)
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
     discord_user_id = Column(BigInteger, nullable=False)
-    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False)
-    signup_type = Column(Enum(SignupType), default=SignupType.fill)
-    status = Column(Enum(SignupStatus), default=SignupStatus.signed)
-    is_saved = Column(Boolean, default=False)  # character is ID-locked / already saved this lockout
-    note = Column(String(500), nullable=True)  # optional free-text note from the sign-up line
+
+    segment_application_mode = Column(Enum(SignupSegmentApplicationMode), nullable=False, default=SignupSegmentApplicationMode.apply_all)
+
+    # Legacy fields kept for compatibility for now but nullable
+    character_id = Column(Integer, ForeignKey("characters.id"), nullable=True)
+    signup_type = Column(Enum(SignupType), nullable=True)
+    status = Column(Enum(SignupStatus), nullable=True)
+    is_saved = Column(Boolean, default=False)
+    note = Column(String(500), nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     raid = relationship("Raid", back_populates="signups")
     character = relationship("Character", back_populates="signups")
+
+
+class RaidSegmentParticipation(Base):
+    __tablename__ = "raid_segment_participations"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signup_id = Column(Integer, ForeignKey("signups.id", ondelete="CASCADE"), nullable=False, index=True)
+    raid_segment_id = Column(Integer, ForeignKey("raid_segments.id", ondelete="CASCADE"), nullable=False, index=True)
+    attendance = Column(Enum("attending", "maybe", "not_attending", name="raid_segment_attendance"), nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class RaidSegmentParticipationCharacter(Base):
+    __tablename__ = "raid_segment_participation_characters"
+    participation_id = Column(Integer, ForeignKey("raid_segment_participations.id", ondelete="CASCADE"), primary_key=True)
+    character_id = Column(Integer, ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True)
+    is_preferred = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 
 class RaidLogMessage(Base):
@@ -120,6 +165,7 @@ class Composition(Base):
     __tablename__ = "compositions"
     id = Column(Integer, primary_key=True, autoincrement=True)
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
+    raid_segment_id = Column(Integer, ForeignKey("raid_segments.id", ondelete="CASCADE"), nullable=True)
     character_id = Column(Integer, ForeignKey("characters.id"), nullable=True)  # NULL for placeholder slots
     placeholder_text = Column(String(100), nullable=True)  # e.g. "🛡️ Prot Paladin" when character_id is NULL
     role_slot = Column(String(50), nullable=False)  # e.g. "slot_1", "slot_3", "slot_10"
