@@ -20,6 +20,81 @@ function canonicalizeInstance(name) {
   return LOCKOUT_CANONICAL[trimmed] || trimmed;
 }
 
+// GET /characters/presets
+router.get('/characters/presets', async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+  const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) return res.status(400).json({ ok: false, error: 'No active guild' });
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, name, character_ids, priority_ids, notes FROM signup_presets WHERE discord_user_id = ? AND guild_id = ? ORDER BY created_at DESC',
+      [userId, guildId]
+    );
+    res.json({ ok: true, presets: rows });
+  } catch (err) {
+    console.error('[presets] Failed to load presets:', err.message);
+    res.status(500).json({ ok: false, error: 'Database error' });
+  }
+});
+
+// POST /characters/presets
+router.post('/characters/presets', express.json(), async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+  const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) return res.status(400).json({ ok: false, error: 'No active guild' });
+
+  const { name, character_ids, priority_ids, notes } = req.body || {};
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ ok: false, error: 'name is required' });
+  }
+  if (!Array.isArray(character_ids)) {
+    return res.status(400).json({ ok: false, error: 'character_ids must be an array' });
+  }
+  if (!Array.isArray(priority_ids)) {
+    return res.status(400).json({ ok: false, error: 'priority_ids must be an array' });
+  }
+  if (!notes || typeof notes !== 'object') {
+    return res.status(400).json({ ok: false, error: 'notes must be an object' });
+  }
+
+  const trimmedName = name.trim().slice(0, 100);
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO signup_presets (discord_user_id, guild_id, name, character_ids, priority_ids, notes) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, guildId, trimmedName, JSON.stringify(character_ids), JSON.stringify(priority_ids), JSON.stringify(notes)]
+    );
+    res.json({ ok: true, id: result.insertId, name: trimmedName });
+  } catch (err) {
+    console.error('[presets] Failed to save preset:', err.message);
+    res.status(500).json({ ok: false, error: 'Database error' });
+  }
+});
+
+// DELETE /characters/presets/:id
+router.delete('/characters/presets/:id', async (req, res) => {
+  if (!req.session.user_id) return res.status(401).json({ ok: false });
+  const userId = req.session.user_id;
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) return res.status(400).json({ ok: false, error: 'No active guild' });
+
+  const presetId = parseInt(req.params.id);
+  if (isNaN(presetId)) return res.status(400).json({ ok: false, error: 'Invalid preset id' });
+
+  try {
+    await pool.query(
+      'DELETE FROM signup_presets WHERE id = ? AND discord_user_id = ? AND guild_id = ?',
+      [presetId, userId, guildId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[presets] Failed to delete preset:', err.message);
+    res.status(500).json({ ok: false, error: 'Database error' });
+  }
+});
+
 // GET /characters
 router.get('/characters', async (req, res) => {
   if (!requireLogin(req, res)) return;

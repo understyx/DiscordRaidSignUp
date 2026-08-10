@@ -437,6 +437,21 @@ class SignupCharacterSelectView(discord.ui.View):
         all_chars_btn.callback = self._on_all_chars
         self.add_item(all_chars_btn)
 
+        if getattr(self, "presets", None):
+            preset_options = [
+                discord.SelectOption(label=p["name"], value=str(p["id"]))
+                for p in self.presets[:25]  # limit to 25 presets per Discord Select limits
+            ]
+            self.preset_select = discord.ui.Select(
+                placeholder="Load from preset(s)…",
+                options=preset_options,
+                min_values=1,
+                max_values=len(preset_options),
+                row=3,
+            )
+            self.preset_select.callback = self._on_preset_select
+            self.add_item(self.preset_select)
+
     def _update_selected_from_page(self, selected_values: list[str]):
         """Replace selections for the current page's items based on the select interaction."""
         start = self.page * _SELECT_PAGE_SIZE
@@ -508,19 +523,61 @@ class SignupCharacterSelectView(discord.ui.View):
             )
             return
 
-        priority_ids = {c["id"] for c in selected_chars if c.get("signup_type") == SignupType.prio_character}
-        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status, priority_ids=priority_ids)
+        # Initialize priority_ids with what's stored in self.priority_ids from presets,
+        # plus whatever is saved in DB currently.
+        current_prio_ids = {c["id"] for c in selected_chars if c.get("signup_type") == SignupType.prio_character}
+        if getattr(self, "priority_ids", None):
+            merged_prio = current_prio_ids.union(self.priority_ids)
+        else:
+            merged_prio = current_prio_ids
+        notes = getattr(self, "notes", {})
+        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status, priority_ids=merged_prio, notes=notes)
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
             view=view,
         )
 
+    async def _on_preset_select(self, interaction: discord.Interaction):
+        import json
+        preset_ids = interaction.data.get("values", [])
+
+        for pid_str in preset_ids:
+            preset = next((p for p in getattr(self, "presets", []) if str(p["id"]) == pid_str), None)
+            if not preset:
+                continue
+
+            try:
+                p_chars = json.loads(preset["character_ids"]) if isinstance(preset["character_ids"], str) else preset["character_ids"]
+                p_prios = json.loads(preset["priority_ids"]) if isinstance(preset["priority_ids"], str) else preset["priority_ids"]
+                p_notes = json.loads(preset["notes"]) if isinstance(preset["notes"], str) else preset["notes"]
+            except Exception:
+                continue
+
+            for c_id in p_chars:
+                self.selected_ids.add(int(c_id))
+            if not hasattr(self, "priority_ids"):
+                self.priority_ids = set()
+            for p_id in p_prios:
+                self.priority_ids.add(int(p_id))
+
+            if isinstance(p_notes, dict):
+                if not hasattr(self, "notes"):
+                    self.notes = {}
+                for k, v in p_notes.items():
+                    if k.isdigit() and int(k) in self.chars_by_id:
+                        char_name = self.chars_by_id[int(k)]["char_name"].lower()
+                        self.notes[char_name] = str(v)
+
+        self._build_components()
+        await interaction.response.edit_message(content=self._step_text(), view=self)
+
     async def _on_all_chars(self, interaction: discord.Interaction):
         self.selected_ids = {c["id"] for c in self.char_dicts}
         # Update priority_ids in the next view to match what's currently marked as priority (signup_type)
         priority_ids = {c["id"] for c in self.char_dicts if c.get("signup_type") == SignupType.prio_character}
-        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status, priority_ids=priority_ids)
+        notes = getattr(self, "notes", {})
+        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status, priority_ids=priority_ids, notes=notes)
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
