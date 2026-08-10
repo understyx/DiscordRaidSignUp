@@ -8,13 +8,14 @@ import discord
 
 from bot.config import WEB_BASE_URL, BASE_DOMAIN
 from bot.db import get_session
-from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupStatus, SignupType
+from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupPreset, SignupStatus, SignupType
 from .char_helpers import _chars_to_dicts, _group_chars_by_name
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
 from .parser import format_gs
 from .views import (
     SignupCharacterSelectView,
+    SignupPresetSelectView,
     SignupTesting2ClassSelectView,
     TextSignupModal,
     EditNotesModal
@@ -135,6 +136,87 @@ class SignupView(discord.ui.View):
             ephemeral=True,
         )
 
+    async def _start_presets_flow(self, interaction: discord.Interaction):
+        """Open the preset selector and continue into the normal signup flow."""
+        raid_id = self._get_raid_id(interaction)
+        if raid_id is None:
+            await interaction.response.send_message(
+                "❌ Could not determine raid ID from this message.", ephemeral=True
+            )
+            return
+
+        loop = asyncio.get_event_loop()
+        discord_user_id = interaction.user.id
+
+        def _fetch():
+            session = get_session()
+            try:
+                raid = session.get(Raid, raid_id)
+                if raid is None:
+                    return None, [], []
+
+                chars = (
+                    session.query(Character)
+                    .filter_by(
+                        discord_user_id=discord_user_id,
+                        guild_id=raid.guild_id,
+                        is_deleted=False,
+                    )
+                    .all()
+                )
+                preset_rows = (
+                    session.query(SignupPreset)
+                    .filter_by(discord_user_id=discord_user_id, guild_id=raid.guild_id)
+                    .order_by(SignupPreset.created_at.desc(), SignupPreset.id.desc())
+                    .limit(25)
+                    .all()
+                )
+                presets = [
+                    {
+                        "id": preset.id,
+                        "name": preset.name,
+                        "character_ids": preset.character_ids,
+                        "priority_ids": preset.priority_ids,
+                        "notes": preset.notes,
+                    }
+                    for preset in preset_rows
+                ]
+                return raid.status, _chars_to_dicts(chars), presets
+            finally:
+                session.close()
+
+        status, char_dicts, presets = await loop.run_in_executor(None, _fetch)
+
+        if status is None:
+            await interaction.response.send_message(
+                "❌ Could not find this raid.", ephemeral=True
+            )
+            return
+        if status != RaidStatus.open:
+            await interaction.response.send_message(
+                "❌ This raid is no longer accepting sign-ups.", ephemeral=True
+            )
+            return
+        if not char_dicts:
+            await interaction.response.send_message(
+                "❌ You have no registered characters. Add characters on the website first.",
+                ephemeral=True,
+            )
+            return
+        if not presets:
+            await interaction.response.send_message(
+                "❌ You have no signup presets. Create one on the website under **My Characters → Signup Presets**.",
+                ephemeral=True,
+            )
+            return
+
+        view = SignupPresetSelectView(char_dicts, presets, raid_id)
+        await interaction.response.send_message(
+            "**Select one or more presets** to combine, then click **Load Presets**.",
+            view=view,
+            ephemeral=True,
+        )
+
     @discord.ui.button(
         label="Sign up",
         style=discord.ButtonStyle.success,
@@ -144,6 +226,16 @@ class SignupView(discord.ui.View):
     )
     async def btn_signup(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_signup_flow(interaction, SignupStatus.signed)
+
+    @discord.ui.button(
+        label="Presets",
+        style=discord.ButtonStyle.secondary,
+        custom_id="signup:presets",
+        emoji="📋",
+        row=0,
+    )
+    async def btn_presets(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._start_presets_flow(interaction)
 
     @discord.ui.button(
         label="Sign up (raid helper)",

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, Enum, Text, BigInteger, ForeignKey, Float
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Enum, Text, BigInteger, ForeignKey, Float, JSON
 from sqlalchemy.orm import DeclarativeBase, relationship
 import enum
 import datetime
@@ -178,3 +178,15 @@ class GuildPlayerNote(Base):
     updated_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.datetime.now(datetime.timezone.utc),
                         onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class SignupPreset(Base):
+    __tablename__ = "signup_presets"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    discord_user_id = Column(BigInteger, nullable=False)
+    guild_id = Column(BigInteger, nullable=False)
+    name = Column(String(100), nullable=False)
+    character_ids = Column(JSON, nullable=False)
+    priority_ids = Column(JSON, nullable=False)
+    notes = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))

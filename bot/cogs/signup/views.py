@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
@@ -336,6 +337,141 @@ class SignupPrioritySelectView(discord.ui.View):
             discord_user_id=interaction.user.id,
         )
         await update_raid_embed(interaction.client, raid_id)
+
+
+class SignupPresetSelectView(discord.ui.View):
+    """Select one or more website-defined presets before signing up."""
+
+    def __init__(
+        self,
+        char_dicts: list[dict],
+        presets: list[dict],
+        raid_id: int,
+    ):
+        super().__init__(timeout=120)
+        self.char_dicts = char_dicts
+        self.chars_by_id = {c["id"]: c for c in char_dicts}
+        self.presets = {str(p["id"]): p for p in presets}
+        self.raid_id = raid_id
+
+        options = []
+        for preset in presets[:25]:
+            character_ids = self._decode(preset.get("character_ids"), [])
+            options.append(
+                discord.SelectOption(
+                    label=str(preset.get("name", "Unnamed preset"))[:100],
+                    description=f"{len(character_ids)} character spec(s)"[:100],
+                    value=str(preset["id"]),
+                )
+            )
+
+        self.preset_select = discord.ui.Select(
+            placeholder="Choose preset(s)…",
+            options=options,
+            min_values=1,
+            max_values=len(options),
+            row=0,
+        )
+        self.preset_select.callback = self._on_select
+        self.add_item(self.preset_select)
+
+        load_btn = discord.ui.Button(
+            label="Load Presets",
+            style=discord.ButtonStyle.success,
+            emoji="✅",
+            row=1,
+        )
+        load_btn.callback = self._on_load
+        self.add_item(load_btn)
+
+    @staticmethod
+    def _decode(value, default):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                return default
+        return value if value is not None else default
+
+    async def _on_select(self, interaction: discord.Interaction):
+        self.selected_ids = list(interaction.data.get("values", []))
+        selected_count = len(self.selected_ids)
+        await interaction.response.edit_message(
+            content=(
+                f"**{selected_count} preset(s) selected.** Choose more to combine them, "
+                "then click **Load Presets**."
+            ),
+            view=self,
+        )
+
+    async def _on_load(self, interaction: discord.Interaction):
+        selected_ids = interaction.data.get("values", [])
+        # Discord button interactions do not include the select's current values;
+        # retain the selection from the preceding select interaction.
+        selected_ids = getattr(self, "selected_ids", selected_ids)
+        if not selected_ids:
+            await interaction.response.send_message(
+                "❌ Select at least one preset first.", ephemeral=True
+            )
+            return
+
+        selected_char_ids: set[int] = set()
+        priority_ids: set[int] = set()
+        notes: dict[str, str] = {}
+
+        for preset_id in selected_ids:
+            preset = self.presets.get(str(preset_id))
+            if not preset:
+                continue
+
+            for char_id in self._decode(preset.get("character_ids"), []):
+                try:
+                    char_id = int(char_id)
+                except (TypeError, ValueError):
+                    continue
+                if char_id in self.chars_by_id:
+                    selected_char_ids.add(char_id)
+
+            for char_id in self._decode(preset.get("priority_ids"), []):
+                try:
+                    char_id = int(char_id)
+                except (TypeError, ValueError):
+                    continue
+                if char_id in self.chars_by_id:
+                    priority_ids.add(char_id)
+
+            preset_notes = self._decode(preset.get("notes"), {})
+            if isinstance(preset_notes, dict):
+                for char_id, note in preset_notes.items():
+                    try:
+                        char_id = int(char_id)
+                    except (TypeError, ValueError):
+                        continue
+                    char = self.chars_by_id.get(char_id)
+                    if char is not None and note:
+                        notes[char["char_name"].lower()] = str(note)
+
+        selected_chars = [c for c in self.char_dicts if c["id"] in selected_char_ids]
+        priority_ids.intersection_update(selected_char_ids)
+        if not selected_chars:
+            await interaction.response.send_message(
+                "❌ The selected presets contain no current characters. Update them on the website.",
+                ephemeral=True,
+            )
+            return
+
+        view = SignupPrioritySelectView(
+            selected_chars,
+            self.raid_id,
+            SignupStatus.signed,
+            priority_ids=priority_ids,
+            notes=notes,
+        )
+        await interaction.response.edit_message(
+            content=view._step_text(),
+            embed=None,
+            view=view,
+        )
 
 
 class SignupCharacterSelectView(discord.ui.View):
