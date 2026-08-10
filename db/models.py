@@ -178,3 +178,13 @@ class GuildPlayerNote(Base):
     updated_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.datetime.now(datetime.timezone.utc),
                         onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+class SignupPreset(Base):
+    __tablename__ = "signup_presets"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    discord_user_id = Column(BigInteger, nullable=False)
+    guild_id = Column(BigInteger, nullable=False)
+    name = Column(String(100), nullable=False)
+    character_ids = Column(Text, nullable=False) # JSON
+    priority_ids = Column(Text, nullable=False) # JSON
+    notes = Column(Text, nullable=False) # JSON
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
