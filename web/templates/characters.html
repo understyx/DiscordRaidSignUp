@@ -2,6 +2,7 @@
 {% block title %}My Characters – RaidBot{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="/css/characters.css">
+<link rel="stylesheet" href="/css/raid_detail.css">
 {% endblock %}
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
@@ -15,6 +16,10 @@
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="saves-tab" data-bs-toggle="tab" data-bs-target="#saves-pane"
             type="button" role="tab">🔒 Raid Saves</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="presets-tab" data-bs-toggle="tab" data-bs-target="#presets-pane"
+            type="button" role="tab">📋 Signup Presets</button>
   </li>
 </ul>
 
@@ -302,8 +307,124 @@
 
   </div>{# /saves-pane #}
 
+  <!-- ── Tab 3: Signup Presets ───────────────────────────────────────── -->
+  <div class="tab-pane fade" id="presets-pane" role="tabpanel">
+    <div class="card p-3">
+      <h5>📋 Signup Presets</h5>
+      <p class="text-muted small mb-3">
+        Select characters, mark preferred specs with ⭐, and add character notes. Save the combination as a preset,
+        then load one or more presets from any open raid's sign-up form.
+      </p>
+
+      {% if charGroups %}
+      <div class="table-responsive mb-3">
+        <table class="table table-hover align-middle"
+               aria-label="Characters and specs for building a signup preset.">
+          <thead class="table-dark">
+            <tr>
+              <th>Character</th>
+              <th>Class</th>
+              <th>Spec</th>
+              <th>GS</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for group in charGroups %}
+            {% set preset_group_idx = loop.index0 %}
+            {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+            {% set alt = "row-group-alt" if loop.index is even else "" %}
+            {% for row in group.rows %}
+            <tr class="signup-row {{ alt }}"
+                data-char-id="{{ row.id }}"
+                data-group-idx="{{ preset_group_idx }}"
+                tabindex="0"
+                role="row"
+                aria-selected="false"
+                onclick="toggleRow(this)"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRow(this);}"
+                style="cursor:pointer; user-select:none">
+              {% if loop.index == 1 %}
+              <td class="fw-bold cls-{{ cls_key }} group-cell" rowspan="{{ group.rows | length }}"
+                  onclick="event.stopPropagation(); toggleGroupRows('{{ preset_group_idx }}')"
+                  style="cursor:pointer">
+                {{ group.name }}
+                <button type="button" class="note-toggle-btn"
+                        data-group-idx="{{ preset_group_idx }}"
+                        aria-expanded="false"
+                        aria-label="Toggle note for {{ group.name }}"
+                        onclick="event.stopPropagation(); toggleNoteRow('{{ preset_group_idx }}')">📝</button>
+              </td>
+              <td class="cls-{{ cls_key }} group-cell" rowspan="{{ group.rows | length }}"
+                  onclick="event.stopPropagation(); toggleGroupRows('{{ preset_group_idx }}')"
+                  style="cursor:pointer">{{ group.char_class or "—" }}</td>
+              {% endif %}
+              <td>{{ row.spec or "?" }}</td>
+              <td class="text-muted">{{ row.gearscore | gsformat if row.gearscore else "—" }}</td>
+              <td class="text-center" style="width:40px">
+                <button type="button" class="prio-star"
+                        onclick="event.stopPropagation(); togglePrio(this)"
+                        aria-pressed="false"
+                        aria-label="Mark {{ row.spec or group.name }} as priority">⭐</button>
+              </td>
+            </tr>
+            {% if loop.last %}
+            <tr class="signup-note-row d-none" data-group-idx="{{ preset_group_idx }}">
+              <td colspan="5">
+                <textarea class="form-control form-control-sm signup-note-input"
+                          data-group-idx="{{ preset_group_idx }}"
+                          rows="2" maxlength="500"
+                          placeholder="Optional note for {{ group.name }} (applies to selected specs for this character)."
+                          oninput="handleNoteInput('{{ preset_group_idx }}')"></textarea>
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div id="hiddenInputs"></div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select id="presetSelect" class="form-select form-select-sm bg-dark text-light border-secondary"
+                multiple size="2" aria-label="Load one or more signup presets" style="max-width: 240px;">
+          <option value="" disabled selected>— Select preset(s) —</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="showSavePresetModal()">
+          💾 Save selected as Preset
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPresets()">🗑️ Delete</button>
+      </div>
+      <p class="text-muted small mt-2 mb-0">Use Ctrl/Cmd-click to select multiple presets and combine them.</p>
+      {% else %}
+      <p class="text-muted mb-0">Register at least one character before creating a signup preset.</p>
+      {% endif %}
+    </div>
+
+    <div class="modal fade" id="savePresetModal" tabindex="-1" aria-labelledby="savePresetModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered text-light">
+        <div class="modal-content bg-dark border-secondary">
+          <div class="modal-header border-secondary">
+            <h5 class="modal-title" id="savePresetModalLabel">💾 Save as Preset</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label for="presetNameInput" class="form-label">Preset Name</label>
+            <input type="text" class="form-control bg-dark text-light border-secondary"
+                   id="presetNameInput" placeholder="e.g., Main Group" maxlength="100">
+            <div id="savePresetError" class="text-danger small mt-2 d-none"></div>
+          </div>
+          <div class="modal-footer border-secondary">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-wow" onclick="submitSavePreset()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>{# /presets-pane #}
+
 </div>{# /tab-content #}
 
 <script src="/js/characters.js"></script>
+<script src="/js/raid_detail.js"></script>
 {% endblock %}
-

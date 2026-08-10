@@ -56,15 +56,49 @@ router.post('/characters/presets', express.json(), async (req, res) => {
   if (!Array.isArray(priority_ids)) {
     return res.status(400).json({ ok: false, error: 'priority_ids must be an array' });
   }
-  if (!notes || typeof notes !== 'object') {
+  if (!notes || typeof notes !== 'object' || Array.isArray(notes)) {
     return res.status(400).json({ ok: false, error: 'notes must be an object' });
+  }
+
+  const normalizeIds = (ids) => {
+    const normalized = ids.map(id => Number(id));
+    return normalized.every(Number.isInteger) ? [...new Set(normalized)] : null;
+  };
+  const characterIds = normalizeIds(character_ids);
+  const priorityIds = normalizeIds(priority_ids);
+  if (!characterIds || characterIds.length === 0) {
+    return res.status(400).json({ ok: false, error: 'character_ids must contain valid IDs' });
+  }
+  if (!priorityIds || priorityIds.some(id => !characterIds.includes(id))) {
+    return res.status(400).json({ ok: false, error: 'priority_ids must refer to selected characters' });
+  }
+
+  const charPlaceholders = characterIds.map(() => '?').join(', ');
+  const [ownedRows] = await pool.query(
+    `SELECT id FROM characters
+     WHERE id IN (${charPlaceholders}) AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0`,
+    [...characterIds, userId, guildId]
+  );
+  if (ownedRows.length !== characterIds.length) {
+    return res.status(400).json({ ok: false, error: 'character_ids must belong to the current user and guild' });
+  }
+
+  const normalizedNotes = {};
+  for (const [id, rawNote] of Object.entries(notes)) {
+    const charId = Number(id);
+    const note = String(rawNote ?? '').trim();
+    if (!Number.isInteger(charId) || !characterIds.includes(charId)) continue;
+    if (note.length > 500) {
+      return res.status(400).json({ ok: false, error: 'notes must be 500 characters or fewer' });
+    }
+    if (note) normalizedNotes[String(charId)] = note;
   }
 
   const trimmedName = name.trim().slice(0, 100);
   try {
     const [result] = await pool.query(
       'INSERT INTO signup_presets (discord_user_id, guild_id, name, character_ids, priority_ids, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, guildId, trimmedName, JSON.stringify(character_ids), JSON.stringify(priority_ids), JSON.stringify(notes)]
+      [userId, guildId, trimmedName, JSON.stringify(characterIds), JSON.stringify(priorityIds), JSON.stringify(normalizedNotes)]
     );
     res.json({ ok: true, id: result.insertId, name: trimmedName });
   } catch (err) {

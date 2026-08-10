@@ -60,10 +60,9 @@ class SignupView(discord.ui.View):
         def _fetch():
             session = get_session()
             try:
-                from db.models import SignupPreset
                 raid = session.get(Raid, raid_id)
                 if raid is None:
-                    return None, [], set(), []
+                    return None, [], set()
                 chars = (
                     session.query(Character)
                     .filter_by(
@@ -78,33 +77,16 @@ class SignupView(discord.ui.View):
                     .filter_by(raid_id=raid_id, discord_user_id=discord_user_id)
                     .all()
                 )
-                presets_records = (
-                    session.query(SignupPreset)
-                    .filter_by(discord_user_id=discord_user_id, guild_id=raid.guild_id)
-                    .order_by(SignupPreset.created_at.desc())
-                    .all()
-                )
-                presets = [
-                    {
-                        "id": p.id,
-                        "name": p.name,
-                        "character_ids": p.character_ids,
-                        "priority_ids": p.priority_ids,
-                        "notes": p.notes,
-                    }
-                    for p in presets_records
-                ]
-
                 signup_ids = {s.character_id for s in signups}
                 signup_types = {s.character_id: s.signup_type for s in signups}
                 char_dicts = _chars_to_dicts(chars)
                 for c in char_dicts:
                     c["signup_type"] = signup_types.get(c["id"])
-                return raid.status, char_dicts, signup_ids, presets
+                return raid.status, char_dicts, signup_ids
             finally:
                 session.close()
 
-        status, char_dicts, signup_ids, presets = await loop.run_in_executor(None, _fetch)
+        status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
             await interaction.response.send_message(
@@ -147,7 +129,6 @@ class SignupView(discord.ui.View):
             return
 
         view = SignupCharacterSelectView(char_dicts, raid_id, signup_status, selected_ids=signup_ids)
-        view.set_presets(presets)
         await interaction.response.send_message(
             view._step_text(),
             view=view,

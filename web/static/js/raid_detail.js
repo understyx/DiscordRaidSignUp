@@ -146,10 +146,10 @@ async function loadPresets() {
     const resp = await fetch('/characters/presets');
     const data = await resp.json();
     if (data.ok) {
-      _presets = data.presets;
+      _presets = Array.isArray(data.presets) ? data.presets : [];
       const select = document.getElementById('presetSelect');
       if (select) {
-        select.innerHTML = '<option value="">— Load Preset —</option>';
+        select.innerHTML = '<option value="" disabled>— Select preset(s) —</option>';
         _presets.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
@@ -163,17 +163,44 @@ async function loadPresets() {
   }
 }
 
-function applyPreset(presetId) {
-  if (!presetId) return;
-  const preset = _presets.find(p => p.id == presetId);
-  if (!preset) return;
+function parsePresetValue(value) {
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch (_err) {
+    return null;
+  }
+}
 
-  const charIds = typeof preset.character_ids === 'string' ? JSON.parse(preset.character_ids) : preset.character_ids;
-  const prioIds = typeof preset.priority_ids === 'string' ? JSON.parse(preset.priority_ids) : preset.priority_ids;
-  const notesMap = typeof preset.notes === 'string' ? JSON.parse(preset.notes) : preset.notes;
+function applyPresets(presetIds) {
+  const selectedIds = Array.isArray(presetIds) ? presetIds : [presetIds];
+  const selectedPresets = selectedIds
+    .filter(Boolean)
+    .map(id => _presets.find(p => p.id == id))
+    .filter(Boolean);
+  if (selectedPresets.length === 0) return;
+
+  const charIds = new Set();
+  const prioIds = new Set();
+  const notesMap = {};
+  selectedPresets.forEach(preset => {
+    const presetCharIds = parsePresetValue(preset.character_ids);
+    const presetPrioIds = parsePresetValue(preset.priority_ids);
+    const presetNotes = parsePresetValue(preset.notes);
+    if (Array.isArray(presetCharIds)) {
+      presetCharIds.forEach(id => charIds.add(String(id)));
+    }
+    if (Array.isArray(presetPrioIds)) {
+      presetPrioIds.forEach(id => prioIds.add(String(id)));
+    }
+    if (presetNotes && typeof presetNotes === 'object' && !Array.isArray(presetNotes)) {
+      Object.assign(notesMap, presetNotes);
+    }
+  });
 
   // Deselect all current
+  const groupsToUpdate = new Set();
   document.querySelectorAll('.signup-row.row-selected').forEach(row => {
+    groupsToUpdate.add(row.dataset.groupIdx);
     row.classList.remove('row-selected');
     row.setAttribute('aria-selected', 'false');
     const star = row.querySelector('.prio-star');
@@ -190,7 +217,6 @@ function applyPreset(presetId) {
   });
 
   // Apply preset selections
-  const groupsToUpdate = new Set();
 
   charIds.forEach(id => {
     const row = document.querySelector(`.signup-row[data-char-id="${id}"]`);
@@ -238,9 +264,6 @@ function applyPreset(presetId) {
   groupsToUpdate.forEach(gIdx => updateGroupHighlight(gIdx));
   buildHiddenInputs();
 
-  // Reset select
-  const select = document.getElementById('presetSelect');
-  if (select) select.value = '';
 }
 
 function showSavePresetModal() {
@@ -327,6 +350,30 @@ async function submitSavePreset() {
   }
 }
 
+async function deleteSelectedPresets() {
+  const select = document.getElementById('presetSelect');
+  const presetIds = select
+    ? Array.from(select.selectedOptions).map(option => option.value).filter(Boolean)
+    : [];
+  if (presetIds.length === 0) {
+    alert('Select one or more presets to delete.');
+    return;
+  }
+  if (!confirm(`Delete ${presetIds.length} selected preset${presetIds.length === 1 ? '' : 's'}?`)) return;
+
+  try {
+    for (const presetId of presetIds) {
+      const resp = await fetch(`/characters/presets/${encodeURIComponent(presetId)}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Delete failed');
+    }
+    await loadPresets();
+  } catch (err) {
+    console.error('Failed to delete presets', err);
+    alert('Could not delete the selected preset(s).');
+  }
+}
+
 // Populate hidden inputs and group highlights on page load
 document.addEventListener('DOMContentLoaded', () => {
   buildHiddenInputs();
@@ -344,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const select = document.getElementById('presetSelect');
   if (select) {
     select.addEventListener('change', (e) => {
-      applyPreset(e.target.value);
+      applyPresets(Array.from(e.target.selectedOptions).map(option => option.value));
     });
   }
 });

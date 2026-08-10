@@ -116,10 +116,12 @@
               ❓ {% if my_signup_count > 0 %}Update as Tentative{% else %}Sign Up as Tentative{% endif %}
             </button>
             <div class="ms-auto d-flex gap-2 align-items-center">
-              <select id="presetSelect" class="form-select form-select-sm bg-dark text-light border-secondary" style="max-width: 200px;">
-                <option value="">— Load Preset —</option>
+              <select id="presetSelect" class="form-select form-select-sm bg-dark text-light border-secondary"
+                      multiple size="2" aria-label="Load one or more signup presets" style="max-width: 220px;">
+                <option value="" disabled selected>— Select preset(s) —</option>
               </select>
               <button type="button" class="btn btn-sm btn-outline-success" onclick="showSavePresetModal()">💾 Save as Preset</button>
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPresets()">🗑️ Delete</button>
             </div>
           </div>
         </form>
