@@ -70,6 +70,7 @@ class SignupPrioritySelectView(discord.ui.View):
         page: int = 0,
         priority_ids: set[int] | None = None,
         notes: dict[str, str] | None = None,
+        confirm_only: bool = False,
     ):
         super().__init__(timeout=120)
         self.raid_id = raid_id
@@ -78,6 +79,7 @@ class SignupPrioritySelectView(discord.ui.View):
         self.page = page
         self.priority_ids: set[int] = set(priority_ids) if priority_ids else set()
         self.notes: dict[str, str] = dict(notes) if notes else {}  # char_name.lower() -> note
+        self.confirm_only = confirm_only
         self.priority_select: discord.ui.Select | None = None
         self._build_components()
 
@@ -90,65 +92,67 @@ class SignupPrioritySelectView(discord.ui.View):
         start = self.page * _SELECT_PAGE_SIZE
         page_chars = self.selected_chars[start : start + _SELECT_PAGE_SIZE]
 
-        options = [
-            discord.SelectOption(
-                label=_char_label(c)[:100],
-                description=_char_display_description(c)[:100],
-                value=str(c["id"]),
-                default=c["id"] in self.priority_ids,
+        if not self.confirm_only:
+            options = [
+                discord.SelectOption(
+                    label=_char_label(c)[:100],
+                    description=_char_display_description(c)[:100],
+                    value=str(c["id"]),
+                    default=c["id"] in self.priority_ids,
+                )
+                for c in page_chars
+            ]
+            placeholder = "Mark preferred characters (optional)…"
+            if max_pages > 1:
+                placeholder = f"Mark preferred – Page {self.page + 1}/{max_pages} (optional)…"
+            self.priority_select = discord.ui.Select(
+                placeholder=placeholder,
+                options=options,
+                min_values=0,
+                max_values=len(options),
+                row=0,
             )
-            for c in page_chars
-        ]
-        placeholder = "Mark preferred characters (optional)…"
-        if max_pages > 1:
-            placeholder = f"Mark preferred – Page {self.page + 1}/{max_pages} (optional)…"
-        self.priority_select = discord.ui.Select(
-            placeholder=placeholder,
-            options=options,
-            min_values=0,
-            max_values=len(options),
-            row=0,
-        )
-        self.priority_select.callback = self._on_priority_select
-        self.add_item(self.priority_select)
+            self.priority_select.callback = self._on_priority_select
+            self.add_item(self.priority_select)
 
-        if max_pages > 1:
-            prev_btn = discord.ui.Button(
-                label="← Prev",
-                style=discord.ButtonStyle.secondary,
-                disabled=self.page == 0,
-                row=1,
-            )
-            prev_btn.callback = self._on_prev
-            self.add_item(prev_btn)
+            if max_pages > 1:
+                prev_btn = discord.ui.Button(
+                    label="← Prev",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=self.page == 0,
+                    row=1,
+                )
+                prev_btn.callback = self._on_prev
+                self.add_item(prev_btn)
 
-            next_btn = discord.ui.Button(
-                label="Next →",
-                style=discord.ButtonStyle.secondary,
-                disabled=self.page >= max_pages - 1,
-                row=1,
-            )
-            next_btn.callback = self._on_next
-            self.add_item(next_btn)
+                next_btn = discord.ui.Button(
+                    label="Next →",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=self.page >= max_pages - 1,
+                    row=1,
+                )
+                next_btn.callback = self._on_next
+                self.add_item(next_btn)
 
         is_tentative = self.signup_status == SignupStatus.tentative
         confirm_btn = discord.ui.Button(
             label="Confirm Tentative Sign Up" if is_tentative else "Confirm Sign Up",
             style=discord.ButtonStyle.primary if is_tentative else discord.ButtonStyle.success,
             emoji="❓" if is_tentative else "✅",
-            row=2,
+            row=0 if self.confirm_only else 2,
         )
         confirm_btn.callback = self.confirm
         self.add_item(confirm_btn)
 
-        add_note_btn = discord.ui.Button(
-            label="Add Note to Character",
-            style=discord.ButtonStyle.secondary,
-            emoji="📝",
-            row=3,
-        )
-        add_note_btn.callback = self._on_add_note
-        self.add_item(add_note_btn)
+        if not self.confirm_only:
+            add_note_btn = discord.ui.Button(
+                label="Add Note to Character",
+                style=discord.ButtonStyle.secondary,
+                emoji="📝",
+                row=3,
+            )
+            add_note_btn.callback = self._on_add_note
+            self.add_item(add_note_btn)
 
     def _update_priority_from_page(self, selected_values: list[str]):
         """Replace priority marks for the current page's items based on the select interaction."""
@@ -159,6 +163,25 @@ class SignupPrioritySelectView(discord.ui.View):
             self.priority_ids.add(int(v))
 
     def _step_text(self) -> str:
+        if self.confirm_only:
+            lines = [
+                f"• {_char_label(c)}{' ⭐' if c['id'] in self.priority_ids else ''}"
+                for c in self.selected_chars
+            ]
+            text = "**Selected characters:**\n" + "\n".join(lines)
+            if self.notes:
+                note_lines = []
+                seen: set[str] = set()
+                for c in self.selected_chars:
+                    key = c["char_name"].lower()
+                    if key in self.notes and key not in seen:
+                        seen.add(key)
+                        note_lines.append(f"• **{c['char_name']}**: *{self.notes[key]}*")
+                if note_lines:
+                    text += "\n\n**Notes:**\n" + "\n".join(note_lines)
+            text += "\n\nClick **Confirm Sign Up** to submit these characters."
+            return text[:1990]
+
         max_pages = self._max_pages()
         is_tentative = self.signup_status == SignupStatus.tentative
 
@@ -375,15 +398,6 @@ class SignupPresetSelectView(discord.ui.View):
         self.preset_select.callback = self._on_select
         self.add_item(self.preset_select)
 
-        load_btn = discord.ui.Button(
-            label="Load Presets",
-            style=discord.ButtonStyle.success,
-            emoji="✅",
-            row=1,
-        )
-        load_btn.callback = self._on_load
-        self.add_item(load_btn)
-
     @staticmethod
     def _decode(value, default):
         if isinstance(value, str):
@@ -394,21 +408,7 @@ class SignupPresetSelectView(discord.ui.View):
         return value if value is not None else default
 
     async def _on_select(self, interaction: discord.Interaction):
-        self.selected_ids = list(interaction.data.get("values", []))
-        selected_count = len(self.selected_ids)
-        await interaction.response.edit_message(
-            content=(
-                f"**{selected_count} preset(s) selected.** Choose more to combine them, "
-                "then click **Load Presets**."
-            ),
-            view=self,
-        )
-
-    async def _on_load(self, interaction: discord.Interaction):
         selected_ids = interaction.data.get("values", [])
-        # Discord button interactions do not include the select's current values;
-        # retain the selection from the preceding select interaction.
-        selected_ids = getattr(self, "selected_ids", selected_ids)
         if not selected_ids:
             await interaction.response.send_message(
                 "❌ Select at least one preset first.", ephemeral=True
@@ -466,6 +466,7 @@ class SignupPresetSelectView(discord.ui.View):
             SignupStatus.signed,
             priority_ids=priority_ids,
             notes=notes,
+            confirm_only=True,
         )
         await interaction.response.edit_message(
             content=view._step_text(),

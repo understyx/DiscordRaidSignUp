@@ -212,7 +212,7 @@ class SignupView(discord.ui.View):
 
         view = SignupPresetSelectView(char_dicts, presets, raid_id)
         await interaction.response.send_message(
-            "**Select one or more presets** to combine, then click **Load Presets**.",
+            "**Select one or more presets** to combine. Your selected characters will be shown for confirmation.",
             view=view,
             ephemeral=True,
         )
