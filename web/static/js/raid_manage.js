@@ -9,6 +9,9 @@ let RAID_URL = '';
 let COMP_NUMBERS_ALL = [];
 let COMP_SUMMARIES = {};
 let COMP_LABELS = {};
+let COMP_META = {};
+let currentRevision = 0;
+let publishedRevision = null;
 let CHARS_IN_COMPS = {};
 let CHAR_COLLECTORS = {};
 let WOTLK_RAID_BUFFS = [];
@@ -26,6 +29,10 @@ if (configEl) {
     COMP_NUMBERS_ALL = config.COMP_NUMBERS_ALL;
     COMP_SUMMARIES = config.COMP_SUMMARIES;
     COMP_LABELS = config.COMP_LABELS;
+    COMP_META = config.COMP_META || {};
+    currentRevision = Number(config.CURRENT_REVISION) || 0;
+    publishedRevision =
+      config.PUBLISHED_REVISION === null ? null : Number(config.PUBLISHED_REVISION);
     CHARS_IN_COMPS = config.CHARS_IN_COMPS;
     CHAR_COLLECTORS = config.CHAR_COLLECTORS || {};
     WOTLK_RAID_BUFFS = config.WOTLK_RAID_BUFFS;
@@ -44,9 +51,103 @@ let draggedDisplayLabel  = null;
 let draggedSpec          = null;
 let draggedGearscore     = null;
 let draggedRole          = null;   // detected role for auto-slot-assignment
+let draggedSfsCount      = null;
+let draggedValCount      = null;
 let draggedPlaceholder   = null;
 let draggedPlaceholderColor = null;
 let draggedIsPlayer      = false;
+let selectedSourceEl     = null;
+
+function announce(message) {
+  const status = document.getElementById('saveStatus');
+  if (status) status.textContent = message;
+}
+
+function clearSourceSelection() {
+  if (selectedSourceEl) selectedSourceEl.classList.remove('assignment-source-selected');
+  selectedSourceEl = null;
+}
+
+function markSourceSelected(element, label) {
+  clearSourceSelection();
+  selectedSourceEl = element;
+  element.classList.add('assignment-source-selected');
+  announce(`Selected ${label}. Choose a roster slot.`);
+}
+
+function populateCharacterDragData(card) {
+  draggedPlaceholder = null;
+  draggedPlaceholderColor = null;
+  draggedIsPlayer = false;
+  draggedCharId = card.dataset.charId;
+  draggedCharName = card.dataset.charName;
+  draggedCharClass = card.dataset.charClass || null;
+  draggedDiscordUserId = card.dataset.discordUserId || null;
+  draggedDisplayLabel = card.dataset.displayLabel || null;
+  draggedSpec = card.dataset.spec || null;
+  draggedGearscore = card.dataset.gearscore || null;
+  draggedSfsCount = card.dataset.sfsCount === '' ? null : Number(card.dataset.sfsCount);
+  draggedValCount = card.dataset.valCount === '' ? null : Number(card.dataset.valCount);
+  draggedRole = specToRole(normalizeSpec(draggedCharClass, draggedSpec), draggedCharClass);
+}
+
+function selectCharacterSource(event, card) {
+  if (!CAN_EDIT || card.dataset.unavailable === 'true') return;
+  if (event && event.target.closest('button')) return;
+  populateCharacterDragData(card);
+  markSourceSelected(card, card.dataset.charName || 'character');
+}
+
+function selectPlayerSource(event, header) {
+  if (event) event.stopPropagation();
+  draggedPlaceholder = null;
+  draggedPlaceholderColor = null;
+  draggedCharId = null;
+  draggedCharName = null;
+  draggedCharClass = null;
+  draggedSpec = null;
+  draggedGearscore = null;
+  draggedRole = null;
+  draggedIsPlayer = true;
+  draggedDiscordUserId = header.dataset.discordUserId || null;
+  draggedDisplayLabel = header.dataset.displayLabel || null;
+  markSourceSelected(header, draggedDisplayLabel || 'player');
+}
+
+function selectPlaceholderSource(chip) {
+  draggedIsPlayer = false;
+  draggedCharId = null;
+  draggedCharName = null;
+  draggedCharClass = null;
+  draggedDiscordUserId = null;
+  draggedSpec = null;
+  draggedRole = chip.dataset.role || null;
+  draggedPlaceholder = chip.dataset.placeholder;
+  draggedPlaceholderColor = chip.dataset.color || null;
+  markSourceSelected(chip, draggedPlaceholder || 'placeholder');
+}
+
+function assignSelectedToSlot(event, slotCard) {
+  if (!CAN_EDIT || !selectedSourceEl) return;
+  if (event && event.target.closest('button')) return;
+  onDrop({ preventDefault() {}, currentTarget: slotCard });
+}
+
+function handleSlotKey(event, slotCard) {
+  if (event.target !== slotCard) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    assignSelectedToSlot(null, slotCard);
+  }
+}
+
+function handleGroupHeaderKey(event, id, header) {
+  if (event.target !== header) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    toggleUserGroup(id, header);
+  }
+}
 
 // Apply colors to any placeholder-colored spans already in the DOM
 function applyPlaceholderColors() {
@@ -74,6 +175,42 @@ function applyInitialTints() {
       applySlotTint(slotCard, assignedDiv.dataset.charClass);
     }
   });
+}
+
+function syncCollectorControls(slotCard, entry = null) {
+  const existing = slotCard.querySelector('.collector-btns');
+  if (existing) existing.remove();
+  if (!CAN_EDIT || !entry || !entry.character_id) return;
+
+  const charClass = String(entry.char_class || '').toLowerCase();
+  const canCollectSfs =
+    ['paladin', 'death-knight', 'warrior'].includes(charClass) &&
+    entry.sfs_count !== null &&
+    Number(entry.sfs_count) < 50;
+  const canCollectVal =
+    ['paladin', 'priest', 'druid', 'shaman'].includes(charClass) &&
+    entry.val_count !== null &&
+    Number(entry.val_count) < 30;
+  if (!canCollectSfs && !canCollectVal) return;
+
+  const controls = document.createElement('div');
+  controls.className = 'collector-btns';
+  const addButton = (type, active, title, emoji) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `collector-btn ${type}-btn${active ? ' active' : ''}`;
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.textContent = emoji;
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleCollector(button, type);
+    });
+    controls.appendChild(button);
+  };
+  if (canCollectSfs) addButton('sfs', entry.is_sfs_collector, 'Elect as Shard Collector', '❄️');
+  if (canCollectVal) addButton('val', entry.is_val_collector, "Elect as Val'anyr Collector", '🔨');
+  slotCard.appendChild(controls);
 }
 
 /* ── In-comp status indicators for the left-panel character cards ────── */
@@ -114,6 +251,10 @@ function updateCharInCompStatus() {
       }
     }
     assignedComps.sort((a, b) => a - b);
+    card.dataset.assignedCurrent = assignedComps.includes(CURRENT_COMP) ? 'true' : 'false';
+    card.dataset.assignedElsewhere = assignedComps.some((cn) => cn !== CURRENT_COMP)
+      ? 'true'
+      : 'false';
 
     // Remove old badges container and recreate.
     let badgesContainer = card.querySelector('.char-in-comp-badges');
@@ -195,10 +336,14 @@ function updateCharInCompStatus() {
         else header.appendChild(playerBadge);
       }
       playerBadge.textContent = '✓';
+      header.closest('.user-group').dataset.assignedCurrent = 'true';
     } else {
       if (playerBadge) playerBadge.remove();
+      header.closest('.user-group').dataset.assignedCurrent = 'false';
     }
   });
+  applyPoolFilters();
+  updateRosterSummary();
 }
 
 // Called when a role icon button is clicked (btnOrSlot is the button) or
@@ -225,7 +370,12 @@ function setSlotRole(btnOrSlot, role, skipDirty) {
     const discordUserId = assignedDiv && assignedDiv.dataset.discordUserId && !charId ? assignedDiv.dataset.discordUserId : null;
     const placeholder = assignedDiv && assignedDiv.dataset.placeholder;
     if (charId) {
-      addDirtyChange(slot, { slot_role: role, character_id: charId });
+      addDirtyChange(slot, {
+        slot_role: role,
+        character_id: charId,
+        is_sfs_collector: Boolean(slotCard.querySelector('.collector-btn.sfs-btn.active')),
+        is_val_collector: Boolean(slotCard.querySelector('.collector-btn.val-btn.active')),
+      });
       clearTimeout(saveTimer);
       autoSave();
     } else if (discordUserId) {
@@ -279,6 +429,7 @@ function toggleUserGroup(id, header) {
   const collapsed = body.style.display === 'none';
   body.style.display  = collapsed ? '' : 'none';
   chevron.textContent = collapsed ? '▾' : '▸';
+  header.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
 }
 
 function expandAllPool() {
@@ -317,43 +468,72 @@ function collapseInRaidPool() {
   });
 }
 
-// ── Sign-ups pool role filter ────────────────────────────────────────────
+// ── Sign-ups pool filters ────────────────────────────────────────────────
+let poolRoleFilter = 'all';
+let poolStatusFilter = 'all';
+let poolSearchQuery = '';
+
 function filterPool(role) {
+  poolRoleFilter = role;
   document.querySelectorAll('.pool-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.role === role);
+    btn.setAttribute('aria-pressed', btn.dataset.role === role ? 'true' : 'false');
   });
+  applyPoolFilters();
+}
 
+function setPoolStatusFilter(status) {
+  poolStatusFilter = status;
+  document.querySelectorAll('.pool-status-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.status === status);
+    btn.setAttribute('aria-pressed', btn.dataset.status === status ? 'true' : 'false');
+  });
+  applyPoolFilters();
+}
+
+function setPoolSearch(value) {
+  poolSearchQuery = String(value || '').trim().toLowerCase();
+  applyPoolFilters();
+}
+
+function applyPoolFilters() {
+  let visibleGroups = 0;
   document.querySelectorAll('.user-group').forEach(group => {
     let anyVisible = false;
     group.querySelectorAll('.char-card').forEach(card => {
       const charClass = card.dataset.charClass || '';
       const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
-      const show = role === 'all' || allSpecs.some(s => {
+      const roleMatches = poolRoleFilter === 'all' || allSpecs.some(s => {
         const r = specToRole(normalizeSpec(charClass, s), charClass);
-        if (role === 'dps') return r === 'dps' || r === 'mdps' || r === 'rdps';
-        return r === role;
+        if (poolRoleFilter === 'dps') return r === 'dps' || r === 'mdps' || r === 'rdps';
+        return r === poolRoleFilter;
       });
+      const unavailable = card.dataset.unavailable === 'true';
+      const current = card.dataset.assignedCurrent === 'true';
+      const elsewhere = card.dataset.assignedElsewhere === 'true';
+      const tentative = group.dataset.tentative === 'true';
+      const statusMatches =
+        poolStatusFilter === 'all' ||
+        (poolStatusFilter === 'unassigned' && !current && !elsewhere && !unavailable) ||
+        (poolStatusFilter === 'elsewhere' && elsewhere) ||
+        (poolStatusFilter === 'tentative' && tentative) ||
+        (poolStatusFilter === 'unavailable' && unavailable);
+      const searchText = `${group.dataset.searchText || ''} ${card.dataset.searchText || ''}`;
+      const searchMatches = !poolSearchQuery || searchText.includes(poolSearchQuery);
+      const show = roleMatches && statusMatches && searchMatches;
       card.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
     });
     group.style.display = anyVisible ? '' : 'none';
+    if (anyVisible) visibleGroups += 1;
   });
+  const emptyMessage = document.getElementById('poolFilterEmpty');
+  if (emptyMessage) emptyMessage.style.display = visibleGroups === 0 ? '' : 'none';
 }
 
 /* ── Drag start: character card ────────────────────────────────────── */
 function onDragStart(event) {
-  draggedPlaceholder      = null;
-  draggedPlaceholderColor = null;
-  draggedIsPlayer         = false;
-  draggedDisplayLabel     = null;
-  draggedCharId           = event.currentTarget.dataset.charId;
-  draggedCharName         = event.currentTarget.dataset.charName;
-  draggedCharClass        = event.currentTarget.dataset.charClass || null;
-  draggedDiscordUserId    = event.currentTarget.dataset.discordUserId || null;
-  draggedDisplayLabel     = event.currentTarget.dataset.displayLabel || null;
-  draggedSpec             = event.currentTarget.dataset.spec || null;
-  draggedGearscore        = event.currentTarget.dataset.gearscore || null;
-  draggedRole             = specToRole(normalizeSpec(draggedCharClass, draggedSpec), draggedCharClass);
+  populateCharacterDragData(event.currentTarget);
   event.dataTransfer.effectAllowed = 'move';
 }
 
@@ -409,6 +589,7 @@ function onDrop(event) {
     assignedDiv.dataset.placeholder = draggedPlaceholder;
     delete assignedDiv.dataset.charClass;
     applySlotTint(slotCard, null);
+    syncCollectorControls(slotCard, null);
 
     // Auto-detect role from the placeholder's data-role and set slot role
     if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
@@ -422,6 +603,7 @@ function onDrop(event) {
     clearTimeout(saveTimer);
     updateBuffPanel();
     autoSave();
+    clearSourceSelection();
     return;
   }
 
@@ -456,6 +638,7 @@ function onDrop(event) {
     delete assignedDiv.dataset.charClass;
     delete assignedDiv.dataset.placeholder;
     applySlotTint(slotCard, null);
+    syncCollectorControls(slotCard, null);
 
     const finalUserId = draggedDiscordUserId;
     draggedDiscordUserId = null;
@@ -467,6 +650,7 @@ function onDrop(event) {
     updateBuffPanel();
     clearTimeout(saveTimer);
     autoSave();
+    clearSourceSelection();
     return;
   }
 
@@ -514,6 +698,14 @@ function onDrop(event) {
   delete assignedDiv.dataset.placeholder;
   if (draggedDiscordUserId) assignedDiv.dataset.discordUserId = draggedDiscordUserId;
   applySlotTint(slotCard, draggedCharClass);
+  syncCollectorControls(slotCard, {
+    character_id: draggedCharId,
+    char_class: draggedCharClass,
+    sfs_count: draggedSfsCount,
+    val_count: draggedValCount,
+    is_sfs_collector: false,
+    is_val_collector: false,
+  });
 
   // Auto-detect role from the character's data-role and set slot role
   if (draggedRole && ['tank', 'healer', 'dps', 'mdps', 'rdps'].includes(draggedRole)) {
@@ -528,11 +720,14 @@ function onDrop(event) {
   draggedSpec          = null;
   draggedGearscore     = null;
   draggedRole          = null;
+  draggedSfsCount      = null;
+  draggedValCount      = null;
   addDirtyChange(slotCard.dataset.slot, { slot_role: slotCard.dataset.slotRole, character_id: finalCharId });
   updateCharInCompStatus();
   updateBuffPanel();
   clearTimeout(saveTimer);
   autoSave();
+  clearSourceSelection();
 }
 
 /* ── Clear a single assigned-char div ─────────────────────────────── */
@@ -549,6 +744,7 @@ function clearAssigned(el) {
   delete el.dataset.charClass;
   delete el.dataset.placeholder;
   if (slotCard) applySlotTint(slotCard, null);
+  if (slotCard) syncCollectorControls(slotCard, null);
   if (!applyingRemote && slot) {
     addDirtyChange(slot, { clear: true });
   }
@@ -565,12 +761,43 @@ function clearSlot(btn) {
 /* ── Per-slot dirty tracking ───────────────────────────────────────── */
 // Map<slot_key, { slot_role?, character_id? | placeholder_text? | clear: true }>
 const dirtyChanges = new Map();
+const serverStateBySlot = new Map();
 // True while applying remote state — prevents re-marking as dirty
 let applyingRemote = false;
 
 function addDirtyChange(slot, change) {
   dirtyChanges.set(slot, change);
   markDirty();
+}
+
+function comparableEntry(entry) {
+  if (!entry || entry.clear) return null;
+  return {
+    slot_role: entry.slot_role || 'dps',
+    character_id: entry.character_id ? String(entry.character_id) : null,
+    discord_user_id: entry.character_id
+      ? null
+      : entry.discord_user_id
+        ? String(entry.discord_user_id)
+        : null,
+    placeholder_text: entry.placeholder_text || null,
+    is_sfs_collector: Boolean(entry.is_sfs_collector),
+    is_val_collector: Boolean(entry.is_val_collector),
+  };
+}
+
+function updateServerSnapshot(entries, { preserveDirty = false } = {}) {
+  const remote = new Map((entries || []).map((entry) => [entry.role_slot, comparableEntry(entry)]));
+  document.querySelectorAll('.slot-card').forEach((slotCard) => {
+    const slot = slotCard.dataset.slot;
+    if (preserveDirty && dirtyChanges.has(slot)) return;
+    serverStateBySlot.set(slot, remote.get(slot) || null);
+  });
+}
+
+function seedServerSnapshotFromDom() {
+  const entries = buildPayload();
+  updateServerSnapshot(entries);
 }
 
 /* ── Global dirty indicator & debounce timer ───────────────────────── */
@@ -580,7 +807,8 @@ let saveTimer = null;
 function markDirty() {
   const saveStatus = document.getElementById('saveStatus');
   isDirty = true;
-  if (saveStatus) saveStatus.textContent = '● unsaved';
+  if (saveStatus) saveStatus.textContent = '● unsaved changes';
+  updatePublishState();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => autoSave(), 2000);
 }
@@ -590,9 +818,48 @@ function markClean(msg) {
   isDirty = dirtyChanges.size > 0;
   clearTimeout(saveTimer);
   if (saveStatus) saveStatus.textContent = isDirty ? '● unsaved' : (msg || '✓ saved');
+  updatePublishState();
 }
 
-/* ── Build payload from current DOM state (used by manual save only) ── */
+function updatePublishState() {
+  const element = document.getElementById('publishState');
+  if (!element) return;
+  if (publishedRevision === null) {
+    element.textContent = 'Not published';
+    element.className = 'publish-state not-published';
+  } else if (isDirty || currentRevision !== publishedRevision) {
+    element.textContent = 'Changed since publish';
+    element.className = 'publish-state changed';
+  } else {
+    element.textContent = 'Published · up to date';
+    element.className = 'publish-state current';
+  }
+}
+
+function updateRosterSummary() {
+  const summary = document.getElementById('rosterSummary');
+  if (!summary) return;
+  const counts = { tank: 0, healer: 0, mdps: 0, rdps: 0, dps: 0 };
+  let filled = 0;
+  let placeholders = 0;
+  document.querySelectorAll('.slot-card').forEach((slot) => {
+    const assigned = slot.querySelector('.assigned-char');
+    if (!assigned) return;
+    const occupied =
+      assigned.dataset.charId || assigned.dataset.discordUserId || assigned.dataset.placeholder;
+    if (!occupied) return;
+    filled += 1;
+    const role = slot.dataset.slotRole || 'dps';
+    if (Object.prototype.hasOwnProperty.call(counts, role)) counts[role] += 1;
+    if (assigned.dataset.placeholder || (assigned.dataset.discordUserId && !assigned.dataset.charId)) {
+      placeholders += 1;
+    }
+  });
+  summary.textContent = `${filled}/${MAX_SIZE} filled · ${counts.tank} tank · ${counts.healer} heal · ${counts.mdps} melee · ${counts.rdps} ranged${placeholders ? ` · ${placeholders} unresolved` : ''}`;
+  summary.classList.toggle('incomplete', filled < MAX_SIZE || placeholders > 0);
+}
+
+/* ── Build a normalized snapshot from the current roster DOM ───────── */
 function buildPayload() {
   const payload = [];
   document.querySelectorAll('.slot-card').forEach(slot => {
@@ -620,78 +887,162 @@ function buildPayload() {
   return payload;
 }
 
-/* ── Granular auto-save: only send dirty slots via PATCH ───────────── */
+/* ── Serialized, revision-aware granular auto-save ─────────────────── */
+let saveInFlight = null;
+let retryTimer = null;
+let retryDelayMs = 2000;
+
+function changesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function scheduleSaveRetry() {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    flushPendingChanges().catch(() => {});
+  }, retryDelayMs);
+  retryDelayMs = Math.min(retryDelayMs * 2, 30000);
+}
+
+async function performSaveQueue() {
+  while (dirtyChanges.size > 0) {
+    const snapshot = new Map(dirtyChanges);
+    const changes = [...snapshot].map(([role_slot, change]) => ({ role_slot, ...change }));
+    const saveStatus = document.getElementById('saveStatus');
+    if (saveStatus) saveStatus.textContent = '↻ saving…';
+
+    const response = await fetch(`${RAID_URL}/manage?comp=${CURRENT_COMP}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_revision: currentRevision, changes }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (response.status === 409 && data.conflict) {
+      const remoteBySlot = new Map(
+        (data.entries || []).map((entry) => [entry.role_slot, comparableEntry(entry)])
+      );
+      const conflictingSlots = [...snapshot.keys()].filter(
+        (slot) =>
+          !changesEqual(serverStateBySlot.get(slot) || null, remoteBySlot.get(slot) || null)
+      );
+      if (conflictingSlots.length > 0) {
+        const keepLocal = confirm(
+          `Another officer changed ${conflictingSlots.join(', ')} while you were editing.\n\nChoose OK to keep your pending version, or Cancel to accept their version.`
+        );
+        if (!keepLocal) {
+          for (const slot of conflictingSlots) dirtyChanges.delete(slot);
+        }
+      }
+      currentRevision = Number(data.revision) || 0;
+      if (data.entries) applyRemoteState(data.entries);
+      updateServerSnapshot(data.entries, { preserveDirty: false });
+      continue;
+    }
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || `Save failed (${response.status})`);
+    }
+
+    currentRevision = Number(data.revision) || currentRevision;
+    for (const [slot, savedChange] of snapshot) {
+      const latest = dirtyChanges.get(slot);
+      if (latest && changesEqual(latest, savedChange)) dirtyChanges.delete(slot);
+    }
+    if (data.entries) applyRemoteState(data.entries);
+    updateServerSnapshot(data.entries);
+    retryDelayMs = 2000;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  markClean('✓ saved');
+}
+
+function flushPendingChanges() {
+  if (!CAN_EDIT || dirtyChanges.size === 0) {
+    if (!saveInFlight) markClean('✓ saved');
+    return saveInFlight || Promise.resolve();
+  }
+  clearTimeout(saveTimer);
+  if (saveInFlight) return saveInFlight;
+
+  saveInFlight = performSaveQueue()
+    .catch((error) => {
+      const saveStatus = document.getElementById('saveStatus');
+      if (saveStatus) saveStatus.textContent = '⚠ save failed · retrying';
+      scheduleSaveRetry();
+      throw error;
+    })
+    .finally(() => {
+      saveInFlight = null;
+    });
+  return saveInFlight;
+}
+
 function autoSave() {
+  flushPendingChanges().catch((error) => console.warn('Auto-save failed:', error));
+}
+
+async function saveComp() {
   if (!CAN_EDIT) return;
-  if (dirtyChanges.size === 0) {
-    markClean('✓ saved');
-    return;
+  try {
+    await flushPendingChanges();
+    announce('✓ all changes saved');
+  } catch (error) {
+    alert(`Unable to save yet: ${error.message}. The page will keep retrying.`);
   }
+}
 
-  const payload = [];
-  for (const [role_slot, change] of dirtyChanges) {
-    payload.push({ role_slot, ...change });
+let allowPageExit = false;
+
+async function runAfterSave(action) {
+  try {
+    await flushPendingChanges();
+    return await action();
+  } catch (error) {
+    alert(`This action is paused because the roster is not saved yet: ${error.message}`);
   }
+}
 
-  fetch(`${RAID_URL}/manage?comp=${CURRENT_COMP}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  .then(r => r.json())
-  .then(data => {
-    const saveStatus = document.getElementById('saveStatus');
-    if (!data.ok) {
-      if (saveStatus) saveStatus.textContent = '⚠ save error';
-      console.warn('Auto-save error:', data.error);
-      return;
+async function createComposition(action) {
+  await runAfterSave(async () => {
+    allowPageExit = false;
+    try {
+      const response = await fetch(`${RAID_URL}/comps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, source_comp: CURRENT_COMP }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Unable to create composition.');
+      allowPageExit = true;
+      window.location.href = `${RAID_URL}/manage?comp=${data.comp_number}`;
+    } catch (error) {
+      alert(error.message);
     }
-
-    // Remove saved slots from the dirty map
-    for (const s of (data.saved || [])) {
-      dirtyChanges.delete(s.role_slot);
-    }
-
-    // Apply the authoritative full state returned by the server so all
-    // clients converge — but skip any slots the user is still editing
-    if (data.entries) {
-      applyRemoteState(data.entries);
-    }
-
-    markClean('✓ auto-saved');
-    lastKnownVersion = null; // reset so next poll picks up any further changes
-  })
-  .catch(err => {
-    const saveStatus = document.getElementById('saveStatus');
-    if (saveStatus) saveStatus.textContent = '⚠ save error';
-    console.warn('Auto-save failed:', err);
   });
 }
 
-/* ── Manual save button (keeps the reload for tab refresh) ─────────── */
-function saveComp() {
-  if (!CAN_EDIT) return;
-  clearTimeout(saveTimer);
-  dirtyChanges.clear();
-  const payload = buildPayload();
-  fetch(`${RAID_URL}/manage?comp=${CURRENT_COMP}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.ok) {
-      window.location.reload();
-    } else {
-      alert('Error: ' + (data.error || 'Unable to save composition. Please try again.'));
+async function deleteCurrentComposition() {
+  if (!confirm(`Delete ${compTabLabel(CURRENT_COMP)}? This removes its roster and publish history.`)) {
+    return;
+  }
+  await runAfterSave(async () => {
+    allowPageExit = false;
+    try {
+      const response = await fetch(`${RAID_URL}/comps/${CURRENT_COMP}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Unable to delete composition.');
+      if (data.warning) alert(data.warning);
+      allowPageExit = true;
+      window.location.href = `${RAID_URL}/manage?comp=${data.next_comp}`;
+    } catch (error) {
+      alert(error.message);
     }
-  })
-  .catch(err => alert('Save failed: ' + err));
+  });
 }
 
 /* ── Auto-load polling (collaboration) ────────────────────────────── */
-let lastKnownVersion = null;
 
 // ── Helper: sync slot role button state to a given role ─────────────
 function syncSlotRole(slotCard, slotRole) {
@@ -719,10 +1070,11 @@ function applyRemoteState(entries) {
       const remote      = remoteMap[slot];
       const localCharId = assignedDiv.dataset.charId || null;
       const localPh     = assignedDiv.dataset.placeholder || null;
+      const localUserId = assignedDiv.dataset.discordUserId || null;
 
       if (!remote) {
         // Slot should be empty
-        if (localCharId || localPh) clearAssigned(assignedDiv);
+        if (localCharId || localPh || localUserId) clearAssigned(assignedDiv);
         return;
       }
 
@@ -753,6 +1105,7 @@ function applyRemoteState(entries) {
           delete assignedDiv.dataset.placeholder;
           applySlotTint(slotCard, remote.char_class || null);
         }
+        syncCollectorControls(slotCard, remote);
         syncSlotRole(slotCard, remote.slot_role || 'dps');
       } else if (remote.discord_user_id) {
         if (localCharId || assignedDiv.dataset.discordUserId !== remote.discord_user_id) {
@@ -778,6 +1131,7 @@ function applyRemoteState(entries) {
           delete assignedDiv.dataset.placeholder;
           applySlotTint(slotCard, null);
         }
+        syncCollectorControls(slotCard, null);
         syncSlotRole(slotCard, remote.slot_role || 'dps');
       } else if (remote.placeholder_text) {
         if (localPh !== remote.placeholder_text) {
@@ -794,6 +1148,7 @@ function applyRemoteState(entries) {
           assignedDiv.dataset.placeholder = remote.placeholder_text;
           applySlotTint(slotCard, null);
         }
+        syncCollectorControls(slotCard, null);
         syncSlotRole(slotCard, remote.slot_role || 'dps');
       }
     });
@@ -810,12 +1165,18 @@ function pollRemoteState() {
     .then(r => r.json())
     .then(data => {
       if (!data.ok || !data.entries) return;
-      if (data.version && data.version !== lastKnownVersion) {
-        if (lastKnownVersion !== null) {
-          // Remote state changed — apply non-dirty slots
-          applyRemoteState(data.entries);
-        }
-        lastKnownVersion = data.version;
+      const revision = Number(data.revision);
+      const remotePublishedRevision =
+        data.published_revision === null ? null : Number(data.published_revision);
+      if (remotePublishedRevision !== publishedRevision) {
+        publishedRevision = remotePublishedRevision;
+        updatePublishState();
+      }
+      if (Number.isFinite(revision) && revision !== currentRevision) {
+        currentRevision = revision;
+        applyRemoteState(data.entries);
+        updateServerSnapshot(data.entries, { preserveDirty: true });
+        updatePublishState();
       }
     })
     .catch(() => {}); // Silently ignore poll errors
@@ -827,12 +1188,14 @@ function compTabLabel(cn) {
 
 function showPostConfirmModal() {
   const summaryEl = document.getElementById('postConfirmSummary');
+  const validationEl = document.getElementById('postValidationSummary');
   const postConfirmBtn  = document.getElementById('postConfirmBtn');
   const postCurrentBtn  = document.getElementById('postCurrentBtn');
   const postAllBtn      = document.getElementById('postAllBtn');
 
   // Show loading state immediately and open the modal
   summaryEl.innerHTML = '<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview…</div>';
+  if (validationEl) validationEl.innerHTML = '';
   postConfirmBtn.style.display  = 'none';
   postCurrentBtn.style.display  = 'none';
   postAllBtn.style.display      = 'none';
@@ -840,7 +1203,8 @@ function showPostConfirmModal() {
   new bootstrap.Modal(document.getElementById('postConfirmModal')).show();
 
   // Fetch full composition data for the preview
-  fetch(`${RAID_URL}/comp_preview`)
+  flushPendingChanges()
+    .then(() => fetch(`${RAID_URL}/comp_preview`))
     .then(r => r.json())
     .then(data => {
       if (!data.ok) {
@@ -851,6 +1215,21 @@ function showPostConfirmModal() {
 
       const allCompNums = data.allCompNumbers || [];
       const isMultiComp = allCompNums.length > 1;
+
+      if (validationEl) {
+        const warningItems = [];
+        for (const cn of allCompNums) {
+          const compData = data.comps[cn];
+          for (const warning of compData?.warnings || []) {
+            warningItems.push(
+              `<li class="text-${warning.level === 'danger' ? 'danger' : warning.level === 'warning' ? 'warning' : 'info'}"><strong>${escapeHtml(compTabLabel(cn))}:</strong> ${escapeHtml(warning.message)}</li>`
+            );
+          }
+        }
+        validationEl.innerHTML = warningItems.length
+          ? `<div class="publish-validation"><strong>Review before publishing</strong><ul class="mb-0 mt-1">${warningItems.join('')}</ul></div>`
+          : '<div class="alert alert-success py-2 mb-0">✓ All roster slots are resolved.</div>';
+      }
 
       // Build Discord embed previews.
       // renderDiscordPreview escapes all user-supplied content via escapeHtml,
@@ -878,9 +1257,7 @@ function showPostConfirmModal() {
       }
     })
     .catch(err => {
-      summaryEl.innerHTML = `<p class="text-danger">Failed to load preview: ${escapeHtml(err.message)}</p>`;
-      // Fall back to showing the confirm button so the user can still post
-      postConfirmBtn.style.display = '';
+      summaryEl.innerHTML = `<p class="text-danger">The roster could not be saved and previewed: ${escapeHtml(err.message)}. Publishing is paused until saving succeeds.</p>`;
     });
 }
 
@@ -1254,9 +1631,14 @@ function startTabRename() {
       const data = await resp.json();
       if (data.ok) {
         COMP_LABELS[CURRENT_COMP] = data.label || null;
+        currentRevision = Number(data.revision) || currentRevision;
+        updatePublishState();
+      } else {
+        throw new Error(data.error || 'Rename failed.');
       }
     } catch (err) {
       console.error('[comp_label] rename failed:', err);
+      announce(`⚠ rename failed: ${err.message}`);
     }
     const finalLabel = COMP_LABELS[CURRENT_COMP] || ('Raid ' + CURRENT_COMP);
     tab.replaceChildren(...buildTabDOM(finalLabel));
@@ -1318,6 +1700,7 @@ function saveOfficerNote() {
 let _presetModalInstance = null;
 let _presetWarnModalInstance = null;
 let _pendingPresetSlots = null; // preset slots waiting for user confirmation
+let _pendingPresetMode = 'merge';
 
 function openPresetModal() {
   if (!_presetModalInstance) {
@@ -1349,6 +1732,10 @@ function loadPresetList() {
         nameSpan.className = 'flex-grow-1';
         nameSpan.style.fontSize = '0.9rem';
         nameSpan.textContent = preset.name;
+        const count = document.createElement('small');
+        count.className = 'text-muted ms-2';
+        count.textContent = `${preset.slots.length} slot${preset.slots.length === 1 ? '' : 's'}`;
+        nameSpan.appendChild(count);
 
         const loadBtn = document.createElement('button');
         loadBtn.type = 'button';
@@ -1435,23 +1822,32 @@ function deletePreset(id, rowEl) {
 }
 
 function initiateLoadPreset(slots) {
+  const mode =
+    document.querySelector('input[name="presetLoadMode"]:checked')?.value || 'merge';
   // Count how many slots are currently filled with real players (not placeholders)
   let playerCount = 0;
   document.querySelectorAll('.slot-card').forEach(slotCard => {
     const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (assignedDiv && assignedDiv.dataset.charId) playerCount++;
+    if (
+      assignedDiv &&
+      (assignedDiv.dataset.charId ||
+        (assignedDiv.dataset.discordUserId && !assignedDiv.dataset.charId))
+    ) {
+      playerCount++;
+    }
   });
 
-  if (playerCount > 0) {
+  if (mode === 'replace' && playerCount > 0) {
     // Show warning modal
     _pendingPresetSlots = slots;
+    _pendingPresetMode = mode;
     document.getElementById('warnPlayerCount').textContent = playerCount;
     if (!_presetWarnModalInstance) {
       _presetWarnModalInstance = new bootstrap.Modal(document.getElementById('presetWarnModal'));
     }
     _presetWarnModalInstance.show();
   } else {
-    applyPresetSlots(slots);
+    applyPresetSlots(slots, mode);
   }
 }
 
@@ -1464,18 +1860,35 @@ async function updateRaidSize(newSize) {
   return await resp.json();
 }
 
-function increaseRaidSize() {
+async function increaseRaidSize() {
   const newSize = MAX_SIZE + 5;
-  updateRaidSize(newSize).then(data => {
-    if (data.ok) {
-      window.location.reload();
-    } else {
+  await runAfterSave(async () => {
+    const data = await updateRaidSize(newSize);
+    if (!data.ok) {
+      allowPageExit = false;
       alert('Error increasing raid size: ' + (data.error || 'Unknown error'));
+      return;
     }
+    allowPageExit = true;
+    window.location.reload();
   });
 }
 
-function applyPresetSlots(slots) {
+async function decreaseRaidSize() {
+  const newSize = Math.max(1, MAX_SIZE - 5);
+  await runAfterSave(async () => {
+    const data = await updateRaidSize(newSize);
+    if (!data.ok) {
+      allowPageExit = false;
+      alert('Unable to shrink the raid: ' + (data.error || 'Unknown error'));
+      return;
+    }
+    allowPageExit = true;
+    window.location.reload();
+  });
+}
+
+function applyPresetSlots(slots, mode = 'merge') {
   // Close the preset modal first
   if (_presetModalInstance) _presetModalInstance.hide();
 
@@ -1493,32 +1906,45 @@ function applyPresetSlots(slots) {
   if (requiredSize > MAX_SIZE) {
     sessionStorage.setItem('shouldApplyPreset', 'true');
     sessionStorage.setItem('pendingPreset', JSON.stringify(slots));
-    updateRaidSize(requiredSize).then(data => {
+    sessionStorage.setItem('pendingPresetMode', mode);
+    flushPendingChanges().then(() => updateRaidSize(requiredSize)).then(data => {
       if (data.ok) {
         window.location.reload();
       } else {
         alert('Error increasing raid size for preset: ' + (data.error || 'Unknown error'));
         sessionStorage.removeItem('shouldApplyPreset');
         sessionStorage.removeItem('pendingPreset');
+        sessionStorage.removeItem('pendingPresetMode');
       }
+    }).catch((error) => {
+      alert('Unable to save before resizing for preset: ' + error.message);
+      sessionStorage.removeItem('shouldApplyPreset');
+      sessionStorage.removeItem('pendingPreset');
+      sessionStorage.removeItem('pendingPresetMode');
     });
     return;
   }
 
-  // Clear all slots
-  document.querySelectorAll('.slot-card').forEach(slotCard => {
-    const assignedDiv = slotCard.querySelector('.assigned-char');
-    if (!assignedDiv) return;
-    if (assignedDiv.dataset.charId || assignedDiv.dataset.placeholder) {
-      clearAssigned(assignedDiv);
-    }
-  });
+  if (mode === 'replace') {
+    document.querySelectorAll('.slot-card').forEach(slotCard => {
+      const assignedDiv = slotCard.querySelector('.assigned-char');
+      if (!assignedDiv) return;
+      if (
+        assignedDiv.dataset.charId ||
+        assignedDiv.dataset.discordUserId ||
+        assignedDiv.dataset.placeholder
+      ) {
+        clearAssigned(assignedDiv);
+      }
+    });
+  }
 
   // Build a map of role_slot -> preset entry for quick lookup
   const presetMap = {};
   for (const entry of slots) presetMap[entry.role_slot] = entry;
 
   // Apply preset placeholders to matching slots
+  let skippedPlayers = 0;
   document.querySelectorAll('.slot-card').forEach(slotCard => {
     const slot = slotCard.dataset.slot;
     const entry = presetMap[slot];
@@ -1526,6 +1952,14 @@ function applyPresetSlots(slots) {
 
     const assignedDiv = slotCard.querySelector('.assigned-char');
     if (!assignedDiv) return;
+    if (
+      mode === 'merge' &&
+      (assignedDiv.dataset.charId ||
+        (assignedDiv.dataset.discordUserId && !assignedDiv.dataset.charId))
+    ) {
+      skippedPlayers += 1;
+      return;
+    }
 
     assignedDiv.innerHTML = '';
     const label = document.createElement('span');
@@ -1551,6 +1985,9 @@ function applyPresetSlots(slots) {
   updateCharInCompStatus();
   clearTimeout(saveTimer);
   autoSave();
+  if (skippedPlayers) {
+    announce(`Preset merged; ${skippedPlayers} occupied slot(s) were kept.`);
+  }
 }
 
 // Initialise everything once DOM is ready
@@ -1558,15 +1995,69 @@ document.addEventListener('DOMContentLoaded', () => {
   applyPlaceholderColors();
   applyInitialTints();
   updateCharInCompStatus();
+  updatePublishState();
+  seedServerSnapshotFromDom();
+  filterPool(poolRoleFilter);
+  setPoolStatusFilter(poolStatusFilter);
+
+  document.querySelectorAll('.placeholder-chip').forEach((chip) => {
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('tabindex', '0');
+    chip.setAttribute('aria-label', `Select placeholder ${chip.dataset.placeholder || chip.textContent}`);
+    chip.addEventListener('click', () => selectPlaceholderSource(chip));
+    chip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectPlaceholderSource(chip);
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && selectedSourceEl) {
+      clearSourceSelection();
+      announce('Assignment selection cleared.');
+    }
+  });
+
+  document.querySelectorAll('.save-aware-nav').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      if (allowPageExit) return;
+      event.preventDefault();
+      runAfterSave(() => {
+        allowPageExit = true;
+        window.location.href = link.href;
+      });
+    });
+  });
+
+  document.querySelectorAll('.save-aware-form').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      if (allowPageExit) return;
+      event.preventDefault();
+      runAfterSave(() => {
+        allowPageExit = true;
+        form.submit();
+      });
+    });
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (allowPageExit || (!isDirty && !saveInFlight)) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   // Auto-apply preset after reload if requested
   if (sessionStorage.getItem('shouldApplyPreset') === 'true') {
     const slots = JSON.parse(sessionStorage.getItem('pendingPreset'));
+    const mode = sessionStorage.getItem('pendingPresetMode') || 'merge';
     sessionStorage.removeItem('shouldApplyPreset');
     sessionStorage.removeItem('pendingPreset');
+    sessionStorage.removeItem('pendingPresetMode');
     if (slots) {
       // Small delay to ensure everything is ready
-      setTimeout(() => applyPresetSlots(slots), 100);
+      setTimeout(() => applyPresetSlots(slots, mode), 100);
     }
   }
 
@@ -1581,25 +2072,35 @@ document.addEventListener('DOMContentLoaded', () => {
     new bootstrap.Tooltip(el);
   });
 
+  const submitPublishForm = (allComps) => {
+    const lockCheckbox = document.getElementById('lockAfterPost');
+    document.getElementById('lockAfterPostValue').value = lockCheckbox?.checked ? '1' : '0';
+    runAfterSave(() => {
+      const form = document.getElementById('postForm');
+      if (allComps) form.action = `${RAID_URL}/post_comp`;
+      allowPageExit = true;
+      form.submit();
+    });
+  };
+
   document.getElementById('postConfirmBtn')?.addEventListener('click', () => {
-    document.getElementById('postForm').submit();
+    submitPublishForm(false);
   });
 
   document.getElementById('postCurrentBtn')?.addEventListener('click', () => {
-    document.getElementById('postForm').submit();
+    submitPublishForm(false);
   });
 
   document.getElementById('postAllBtn')?.addEventListener('click', () => {
-    const form = document.getElementById('postForm');
-    form.action = `${RAID_URL}/post_comp`;
-    form.submit();
+    submitPublishForm(true);
   });
 
   document.getElementById('presetWarnConfirmBtn')?.addEventListener('click', () => {
     if (_presetWarnModalInstance) _presetWarnModalInstance.hide();
     if (_pendingPresetSlots) {
-      applyPresetSlots(_pendingPresetSlots);
+      applyPresetSlots(_pendingPresetSlots, _pendingPresetMode);
       _pendingPresetSlots = null;
+      _pendingPresetMode = 'merge';
     }
   });
 

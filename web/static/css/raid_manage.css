@@ -60,6 +60,17 @@
 }
 .placeholder-chip:hover  { box-shadow: 0 0 0 2px var(--wow-gold); opacity: 0.85; }
 .placeholder-chip:active { cursor: grabbing; }
+.placeholder-chip:focus-visible,
+.char-card:focus-visible,
+.slot-card:focus-visible,
+.user-group-header:focus-visible {
+  outline: 2px solid var(--wow-gold);
+  outline-offset: 2px;
+}
+.assignment-source-selected {
+  box-shadow: 0 0 0 3px var(--wow-gold) !important;
+  opacity: 1 !important;
+}
 
 .placeholder-group-label {
   font-size: 0.68rem;
@@ -180,6 +191,19 @@
 .comp-tab.active { background: var(--wow-gold); color: #0e1117; border-color: var(--wow-gold); font-weight: 600; }
 .comp-tab-add { color: #57a85b; border-color: #57a85b; }
 .comp-tab-add:hover { background: #1a3020; color: #7dc880; }
+.comp-tab-action { color: #8ab4f8; border-color: #52698c; }
+.comp-tab-danger { color: #ff8585; border-color: #8c5252; }
+.publish-state {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: #8a95b0;
+  border: 1px solid var(--border-dim);
+}
+.publish-state.current { color: #7dc880; border-color: #47704a; }
+.publish-state.changed { color: #ffc107; border-color: #7a681f; }
+.save-status { font-size: 0.78rem; min-width: 92px; text-align: center; }
 
 /* ── Right-panel tab switcher ────────────────────────────────────────── */
 .right-panel-tab {
@@ -302,6 +326,29 @@
   border-color: var(--wow-gold) !important;
   opacity: 0.75;
 }
+.char-card.unavailable {
+  opacity: 0.5;
+  border-style: dashed;
+}
+.assign-any-btn {
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  background: transparent;
+  color: #b8c2d8;
+  line-height: 1;
+  padding: 2px 5px;
+}
+.assign-any-btn:hover { border-color: var(--wow-gold); color: var(--wow-gold); }
+.select-char-btn {
+  margin-left: 4px;
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: #b8c2d8;
+  line-height: 1;
+  padding: 1px 5px;
+}
+.select-char-btn:hover { border-color: var(--wow-gold); color: var(--wow-gold); }
 /* Reserve space on the right for the badges so the char name doesn't overlap */
 .char-card > span.fw-bold {
   display: inline-block;
@@ -451,6 +498,7 @@
 .add-slots-row {
   display: flex;
   justify-content: center;
+  gap: 0.5rem;
 }
 .add-slots-btn {
   width: 100%;
@@ -469,6 +517,7 @@
   border-color: var(--wow-gold);
   color: var(--wow-gold);
 }
+.remove-slots-btn:hover { border-color: #dc6b6b; color: #ff8585; }
 .add-slots-btn .plus-icon {
   font-size: 2rem;
   line-height: 1;
@@ -478,6 +527,63 @@
 /* ── Pool action buttons ───────────────────────────────────────────── */
 .btn-pool-action {
   font-size: 0.7rem !important;
+}
+.pool-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+}
+.pool-status-filters .btn { flex: 1 1 auto; font-size: 0.64rem; }
+.roster-summary {
+  color: #8a95b0;
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+.roster-summary.incomplete { color: #d9aa54; }
+.publish-validation {
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 6px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 991.98px) {
+  .roster-page-wrap {
+    height: auto;
+    min-height: 0;
+  }
+  .roster-columns {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  .roster-col-main {
+    flex: 1 1 100%;
+    order: 1;
+    overflow: visible;
+  }
+  .roster-col-side {
+    flex: 1 1 calc(50% - 0.5rem);
+    max-width: none;
+    min-width: 280px;
+    max-height: 65vh;
+    order: 2;
+  }
+  .roster-col-side:last-child { order: 3; }
+  .roster-action-bar { position: sticky; top: 0; z-index: 20; background: var(--bg-base); padding: 0.35rem 0; }
+}
+
+@media (max-width: 575.98px) {
+  .roster-columns { display: block; }
+  .roster-col-side { min-width: 0; max-height: none; margin-top: 0.75rem; overflow: visible; }
+  .roster-primary-actions { width: 100%; }
+  .roster-primary-actions .btn { flex: 1 1 auto; }
+  .save-status { width: 100%; order: 10; }
+  .publish-state { width: 100%; margin-left: 0; text-align: center; }
+  .slot-group.row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .slot-group.row > .col { width: auto; }
 }
 
 /* ── Collector buttons and badges ────────────────────────────────── */

@@ -1,5 +1,7 @@
 'use strict';
 
+const { ensureCompositionMeta, parseCompNumber } = require('../../services/compositionWorkflow');
+
 function registerManagePageRoutes(router, dependencies) {
   const {
     DISCORD_API,
@@ -115,10 +117,6 @@ function registerManagePageRoutes(router, dependencies) {
         userSignupMap[uid].is_tentative = true;
       }
 
-      // Skip specs/characters that are already saved this lockout — they are not
-      // available for the raid and would only add clutter to the pool.
-      if (s.is_saved) continue;
-
       // Find or create a character group by char_name
       let charGroup = userSignupMap[uid].characters.find(
         (cg) => cg.char_name === s.character.char_name
@@ -141,12 +139,8 @@ function registerManagePageRoutes(router, dependencies) {
         gearscore: s.character.gearscore,
         role: s.character.role,
         is_prio: s.signup_type === 'prio_character' || s.signup_type === 'prio_role',
+        is_saved: Boolean(s.is_saved),
       });
-    }
-
-    // Remove user groups that have no remaining (non-saved) characters.
-    for (const uid of Object.keys(userSignupMap)) {
-      if (userSignupMap[uid].characters.length === 0) delete userSignupMap[uid];
     }
     const signupsByUser = Object.values(userSignupMap);
 
@@ -182,24 +176,26 @@ function registerManagePageRoutes(router, dependencies) {
             for (const inst of charSavedInstances[cid]) instanceSet.add(inst);
           }
         }
+        charGroup.specs.sort((a, b) => Number(a.is_saved) - Number(b.is_saved));
         charGroup.saved_instances = [...instanceSet].sort();
+        charGroup.is_unavailable = charGroup.specs.every((spec) => spec.is_saved);
       }
+      userGroup.is_unavailable = userGroup.characters.every(
+        (character) => character.is_unavailable
+      );
     }
 
     // Fetch officer notes for all signed-up users in this guild
     const officerNotes = {};
 
-    for (const userGroup of signupsByUser) {
-      userGroup.officer_note = officerNotes[userGroup.discord_user_id] || '';
-    }
-
     // Sort: players with starred (prio) characters first, tentative players last
     signupsByUser.sort((a, b) => {
       const aPrio = a.characters.some((cg) => cg.specs.some((s) => s.is_prio));
       const bPrio = b.characters.some((cg) => cg.specs.some((s) => s.is_prio));
+      if (a.is_unavailable !== b.is_unavailable) return a.is_unavailable ? 1 : -1;
       if (a.is_tentative !== b.is_tentative) return a.is_tentative ? 1 : -1;
       if (aPrio !== bPrio) return aPrio ? -1 : 1;
-      return 0;
+      return a.display_label.localeCompare(b.display_label);
     });
 
     // If some users don't have a persisted guild_role, try to fetch it dynamically (optional optimization)
@@ -222,23 +218,29 @@ function registerManagePageRoutes(router, dependencies) {
       );
       for (const row of officerNoteRows) officerNotes[String(row.discord_user_id)] = row.note;
     }
+    for (const userGroup of signupsByUser) {
+      userGroup.officer_note = officerNotes[userGroup.discord_user_id] || '';
+    }
 
     // Determine which comp numbers already exist for this raid
+    await ensureCompositionMeta(pool, raidId, 1);
     const [existingCompNums] = await pool.query(
-      'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
+      'SELECT comp_number FROM composition_meta WHERE raid_id = ? ORDER BY comp_number',
       [raidId]
     );
     const compNumbers = existingCompNums.map((r) => r.comp_number);
     if (compNumbers.length === 0) compNumbers.push(1);
 
     // Determine active comp from query param (default: 1)
-    const currentComp = parseInt(req.query.comp) || 1;
+    let currentComp;
+    try {
+      currentComp = parseCompNumber(req.query.comp);
+    } catch (_) {
+      currentComp = compNumbers[0] || 1;
+    }
 
-    // Include the current comp even if it hasn't been saved to the DB yet
-    // (e.g. user navigated to a new comp tab but hasn't placed anyone yet)
     if (!compNumbers.includes(currentComp)) {
-      compNumbers.push(currentComp);
-      compNumbers.sort((a, b) => a - b);
+      currentComp = compNumbers[0];
     }
 
     const [existingComp] = await pool.query(
@@ -312,6 +314,20 @@ function registerManagePageRoutes(router, dependencies) {
     // Fetch custom comp labels
     const compLabels = await fetchCompLabels(raidId);
 
+    const [compMetaRows] = await pool.query(
+      `SELECT comp_number, revision, published_revision, published_at
+       FROM composition_meta WHERE raid_id = ? ORDER BY comp_number`,
+      [raidId]
+    );
+    const compMeta = {};
+    for (const row of compMetaRows) {
+      compMeta[row.comp_number] = {
+        revision: Number(row.revision),
+        published_revision: row.published_revision === null ? null : Number(row.published_revision),
+        published_at: row.published_at || null,
+      };
+    }
+
     // Build map of character_id -> [comp_numbers] across ALL comps for this raid.
     // Also track which characters are marked as collectors.
     // Used by the left-panel to show which characters are already placed and collecting.
@@ -374,6 +390,7 @@ function registerManagePageRoutes(router, dependencies) {
       max_size: maxSize,
       comp_numbers: compNumbers,
       comp_labels: compLabels,
+      comp_meta: compMeta,
       current_comp: currentComp,
       next_comp: nextComp,
       comp_summaries: compSummaries,
@@ -384,6 +401,7 @@ function registerManagePageRoutes(router, dependencies) {
       flash: popFlash(req),
       user: currentUser(req),
       can_edit: canEdit,
+      available_player_count: signupsByUser.filter((group) => !group.is_unavailable).length,
     });
   });
 }

@@ -9,7 +9,14 @@ const { normalizeRaidEditInput, formatRaidDateInput } = require('../../services/
 const { parseSignupSelection } = require('../../services/signup');
 const { resolveIsAdmin } = require('../adminCheck');
 const { requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
-const { postToDiscordChannel, postToRaidLogThread, DISCORD_API } = require('./discord');
+const {
+  postToDiscordChannel,
+  editDiscordMessage,
+  deleteDiscordMessage,
+  isDiscordNotFound,
+  postToRaidLogThread,
+  DISCORD_API,
+} = require('./discord');
 const {
   fetchSpecAliases,
   fetchCompLabels,
@@ -88,6 +95,8 @@ const routeDependencies = {
   compTabLabel,
   currentUser,
   express,
+  editDiscordMessage,
+  deleteDiscordMessage,
   fetch,
   fetchCompLabels,
   fetchSpecAliases,
@@ -103,6 +112,7 @@ const routeDependencies = {
   postToDiscordChannel,
   postToRaidLogThread,
   raidBaseUrl,
+  isDiscordNotFound,
   normalizeRaidEditInput,
   requireAdmin,
   requireLogin,

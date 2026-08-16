@@ -61,6 +61,24 @@ async function editDiscordMessage(channelId, messageId, payload) {
   }
 }
 
+async function deleteDiscordMessage(channelId, messageId) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !channelId || !messageId) {
+    return { ok: false, reason: 'missing token/channel/message' };
+  }
+  try {
+    const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (resp.ok || resp.status === 404) return { ok: true };
+    const text = await resp.text().catch(() => '');
+    return { ok: false, status: resp.status, reason: `Discord API ${resp.status}: ${text}` };
+  } catch (err) {
+    return { ok: false, reason: `Network error: ${err.message}` };
+  }
+}
+
 function isDiscordNotFound(result) {
   return Boolean(result && !result.ok && result.status === 404);
 }
@@ -236,6 +254,7 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
 module.exports = {
   postToDiscordChannel,
   editDiscordMessage,
+  deleteDiscordMessage,
   isDiscordNotFound,
   fetchDiscordMessagesPage,
   fetchDiscordBotUserId,

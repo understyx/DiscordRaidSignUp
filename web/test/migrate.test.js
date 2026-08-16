@@ -12,7 +12,7 @@ test('migration history is complete and ordered', () => {
   const files = listMigrationFiles();
   assert.equal(files[0], '001_initial_schema.sql');
   assert.equal(files[1], '002_pre_sql_migration_columns.sql');
-  assert.equal(files.at(-1), '036_discord_users.sql');
+  assert.equal(files.at(-1), '038_composition_workflow.sql');
 });
 
 test('SQL splitter removes comments and empty statements', () => {

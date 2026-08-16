@@ -1,5 +1,7 @@
 'use strict';
 
+const { savePlaceholderPreset } = require('../../services/presets');
+
 function registerPresetRoutes(router, dependencies) {
   const {
     DISCORD_API,
@@ -60,7 +62,7 @@ function registerPresetRoutes(router, dependencies) {
     res.json({ ok: true, presets });
   });
 
-  // POST /raids/presets — create a new placeholder preset
+  // POST /raids/presets — create or replace a placeholder preset
   router.post('/presets', express.json(), async (req, res) => {
     if (!(await requireAdmin(req, res))) return;
 
@@ -78,11 +80,13 @@ function registerPresetRoutes(router, dependencies) {
 
     const trimmedName = name.trim().slice(0, 100);
     try {
-      const [result] = await pool.query(
-        'INSERT INTO placeholder_presets (guild_id, name, slots, created_by) VALUES (?, ?, ?, ?)',
-        [guildIdParam, trimmedName, JSON.stringify(slots), userId]
-      );
-      res.json({ ok: true, id: result.insertId, name: trimmedName });
+      const presetId = await savePlaceholderPreset(pool, {
+        guildId: guildIdParam,
+        userId,
+        name: trimmedName,
+        slots,
+      });
+      res.json({ ok: true, id: presetId, name: trimmedName });
     } catch (err) {
       console.error('[presets] Failed to save preset:', err.message);
       res.status(500).json({ ok: false, error: 'Database error' });

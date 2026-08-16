@@ -1,5 +1,20 @@
 'use strict';
 
+const {
+  CompositionValidationError,
+  applyCompositionChanges,
+  bumpCompositionRevision,
+  ensureCompositionMeta,
+  fetchCompositionRows,
+  lockCompositionMeta,
+  mergeCompositionChanges,
+  normalizeEntry,
+  parseCompNumber,
+  replaceCompositionRows,
+  serializeCompositionRows,
+  validateCompositionEntries,
+} = require('../../services/compositionWorkflow');
+
 function registerManageMutationRoutes(router, dependencies) {
   const {
     DISCORD_API,
@@ -10,6 +25,7 @@ function registerManageMutationRoutes(router, dependencies) {
     buildCompEmbed,
     compTabLabel,
     currentUser,
+    deleteDiscordMessage,
     express,
     fetch,
     fetchCompLabels,
@@ -29,7 +45,43 @@ function registerManageMutationRoutes(router, dependencies) {
     requireLogin,
     resolveIsAdmin,
   } = dependencies;
-  // POST /raids/:raid_number/manage (JSON body) — full-state save used by manual "Save & Reload"
+  async function currentState(db, raidId, compNumber) {
+    let [metaRows] = await db.query(
+      `SELECT revision, published_revision, published_at, discord_message_id
+       FROM composition_meta WHERE raid_id = ? AND comp_number = ?`,
+      [raidId, compNumber]
+    );
+    if (metaRows.length === 0) {
+      await ensureCompositionMeta(db, raidId, compNumber);
+      [metaRows] = await db.query(
+        `SELECT revision, published_revision, published_at, discord_message_id
+         FROM composition_meta WHERE raid_id = ? AND comp_number = ?`,
+        [raidId, compNumber]
+      );
+    }
+    const meta = metaRows[0];
+    const rows = await fetchCompositionRows(db, raidId, compNumber);
+    return {
+      revision: Number(meta.revision),
+      published_revision: meta.published_revision === null ? null : Number(meta.published_revision),
+      published_at: meta.published_at || null,
+      entries: serializeCompositionRows(rows),
+    };
+  }
+
+  function sendMutationError(res, error) {
+    const status = error instanceof CompositionValidationError ? error.status : 500;
+    if (!(error instanceof CompositionValidationError)) {
+      console.error('[composition] Mutation failed:', error.message || error);
+    }
+    return res.status(status).json({
+      ok: false,
+      error:
+        error instanceof CompositionValidationError ? error.message : 'Unable to save composition.',
+    });
+  }
+
+  // POST /raids/:raid_number/manage — transactional full-state save fallback.
   router.post('/:raid_number/manage', express.json(), async (req, res) => {
     if (!(await requireAdmin(req, res))) return;
 
@@ -37,110 +89,38 @@ function registerManageMutationRoutes(router, dependencies) {
     const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
     if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
-    const raidId = raid.id;
-    const userId = req.session.user_id;
-    const compNumber = parseInt(req.query.comp) || 1;
-    const body = req.body;
-
-    if (!Array.isArray(body)) {
-      return res.json({
-        ok: false,
-        error: 'Body must be a list of {character_id?, placeholder_text?, role_slot} entries.',
-      });
+    let compNumber;
+    try {
+      compNumber = parseCompNumber(req.query.comp);
+    } catch (error) {
+      return sendMutationError(res, error);
     }
-
-    for (const entry of body) {
-      if (typeof entry !== 'object' || !('role_slot' in entry)) {
-        return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
+    const body = Array.isArray(req.body) ? { entries: req.body } : req.body || {};
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const meta = await lockCompositionMeta(connection, raid.id, compNumber);
+      if (
+        body.base_revision !== null &&
+        body.base_revision !== undefined &&
+        Number(body.base_revision) !== Number(meta.revision)
+      ) {
+        await connection.rollback();
+        const state = await currentState(pool, raid.id, compNumber);
+        return res.status(409).json({ ok: false, conflict: true, ...state });
       }
-      const hasChar =
-        'character_id' in entry && entry.character_id !== null && entry.character_id !== '';
-      const hasPlayer = 'discord_user_id' in entry && entry.discord_user_id;
-      const hasPlaceholder = 'placeholder_text' in entry && entry.placeholder_text;
-      if (!hasChar && !hasPlayer && !hasPlaceholder) {
-        return res.json({
-          ok: false,
-          error: 'Each entry must have character_id, discord_user_id, or placeholder_text.',
-        });
-      }
-      if (hasChar && isNaN(parseInt(entry.character_id))) {
-        return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
-      }
+      const entries = await validateCompositionEntries(connection, raid, body.entries);
+      await replaceCompositionRows(connection, raid.id, compNumber, req.session.user_id, entries);
+      const revision = await bumpCompositionRevision(connection, raid.id, compNumber);
+      await connection.commit();
+      const rows = await fetchCompositionRows(pool, raid.id, compNumber);
+      return res.json({ ok: true, revision, entries: serializeCompositionRows(rows) });
+    } catch (error) {
+      await connection.rollback();
+      return sendMutationError(res, error);
+    } finally {
+      connection.release();
     }
-
-    // Separate character entries, player entries, and placeholder entries
-    const charEntries = body.filter(
-      (e) => e.character_id !== null && e.character_id !== undefined && e.character_id !== ''
-    );
-    const playerEntries = body.filter((e) => !e.character_id && e.discord_user_id);
-    const placeholderEntries = body.filter(
-      (e) => !e.character_id && !e.discord_user_id && e.placeholder_text
-    );
-
-    if (charEntries.length > 0) {
-      // Validate: each Discord user may only appear once in the composition,
-      // and all characters must belong to the active guild.
-      const charIds = charEntries.map((e) => parseInt(e.character_id));
-      const placeholders = charIds.map(() => '?').join(', ');
-      const [chars] = await pool.query(
-        `SELECT id, discord_user_id FROM characters WHERE id IN (${placeholders}) AND guild_id = ? AND is_deleted = 0`,
-        [...charIds, raid.guild_id]
-      );
-      const seenUsers = new Set();
-      for (const char of chars) {
-        const uid = String(char.discord_user_id);
-        if (seenUsers.has(uid)) {
-          return res.json({
-            ok: false,
-            error:
-              'Each Discord user can only have one character in the raid composition. Please remove duplicate assignments.',
-          });
-        }
-        seenUsers.add(uid);
-      }
-    }
-
-    await pool.query('DELETE FROM compositions WHERE raid_id = ? AND comp_number = ?', [
-      raidId,
-      compNumber,
-    ]);
-
-    const validRoles = ['tank', 'healer', 'dps', 'mdps', 'rdps'];
-
-    for (const entry of charEntries) {
-      const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
-      await pool.query(
-        'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
-        [
-          raidId,
-          parseInt(entry.character_id),
-          entry.role_slot,
-          slotRole,
-          compNumber,
-          !!entry.is_sfs_collector,
-          !!entry.is_val_collector,
-          userId,
-        ]
-      );
-    }
-
-    for (const entry of playerEntries) {
-      const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
-      await pool.query(
-        'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
-        [raidId, entry.discord_user_id, entry.role_slot, slotRole, compNumber, userId]
-      );
-    }
-
-    for (const entry of placeholderEntries) {
-      const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
-      await pool.query(
-        'INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))',
-        [raidId, entry.placeholder_text, entry.role_slot, slotRole, compNumber, userId]
-      );
-    }
-
-    res.json({ ok: true });
   });
 
   // PATCH /raids/:raid_number/manage — granular per-slot auto-save (last-write-wins per slot)
@@ -156,186 +136,66 @@ function registerManageMutationRoutes(router, dependencies) {
     const raid = await getRaidByUrlParams(patchGuildId, raidNumber);
     if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
-    const raidId = raid.id;
-    const userId = req.session.user_id;
-    const compNumber = parseInt(req.query.comp) || 1;
-    const body = req.body;
+    let compNumber;
+    try {
+      compNumber = parseCompNumber(req.query.comp);
+    } catch (error) {
+      return sendMutationError(res, error);
+    }
+    const requestBody = Array.isArray(req.body) ? { changes: req.body } : req.body || {};
+    const changesBody = requestBody.changes;
+    if (!Array.isArray(changesBody) || changesBody.length === 0) {
+      const state = await currentState(pool, raid.id, compNumber);
+      return res.json({ ok: true, saved: [], ...state });
+    }
 
-    if (!Array.isArray(body) || body.length === 0) {
-      // Return current composition even for empty payloads
-      const [emptyRows] = await pool.query(
-        `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text,
-            c.char_name, c.char_class, c.spec, c.gearscore, c.discord_user_id AS char_discord_user_id,
-              s.status AS signup_status,
-            du.username AS du_username, du.display_name AS du_display_name
-       FROM compositions co
-       LEFT JOIN characters c ON co.character_id = c.id
-       LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-       LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
-       WHERE co.raid_id = ? AND co.comp_number = ?
-       ORDER BY co.role_slot`,
-        [raidId, compNumber]
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const meta = await lockCompositionMeta(connection, raid.id, compNumber);
+      if (
+        requestBody.base_revision !== null &&
+        requestBody.base_revision !== undefined &&
+        Number(requestBody.base_revision) !== Number(meta.revision)
+      ) {
+        await connection.rollback();
+        const state = await currentState(pool, raid.id, compNumber);
+        return res.status(409).json({ ok: false, conflict: true, ...state });
+      }
+
+      const maxSize = Number(raid.max_size) || 25;
+      const normalizedChanges = changesBody.map((entry) =>
+        normalizeEntry(entry, maxSize, { allowClear: true })
       );
-      const emptyEntries = emptyRows.map((r) => ({
-        role_slot: r.role_slot,
-        slot_role: r.slot_role || 'dps',
-        character_id: r.character_id ? String(r.character_id) : null,
-        placeholder_text: r.placeholder_text || null,
-        char_name: r.char_name || null,
-        char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
-        spec: r.spec || null,
-        gearscore: r.gearscore || 0,
-        discord_user_id: r.char_discord_user_id ? String(r.char_discord_user_id) : null,
-        display_label:
-          r.du_username && r.du_display_name && r.du_display_name !== r.du_username
-            ? `${r.du_username} – ${r.du_display_name}`
-            : r.du_display_name || r.du_username || null,
-        status: r.signup_status || null,
-      }));
-      return res.json({ ok: true, saved: [], entries: emptyEntries });
+      const currentRows = await fetchCompositionRows(connection, raid.id, compNumber);
+      const finalEntries = mergeCompositionChanges(currentRows, normalizedChanges);
+      await validateCompositionEntries(connection, raid, finalEntries);
+      await applyCompositionChanges(
+        connection,
+        raid.id,
+        compNumber,
+        req.session.user_id,
+        normalizedChanges
+      );
+      const revision = await bumpCompositionRevision(connection, raid.id, compNumber);
+      await connection.commit();
+
+      const rows = await fetchCompositionRows(pool, raid.id, compNumber);
+      return res.json({
+        ok: true,
+        revision,
+        saved: normalizedChanges.map((entry) => ({
+          role_slot: entry.role_slot,
+          cleared: entry.clear,
+        })),
+        entries: serializeCompositionRows(rows),
+      });
+    } catch (error) {
+      await connection.rollback();
+      return sendMutationError(res, error);
+    } finally {
+      connection.release();
     }
-
-    // Basic validation
-    for (const entry of body) {
-      if (typeof entry !== 'object' || !entry.role_slot) {
-        return res.json({ ok: false, error: 'Each entry must have a role_slot field.' });
-      }
-      const hasChar =
-        entry.character_id !== null &&
-        entry.character_id !== undefined &&
-        entry.character_id !== '';
-      const hasPlayer = !!entry.discord_user_id;
-      const hasPlaceholder = !!entry.placeholder_text;
-      const isClear = entry.clear === true;
-      if (!hasChar && !hasPlayer && !hasPlaceholder && !isClear) {
-        return res.json({
-          ok: false,
-          error: `Entry for ${entry.role_slot} must have character_id, discord_user_id, placeholder_text, or clear:true.`,
-        });
-      }
-      if (hasChar && isNaN(parseInt(entry.character_id))) {
-        return res.json({ ok: false, error: `Invalid character_id: ${entry.character_id}` });
-      }
-    }
-
-    const savedSlots = [];
-
-    for (const entry of body) {
-      const { role_slot } = entry;
-      const validRoles = ['tank', 'healer', 'dps', 'mdps', 'rdps'];
-      const slotRole = validRoles.includes(entry.slot_role) ? entry.slot_role : 'dps';
-      const charId =
-        entry.character_id !== null && entry.character_id !== undefined && entry.character_id !== ''
-          ? parseInt(entry.character_id)
-          : null;
-      const discordUserId = entry.discord_user_id || null;
-      const placeholderText = entry.placeholder_text || null;
-      const isClear = entry.clear === true;
-
-      if (isClear) {
-        await pool.query(
-          'DELETE FROM compositions WHERE raid_id = ? AND comp_number = ? AND role_slot = ?',
-          [raidId, compNumber, role_slot]
-        );
-        savedSlots.push({ role_slot, cleared: true });
-      } else if (charId !== null) {
-        await pool.query(
-          `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at)
-         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
-         ON DUPLICATE KEY UPDATE
-           character_id    = VALUES(character_id),
-           placeholder_text = NULL,
-           discord_user_id  = NULL,
-           slot_role       = VALUES(slot_role),
-           is_sfs_collector = VALUES(is_sfs_collector),
-           is_val_collector = VALUES(is_val_collector),
-           created_by      = VALUES(created_by),
-           updated_at      = NOW(3)`,
-          [
-            raidId,
-            charId,
-            role_slot,
-            slotRole,
-            compNumber,
-            !!entry.is_sfs_collector,
-            !!entry.is_val_collector,
-            userId,
-          ]
-        );
-        savedSlots.push({ role_slot });
-      } else if (discordUserId) {
-        await pool.query(
-          `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NOW(3), NOW(3))
-         ON DUPLICATE KEY UPDATE
-           character_id    = NULL,
-           placeholder_text = NULL,
-           discord_user_id  = VALUES(discord_user_id),
-           slot_role       = VALUES(slot_role),
-           created_by      = VALUES(created_by),
-           updated_at      = NOW(3)`,
-          [raidId, discordUserId, role_slot, slotRole, compNumber, userId]
-        );
-        savedSlots.push({ role_slot });
-      } else if (placeholderText) {
-        await pool.query(
-          `INSERT INTO compositions (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role, comp_number, created_by, created_at, updated_at)
-         VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, NOW(3), NOW(3))
-         ON DUPLICATE KEY UPDATE
-           character_id    = NULL,
-           placeholder_text = VALUES(placeholder_text),
-           discord_user_id  = NULL,
-           slot_role       = VALUES(slot_role),
-           created_by      = VALUES(created_by),
-           updated_at      = NOW(3)`,
-          [raidId, placeholderText, role_slot, slotRole, compNumber, userId]
-        );
-        savedSlots.push({ role_slot });
-      }
-    }
-
-    // Return the full current composition so all clients can converge immediately
-    const [rows] = await pool.query(
-      `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
-            co.is_sfs_collector, co.is_val_collector,
-            c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count, c.discord_user_id AS char_discord_user_id,
-            s.status AS signup_status,
-            du.username AS du_username, du.display_name AS du_display_name
-     FROM compositions co
-     LEFT JOIN characters c ON co.character_id = c.id
-     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
-     WHERE co.raid_id = ? AND co.comp_number = ?
-     ORDER BY co.role_slot`,
-      [raidId, compNumber]
-    );
-
-    const entries = rows.map((r) => ({
-      role_slot: r.role_slot,
-      slot_role: r.slot_role || 'dps',
-      character_id: r.character_id ? String(r.character_id) : null,
-      placeholder_text: r.placeholder_text || null,
-      discord_user_id: r.discord_user_id
-        ? String(r.discord_user_id)
-        : r.char_discord_user_id
-          ? String(r.char_discord_user_id)
-          : null,
-      display_label:
-        r.du_username && r.du_display_name && r.du_display_name !== r.du_username
-          ? `${r.du_username} – ${r.du_display_name}`
-          : r.du_display_name || r.du_username || null,
-      char_name: r.char_name || null,
-      char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
-      spec: r.spec || null,
-      gearscore: r.gearscore || 0,
-      sfs_count: r.sfs_count,
-      val_count: r.val_count,
-      is_sfs_collector: !!r.is_sfs_collector,
-      is_val_collector: !!r.is_val_collector,
-      status: r.signup_status || null,
-    }));
-
-    res.json({ ok: true, saved: savedSlots, entries });
   });
 
   // GET /raids/:raid_number/manage/json  — polling endpoint for collaborative auto-load
@@ -346,59 +206,13 @@ function registerManageMutationRoutes(router, dependencies) {
     const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
     if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
 
-    const raidId = raid.id;
-    const compNumber = parseInt(req.query.comp) || 1;
-
-    const [rows] = await pool.query(
-      `SELECT co.role_slot, co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
-            co.is_sfs_collector, co.is_val_collector,
-            MAX(co.updated_at) OVER () AS max_updated_at,
-            c.char_name, c.char_class, c.spec, c.gearscore, c.sfs_count, c.val_count, c.discord_user_id AS char_discord_user_id,
-            s.status AS signup_status,
-            du.username AS du_username, du.display_name AS du_display_name
-     FROM compositions co
-     LEFT JOIN characters c ON co.character_id = c.id
-     LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-     LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
-     WHERE co.raid_id = ? AND co.comp_number = ?
-     ORDER BY co.role_slot`,
-      [raidId, compNumber]
-    );
-
-    // Version = ISO string of most recent updated_at across all slots
-    const version =
-      rows.length > 0 && rows[0].max_updated_at
-        ? rows[0].max_updated_at instanceof Date
-          ? rows[0].max_updated_at.toISOString()
-          : String(rows[0].max_updated_at)
-        : '';
-
-    const entries = rows.map((r) => ({
-      role_slot: r.role_slot,
-      slot_role: r.slot_role || 'dps',
-      character_id: r.character_id ? String(r.character_id) : null,
-      placeholder_text: r.placeholder_text || null,
-      discord_user_id: r.discord_user_id
-        ? String(r.discord_user_id)
-        : r.char_discord_user_id
-          ? String(r.char_discord_user_id)
-          : null,
-      display_label:
-        r.du_username && r.du_display_name && r.du_display_name !== r.du_username
-          ? `${r.du_username} – ${r.du_display_name}`
-          : r.du_display_name || r.du_username || null,
-      char_name: r.char_name || null,
-      char_class: r.char_class ? r.char_class.toLowerCase().replace(/ /g, '-') : null,
-      spec: r.spec || null,
-      gearscore: r.gearscore || 0,
-      sfs_count: r.sfs_count,
-      val_count: r.val_count,
-      is_sfs_collector: !!r.is_sfs_collector,
-      is_val_collector: !!r.is_val_collector,
-      status: r.signup_status || null,
-    }));
-
-    res.json({ ok: true, version: version || '', entries });
+    try {
+      const compNumber = parseCompNumber(req.query.comp);
+      const state = await currentState(pool, raid.id, compNumber);
+      res.json({ ok: true, ...state });
+    } catch (error) {
+      sendMutationError(res, error);
+    }
   });
 
   // GET /raids/:raid_number/comp_preview — returns full composition data for Discord embed preview
@@ -414,8 +228,9 @@ function registerManageMutationRoutes(router, dependencies) {
 
     const raidId = raid.id;
 
+    await ensureCompositionMeta(pool, raidId, 1);
     const [existingCompNums] = await pool.query(
-      'SELECT DISTINCT comp_number FROM compositions WHERE raid_id = ? ORDER BY comp_number',
+      'SELECT comp_number FROM composition_meta WHERE raid_id = ? ORDER BY comp_number',
       [raidId]
     );
     const allCompNumbers = existingCompNums.map((r) => r.comp_number);
@@ -425,19 +240,7 @@ function registerManageMutationRoutes(router, dependencies) {
 
     const compsResult = {};
     for (const cn of allCompNumbers) {
-      const [rows] = await pool.query(
-        `SELECT co.slot_role, co.character_id, co.placeholder_text, co.discord_user_id,
-              c.char_name, c.char_class, c.spec, c.discord_user_id AS char_discord_user_id,
-              s.status AS signup_status,
-              du.username AS du_username, du.display_name AS du_display_name
-       FROM compositions co
-       LEFT JOIN characters c ON co.character_id = c.id
-       LEFT JOIN signups s ON s.raid_id = co.raid_id AND s.character_id = co.character_id
-       LEFT JOIN discord_users du ON du.discord_user_id = COALESCE(co.discord_user_id, s.discord_user_id, c.discord_user_id)
-       WHERE co.raid_id = ? AND co.comp_number = ?
-       ORDER BY co.role_slot`,
-        [raidId, cn]
-      );
+      const rows = await fetchCompositionRows(pool, raidId, cn);
 
       const groups = { tank: [], healer: [], mdps: [], rdps: [], dps: [] };
       for (const comp of rows) {
@@ -460,6 +263,10 @@ function registerManageMutationRoutes(router, dependencies) {
                   ? String(comp.char_discord_user_id)
                   : null,
                 status: comp.signup_status,
+                membership_status: comp.membership_status,
+                is_saved: Boolean(comp.is_saved),
+                is_sfs_collector: Boolean(comp.is_sfs_collector),
+                is_val_collector: Boolean(comp.is_val_collector),
               }
             : null,
         };
@@ -467,10 +274,194 @@ function registerManageMutationRoutes(router, dependencies) {
         if (groups[roleKey]) groups[roleKey].push(entry);
       }
 
-      compsResult[cn] = { label: compTabLabel(cn, compLabels), groups };
+      const warnings = [];
+      const tentativeCount = rows.filter((row) => row.signup_status === 'tentative').length;
+      const unavailableCount = rows.filter(
+        (row) => row.is_saved || (row.membership_status && row.membership_status !== 'active')
+      ).length;
+      const placeholderCount = rows.filter(
+        (row) => !row.character_id && !row.discord_user_id
+      ).length;
+      const anyCharacterCount = rows.filter(
+        (row) => !row.character_id && row.discord_user_id
+      ).length;
+      if (rows.length < (Number(raid.max_size) || 25)) {
+        warnings.push({
+          level: 'warning',
+          message: `${rows.length}/${Number(raid.max_size) || 25} roster slots are filled.`,
+        });
+      }
+      if (tentativeCount) {
+        warnings.push({ level: 'warning', message: `${tentativeCount} tentative player(s).` });
+      }
+      if (unavailableCount) {
+        warnings.push({
+          level: 'danger',
+          message: `${unavailableCount} assigned character(s) are saved or inactive.`,
+        });
+      }
+      if (placeholderCount) {
+        warnings.push({ level: 'info', message: `${placeholderCount} placeholder slot(s).` });
+      }
+      if (anyCharacterCount) {
+        warnings.push({
+          level: 'info',
+          message: `${anyCharacterCount} player(s) still need a character selected.`,
+        });
+      }
+      const [[meta]] = await pool.query(
+        `SELECT revision, published_revision, published_at
+         FROM composition_meta WHERE raid_id = ? AND comp_number = ?`,
+        [raidId, cn]
+      );
+      compsResult[cn] = {
+        label: compTabLabel(cn, compLabels),
+        groups,
+        warnings,
+        filled: rows.length,
+        max_size: Number(raid.max_size) || 25,
+        revision: Number(meta.revision),
+        published_revision:
+          meta.published_revision === null ? null : Number(meta.published_revision),
+        published_at: meta.published_at || null,
+      };
     }
 
     res.json({ ok: true, allCompNumbers, comps: compsResult });
+  });
+
+  // POST /raids/:raid_number/comps — persist a new blank comp or duplicate one.
+  router.post('/:raid_number/comps', express.json(), async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const raidNumber = Number.parseInt(req.params.raid_number, 10);
+    const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
+    if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+    const action = req.body && req.body.action === 'duplicate' ? 'duplicate' : 'create';
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('SELECT id FROM raids WHERE id = ? FOR UPDATE', [raid.id]);
+      await ensureCompositionMeta(connection, raid.id, 1);
+      const [[nextRow]] = await connection.query(
+        'SELECT COALESCE(MAX(comp_number), 0) + 1 AS next_comp FROM composition_meta WHERE raid_id = ? FOR UPDATE',
+        [raid.id]
+      );
+      const nextComp = parseCompNumber(nextRow.next_comp);
+      let sourceComp = null;
+      if (action === 'duplicate') {
+        sourceComp = parseCompNumber(req.body.source_comp);
+        const [[sourceMeta]] = await connection.query(
+          'SELECT revision FROM composition_meta WHERE raid_id = ? AND comp_number = ? FOR UPDATE',
+          [raid.id, sourceComp]
+        );
+        if (!sourceMeta) {
+          throw new CompositionValidationError('The source composition no longer exists.', 404);
+        }
+      }
+
+      await connection.query(
+        'INSERT INTO composition_meta (raid_id, comp_number, revision) VALUES (?, ?, ?)',
+        [raid.id, nextComp, action === 'duplicate' ? 1 : 0]
+      );
+      if (action === 'duplicate') {
+        await connection.query(
+          `INSERT INTO compositions
+            (raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role,
+             comp_number, is_sfs_collector, is_val_collector, created_by, created_at, updated_at)
+           SELECT raid_id, character_id, placeholder_text, discord_user_id, role_slot, slot_role,
+                  ?, is_sfs_collector, is_val_collector, ?, NOW(3), NOW(3)
+           FROM compositions WHERE raid_id = ? AND comp_number = ?`,
+          [nextComp, req.session.user_id, raid.id, sourceComp]
+        );
+        const [[sourceLabel]] = await connection.query(
+          'SELECT label FROM comp_labels WHERE raid_id = ? AND comp_number = ?',
+          [raid.id, sourceComp]
+        );
+        if (sourceLabel) {
+          await connection.query(
+            'INSERT INTO comp_labels (raid_id, comp_number, label) VALUES (?, ?, ?)',
+            [raid.id, nextComp, `${sourceLabel.label} Copy`.slice(0, 100)]
+          );
+        }
+      }
+      await connection.commit();
+      res.json({ ok: true, comp_number: nextComp });
+    } catch (error) {
+      await connection.rollback();
+      sendMutationError(res, error);
+    } finally {
+      connection.release();
+    }
+  });
+
+  // DELETE /raids/:raid_number/comps/:comp_number — remove a comp and its publish history.
+  router.delete('/:raid_number/comps/:comp_number', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const raidNumber = Number.parseInt(req.params.raid_number, 10);
+    const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
+    if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+
+    let compNumber;
+    try {
+      compNumber = parseCompNumber(req.params.comp_number);
+    } catch (error) {
+      return sendMutationError(res, error);
+    }
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('SELECT id FROM raids WHERE id = ? FOR UPDATE', [raid.id]);
+      const [[countRow]] = await connection.query(
+        'SELECT COUNT(*) AS count FROM composition_meta WHERE raid_id = ? FOR UPDATE',
+        [raid.id]
+      );
+      if (Number(countRow.count) <= 1) {
+        throw new CompositionValidationError('A raid must keep at least one composition.');
+      }
+      const [[deletedMeta]] = await connection.query(
+        `SELECT discord_message_id FROM composition_meta
+         WHERE raid_id = ? AND comp_number = ?`,
+        [raid.id, compNumber]
+      );
+      await connection.query('DELETE FROM compositions WHERE raid_id = ? AND comp_number = ?', [
+        raid.id,
+        compNumber,
+      ]);
+      await connection.query('DELETE FROM comp_labels WHERE raid_id = ? AND comp_number = ?', [
+        raid.id,
+        compNumber,
+      ]);
+      const [result] = await connection.query(
+        'DELETE FROM composition_meta WHERE raid_id = ? AND comp_number = ?',
+        [raid.id, compNumber]
+      );
+      if (!result.affectedRows) {
+        throw new CompositionValidationError('Composition not found.', 404);
+      }
+      const [[fallback]] = await connection.query(
+        'SELECT MIN(comp_number) AS comp_number FROM composition_meta WHERE raid_id = ?',
+        [raid.id]
+      );
+      await connection.commit();
+      let warning = null;
+      if (deletedMeta?.discord_message_id && raid.discord_channel_id) {
+        const discordResult = await deleteDiscordMessage(
+          String(raid.discord_channel_id),
+          String(deletedMeta.discord_message_id)
+        );
+        if (!discordResult.ok) {
+          warning =
+            'The composition was deleted, but its old Discord message could not be removed.';
+        }
+      }
+      res.json({ ok: true, next_comp: Number(fallback.comp_number), warning });
+    } catch (error) {
+      await connection.rollback();
+      sendMutationError(res, error);
+    } finally {
+      connection.release();
+    }
   });
 
   // PUT /raids/:raid_number/comp_label — set or clear a custom label for a comp tab
@@ -491,20 +482,37 @@ function registerManageMutationRoutes(router, dependencies) {
       return res.status(400).json({ ok: false, error: 'comp_number and label are required' });
     }
 
-    const trimmed = label.trim().slice(0, 100);
-    if (trimmed) {
-      await pool.query(
-        'INSERT INTO comp_labels (raid_id, comp_number, label) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE label = ?',
-        [raidId, comp_number, trimmed, trimmed]
-      );
-    } else {
-      await pool.query('DELETE FROM comp_labels WHERE raid_id = ? AND comp_number = ?', [
-        raidId,
-        comp_number,
-      ]);
+    let parsedComp;
+    try {
+      parsedComp = parseCompNumber(comp_number);
+    } catch (error) {
+      return sendMutationError(res, error);
     }
-
-    res.json({ ok: true, label: trimmed || null });
+    const trimmed = label.trim().slice(0, 100);
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await lockCompositionMeta(connection, raidId, parsedComp);
+      if (trimmed) {
+        await connection.query(
+          'INSERT INTO comp_labels (raid_id, comp_number, label) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE label = ?',
+          [raidId, parsedComp, trimmed, trimmed]
+        );
+      } else {
+        await connection.query('DELETE FROM comp_labels WHERE raid_id = ? AND comp_number = ?', [
+          raidId,
+          parsedComp,
+        ]);
+      }
+      const revision = await bumpCompositionRevision(connection, raidId, parsedComp);
+      await connection.commit();
+      res.json({ ok: true, label: trimmed || null, revision });
+    } catch (error) {
+      await connection.rollback();
+      sendMutationError(res, error);
+    } finally {
+      connection.release();
+    }
   });
 }
 

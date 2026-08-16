@@ -319,7 +319,33 @@ function registerSignupRoutes(router, dependencies) {
     }
 
     try {
-      await pool.query('UPDATE raids SET max_size = ? WHERE id = ?', [maxSize, raid.id]);
+      const [[occupiedOutsideSize]] = await pool.query(
+        `SELECT COUNT(*) AS count FROM compositions
+         WHERE raid_id = ? AND CAST(SUBSTRING_INDEX(role_slot, '_', -1) AS UNSIGNED) > ?`,
+        [raid.id, maxSize]
+      );
+      if (Number(occupiedOutsideSize.count) > 0) {
+        return res.status(409).json({
+          ok: false,
+          error: 'Clear roster slots above the new size before shrinking the raid.',
+        });
+      }
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        await connection.query('UPDATE raids SET max_size = ? WHERE id = ?', [maxSize, raid.id]);
+        await connection.query(
+          `UPDATE composition_meta
+           SET revision = revision + 1, updated_at = NOW(3) WHERE raid_id = ?`,
+          [raid.id]
+        );
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
       res.json({ ok: true, max_size: maxSize });
     } catch (err) {
       console.error('[size] Failed to update raid size:', err.message);

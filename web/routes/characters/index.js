@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../../db');
 const { canStartCharacterGuide } = require('../../services/guildAccess');
+const { saveSignupPreset } = require('../../services/presets');
 const { resolveIsAdmin } = require('../adminCheck');
 const {
   BIS_GS,
@@ -141,18 +142,15 @@ router.post('/characters/presets', express.json(), async (req, res) => {
 
   const trimmedName = name.trim().slice(0, 100);
   try {
-    const [result] = await pool.query(
-      'INSERT INTO signup_presets (discord_user_id, guild_id, name, character_ids, priority_ids, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [
-        userId,
-        guildId,
-        trimmedName,
-        JSON.stringify(characterIds),
-        JSON.stringify(priorityIds),
-        JSON.stringify(normalizedNotes),
-      ]
-    );
-    res.json({ ok: true, id: result.insertId, name: trimmedName });
+    const presetId = await saveSignupPreset(pool, {
+      userId,
+      guildId,
+      name: trimmedName,
+      characterIds,
+      priorityIds,
+      notes: normalizedNotes,
+    });
+    res.json({ ok: true, id: presetId, name: trimmedName });
   } catch (err) {
     console.error('[presets] Failed to save preset:', err.message);
     res.status(500).json({ ok: false, error: 'Database error' });
