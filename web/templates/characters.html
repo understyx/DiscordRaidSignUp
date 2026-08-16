@@ -59,143 +59,96 @@
   <!-- ── Tab 1: Edit Characters ──────────────────────────────────────── -->
   <div class="tab-pane fade show active" id="edit-pane" role="tabpanel">
 
-    {% if charGroups %}
-    <div class="table-responsive mb-3">
-      <table class="table table-hover align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th>Character</th>
-            <th>Realm</th>
-            <th>Class</th>
-            <th>Professions</th>
-            <th>Spec</th>
-            <th>GS</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for group in charGroups %}
-          {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
-          {% set alt = "row-group-alt" if loop.index is even else "" %}
-          {% set group_id = group.rows[0].id %}
-          {% for row in group.rows %}
-          <tr class="{{ alt }}">
-            {% if loop.index == 1 %}
-            <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
-              <div class="d-flex align-items-center gap-1">
-                <span>{{ group.name }}</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="collapse" data-bs-target="#edit-name-{{ group_id }}"
-                        title="Edit Name">✏️</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
-                        title="Add Spec">➕</button>
-              </div>
-              <div class="collapse mt-1" id="edit-name-{{ group_id }}">
-                <form method="post" action="/characters/{{ group_id }}/update-name" class="d-flex gap-1">
+    {% if charGroups | length %}
+    <div class="character-record-grid mb-3">
+      {% for group in charGroups %}
+      {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+      {% set group_id = group.rows[0].id %}
+      <article class="card character-record">
+        <div class="card-body">
+          <div class="character-record-heading">
+            <div>
+              <h3 class="h5 mb-1 cls-{{ cls_key }}">{{ group.name }}</h3>
+              <p class="small text-muted mb-0">{{ group.char_class or "Class not set" }} · {{ group.realm }}</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    data-bs-toggle="collapse" data-bs-target="#manage-char-{{ group_id }}"
+                    aria-expanded="false">Manage</button>
+          </div>
+
+          <div class="character-spec-list mt-3">
+            {% for row in group.rows %}
+            <div class="character-spec-summary">
+              <span class="role-dot role-{{ row.role }}" aria-hidden="true"></span>
+              <strong>{{ row.spec or "No spec" }}</strong>
+              <span class="text-muted">{{ row.gearscore | gsformat if row.gearscore else "No GS" }}</span>
+            </div>
+            {% endfor %}
+          </div>
+
+          {% if group.rows[0].prof_1 or group.rows[0].prof_2 %}
+          <p class="character-professions small text-muted mb-0 mt-3">
+            {{ group.rows[0].prof_1 or "—" }}{% if group.rows[0].prof_2 %} · {{ group.rows[0].prof_2 }}{% endif %}
+          </p>
+          {% endif %}
+
+          <div class="collapse" id="manage-char-{{ group_id }}">
+            <div class="character-manage-panel mt-3 pt-3">
+              <div class="row g-2 mb-3">
+                <form method="post" action="/characters/{{ group_id }}/update-name" class="col-md-5 d-flex gap-2">
                   <input type="text" name="char_name" value="{{ group.name }}"
-                         class="form-control form-control-sm bg-dark text-light border-secondary"
-                         style="width:100px" required />
-                  <button type="submit" class="btn btn-sm btn-outline-success">💾</button>
+                         class="form-control form-control-sm bg-dark text-light border-secondary" required />
+                  <button type="submit" class="btn btn-sm btn-outline-success">Rename</button>
                 </form>
-              </div>
-            </td>
-            <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
-            <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
-            <td rowspan="{{ group.rows | length }}">
-              <div class="d-flex align-items-center gap-1">
-                <div class="small">
-                  {% if group.rows[0].prof_1 or group.rows[0].prof_2 %}
-                    <div>{{ group.rows[0].prof_1 or '—' }}</div>
-                    <div>{{ group.rows[0].prof_2 or '—' }}</div>
-                  {% else %}
-                    <span class="text-muted">—</span>
-                  {% endif %}
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="collapse" data-bs-target="#edit-profs-{{ group_id }}"
-                        title="Edit Professions">✏️</button>
-              </div>
-              <div class="collapse mt-1" id="edit-profs-{{ group_id }}">
-                <form method="post" action="/characters/{{ group_id }}/update-professions" class="d-flex flex-column gap-1">
-                  <select name="prof_1" class="form-select form-select-sm bg-dark text-light border-secondary">
-                    <option value="">— Prof 1 —</option>
+                <form method="post" action="/characters/{{ group_id }}/update-professions" class="col-md-7 d-flex gap-2">
+                  {% for field, value in [["prof_1", group.rows[0].prof_1], ["prof_2", group.rows[0].prof_2]] %}
+                  <select name="{{ field }}" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">— Profession —</option>
                     {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
-                    <option {{ 'selected' if group.rows[0].prof_1 == p }}>{{ p }}</option>
+                    <option {{ 'selected' if value == p }}>{{ p }}</option>
                     {% endfor %}
                   </select>
-                  <select name="prof_2" class="form-select form-select-sm bg-dark text-light border-secondary">
-                    <option value="">— Prof 2 —</option>
-                    {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
-                    <option {{ 'selected' if group.rows[0].prof_2 == p }}>{{ p }}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="submit" class="btn btn-sm btn-outline-success">💾</button>
+                  {% endfor %}
+                  <button type="submit" class="btn btn-sm btn-outline-success">Save</button>
                 </form>
               </div>
-            </td>
-            {% endif %}
-            <td>
-              <form method="post" action="/characters/{{ row.id }}/update-spec"
-                    class="d-flex gap-1 align-items-center">
-                <input type="text" name="spec" value="{{ row.spec or '' }}"
-                       class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:110px" placeholder="—" />
-                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Spec">💾</button>
-              </form>
-            </td>
-            <td>
-              <form method="post" action="/characters/{{ row.id }}/update-gs"
-                    class="d-flex gap-1 align-items-center">
-                <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}"
-                       class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:80px" placeholder="—" />
-                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
-              </form>
-            </td>
-            <td class="text-end">
-              <form method="post" action="/characters/{{ row.id }}/delete"
-                    onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from your list but keeps old raid history.')">
-                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-          <tr class="{{ alt }}">
-            <td colspan="7" class="p-0 border-0">
-              <div class="collapse" id="add-spec-{{ group_id }}">
-                <div class="p-2">
-                  <form method="post" action="/characters/register" class="d-flex gap-2 align-items-center flex-wrap">
-                    <input type="hidden" name="char_name" value="{{ group.name }}" />
-                    <input type="hidden" name="realm" value="{{ group.realm }}" />
-                    <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
-                    <input type="text" name="spec"
-                           class="form-control form-control-sm bg-dark text-light border-secondary"
-                           style="width:120px" placeholder="New spec" maxlength="50" />
-                    <input type="text" name="gearscore"
-                           class="form-control form-control-sm bg-dark text-light border-secondary"
-                           style="width:80px" placeholder="GS" maxlength="10" />
-                    <select name="prof_1" class="form-select form-select-sm bg-dark text-light border-secondary" style="width:110px">
-                      <option value="">— Prof 1 —</option>
-                      {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
-                      <option {{ 'selected' if group.rows[0].prof_1 == p }}>{{ p }}</option>
-                      {% endfor %}
-                    </select>
-                    <select name="prof_2" class="form-select form-select-sm bg-dark text-light border-secondary" style="width:110px">
-                      <option value="">— Prof 2 —</option>
-                      {% for p in ["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Herbalism", "Inscription", "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring"] %}
-                      <option {{ 'selected' if group.rows[0].prof_2 == p }}>{{ p }}</option>
-                      {% endfor %}
-                    </select>
-                    <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
-                  </form>
-                </div>
+
+              {% for row in group.rows %}
+              <div class="character-spec-editor">
+                <form method="post" action="/characters/{{ row.id }}/update-spec" class="d-flex gap-2">
+                  <input type="text" name="spec" value="{{ row.spec or '' }}"
+                         class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Spec" />
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                </form>
+                <form method="post" action="/characters/{{ row.id }}/update-gs" class="d-flex gap-2">
+                  <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}"
+                         class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="GS" />
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                </form>
+                <form method="post" action="/characters/{{ row.id }}/delete"
+                      onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from your list but keeps old raid history.')">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Hide</button>
+                </form>
               </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              {% endfor %}
+
+              <form method="post" action="/characters/register" class="character-add-spec mt-3">
+                <input type="hidden" name="char_name" value="{{ group.name }}" />
+                <input type="hidden" name="realm" value="{{ group.realm }}" />
+                <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
+                <input type="hidden" name="prof_1" value="{{ group.rows[0].prof_1 or '' }}" />
+                <input type="hidden" name="prof_2" value="{{ group.rows[0].prof_2 or '' }}" />
+                <input type="text" name="spec" class="form-control form-control-sm bg-dark text-light border-secondary"
+                       placeholder="New spec" maxlength="50" />
+                <input type="text" name="gearscore" class="form-control form-control-sm bg-dark text-light border-secondary"
+                       placeholder="GS" maxlength="10" />
+                <button type="submit" class="btn btn-sm btn-wow">Add spec</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
     </div>
     {% else %}
     <div class="card p-4 text-center text-muted mb-3">
@@ -320,11 +273,11 @@
   <!-- ── Tab 2: Raid Saves ───────────────────────────────────────────── -->
   <div class="tab-pane fade" id="saves-pane" role="tabpanel">
 
-    {% if not gridChars %}
+    {% if not (gridChars | length) %}
     <div class="card p-4 text-center text-muted">
       No characters registered yet. Add some in the <strong>Edit Characters</strong> tab first.
     </div>
-    {% elif not instances %}
+    {% elif not (instances | length) %}
     <div class="card p-4 text-center text-muted">
       No raid instances found. Raids need to be created before save tracking is available.
     </div>
@@ -374,7 +327,16 @@
         then load one or more presets from any open raid's sign-up form.
       </p>
 
-      {% if charGroups %}
+      {% if charGroups | length %}
+      <div class="preset-builder-toolbar mb-3" aria-label="Preset selection shortcuts">
+        <span class="small text-muted">Quick select</span>
+        <button type="button" class="btn btn-sm btn-outline-light" data-preset-selection="all">Select all characters</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-preset-selection="none">Clear all characters</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-preset-selection="tank">🛡️ All tanks</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-preset-selection="healer">💚 All healers</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-preset-selection="dps">⚔️ All DPS</button>
+        <span class="small text-success ms-auto" id="quickActionFeedback" aria-live="polite"></span>
+      </div>
       <div class="table-responsive mb-3">
         <table class="table table-hover align-middle"
                aria-label="Characters and specs for building a signup preset.">
@@ -396,6 +358,8 @@
             <tr class="signup-row {{ alt }}"
                 data-char-id="{{ row.id }}"
                 data-group-idx="{{ preset_group_idx }}"
+                data-char-name="{{ group.name }}"
+                data-role="{{ row.role }}"
                 tabindex="0"
                 role="row"
                 aria-selected="false"
@@ -443,17 +407,25 @@
         </table>
       </div>
       <div id="hiddenInputs"></div>
-      <div class="d-flex gap-2 align-items-center flex-wrap">
-        <select id="presetSelect" class="form-select form-select-sm bg-dark text-light border-secondary"
-                multiple size="2" aria-label="Load one or more signup presets" style="max-width: 240px;">
-          <option value="" disabled selected>— Select preset(s) —</option>
-        </select>
+      <div class="selection-overview mb-3">
+        <strong id="selectionCount">No specs selected</strong>
+        <span id="selectionDetail">Choose characters or a role shortcut above.</span>
+      </div>
+      <div class="saved-presets-panel">
+        <div>
+          <h6 class="mb-1">Saved presets</h6>
+          <p class="small text-muted mb-0">Check one or more to load or combine them.</p>
+        </div>
+        <div id="presetList" class="saved-preset-list" aria-live="polite">
+          <span class="small text-muted">Loading presets…</span>
+        </div>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap mt-3">
         <button type="button" class="btn btn-sm btn-outline-success" onclick="showSavePresetModal()">
           💾 Save selected as Preset
         </button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPresets()">🗑️ Delete</button>
       </div>
-      <p class="text-muted small mt-2 mb-0">Use Ctrl/Cmd-click to select multiple presets and combine them.</p>
       {% else %}
       <p class="text-muted mb-0">Register at least one character before creating a signup preset.</p>
       {% endif %}
@@ -483,6 +455,8 @@
 
 </div>{# /tab-content #}
 
-<script src="/js/characters.js"></script>
+{% endblock %}
+{% block scripts %}
 <script src="/js/raid_detail.js"></script>
+<script src="/js/characters.js"></script>
 {% endblock %}

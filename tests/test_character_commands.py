@@ -36,6 +36,7 @@ class CharacterCommandTests(unittest.TestCase):
         self.assertNotIn("/edit_characters", field_text)
         self.assertNotIn("/edit_character`", field_text)
         self.assertIn("/my_characters", field_text)
+        self.assertIn("names, classes, specs, and GS", field_text)
         self.assertIn("/saves view", field_text)
 
 

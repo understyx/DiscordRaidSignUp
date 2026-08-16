@@ -1,0 +1,25 @@
+{% for item in raids %}
+{% set r = item.raid %}
+<tr>
+  <td>{{ r.guild_raid_number }}</td>
+  <td class="fw-bold">{{ r.name }}</td>
+  <td>{{ r.raid_instance }}</td>
+  <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
+  <td>
+    {% if r.status == "open" %}
+      <span class="badge badge-open">🟢 Open</span>
+    {% else %}
+      <span class="badge badge-locked">🔒 Locked</span>
+    {% endif %}
+  </td>
+  <td>{{ item.signup_coming_count }} + {{ item.signup_tentative_count }}</td>
+  <td>
+    <a href="/raids/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
+    {% if item.can_manage %}
+    <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
+    {% else %}
+    <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}

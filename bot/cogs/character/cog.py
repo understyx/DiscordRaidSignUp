@@ -18,7 +18,11 @@ from bot.discord_utils import get_top_role_name
 from bot.role_utils import get_role_from_spec
 from db.models import Character, CharacterSuggestion, SuggestionStatus
 
-from .edit_flow import CharacterEditView, fetch_editable_characters
+from .edit_flow import (
+    CharacterEditView,
+    build_character_list_embed,
+    fetch_editable_characters,
+)
 from .helpnoobs import HelpNoobsChoiceView
 
 logger = logging.getLogger(__name__)
@@ -816,48 +820,6 @@ class CharacterCog(commands.Cog):
         discord_user_id = interaction.user.id
         guild_id = interaction.guild_id
 
-        def _fetch():
-            session = get_session()
-            try:
-                return (
-                    session.query(Character)
-                    .filter_by(guild_id=guild_id, discord_user_id=discord_user_id, is_deleted=False)
-                    .all()
-                )
-            finally:
-                session.close()
-
-        chars = await loop.run_in_executor(None, _fetch)
-
-        if not chars:
-            await interaction.followup.send(
-                "You have no registered characters. Use `/addcharacter` to add one.",
-                ephemeral=True,
-            )
-            return
-
-        embed = discord.Embed(
-            title=f"Characters for {interaction.user.display_name}",
-            color=discord.Color.blurple(),
-        )
-        if len(chars) > 25:
-            embed.description = f"Showing the first 25 of {len(chars)} character entries."
-        for char in chars[:25]:
-            role_str = char.role.value.capitalize() if char.role else "Not set"
-            field_name = f"{char.char_name} ({char.realm})"
-            if char.spec:
-                field_name += f" – {char.spec}"
-            embed.add_field(
-                name=field_name,
-                value=(
-                    f"**Class:** {char.char_class or 'Unknown'}\n"
-                    f"**GS:** {format_gs(char.gearscore)}\n"
-                    f"**Role:** {role_str}\n"
-                    f"**Realm:** {char.realm}"
-                ),
-                inline=True,
-            )
-
         try:
             editable_characters = await loop.run_in_executor(
                 None,
@@ -871,16 +833,31 @@ class CharacterCog(commands.Cog):
                 discord_user_id,
                 guild_id,
             )
-            editable_characters = []
-
-        view = None
-        if editable_characters:
-            view = CharacterEditView(
-                user_id=discord_user_id,
-                guild_id=guild_id,
-                characters=editable_characters,
+            await interaction.followup.send(
+                "❌ I couldn't load your characters. Please try again later.",
+                ephemeral=True,
             )
-            embed.set_footer(text="Choose a character below to edit it.")
+            return
+
+        if not editable_characters:
+            await interaction.followup.send(
+                "You have no registered characters. Use `/addcharacter` to add one.",
+                ephemeral=True,
+            )
+            return
+
+        display_name = interaction.user.display_name
+        view = CharacterEditView(
+            user_id=discord_user_id,
+            guild_id=guild_id,
+            characters=editable_characters,
+            embed_builder=lambda characters, page: build_character_list_embed(
+                display_name,
+                characters,
+                page,
+            ),
+        )
+        embed = view.build_embed()
 
         message = await interaction.followup.send(
             embed=embed,
@@ -888,8 +865,7 @@ class CharacterCog(commands.Cog):
             ephemeral=True,
             wait=True,
         )
-        if view is not None:
-            view.message = message
+        view.message = message
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):

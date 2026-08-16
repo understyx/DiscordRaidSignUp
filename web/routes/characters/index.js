@@ -203,6 +203,8 @@ router.get('/characters', async (req, res) => {
   const charGroups = [];
   const groupMap = {}; // key: "Name|Realm"
   for (const c of chars) {
+    // Keep role-based preset actions accurate for older rows whose stored role may be stale.
+    c.role = getRoleFromSpec(c.char_class, c.spec);
     const key = `${c.char_name}|${c.realm}`;
     if (!groupMap[key]) {
       const group = { name: c.char_name, realm: c.realm, char_class: c.char_class, rows: [c] };

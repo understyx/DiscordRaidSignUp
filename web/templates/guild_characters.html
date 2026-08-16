@@ -2,194 +2,189 @@
 {% block title %}Guild Characters – {{ guild_name or "Active Guild" }}{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="/css/characters.css">
-<style>
-  .user-section {
-    margin-bottom: 2rem;
-    border: 1px solid #444;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .user-header {
-    background: #333;
-    padding: 0.75rem 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .row-group-alt {
-    background-color: rgba(255, 255, 255, 0.03);
-  }
-</style>
+<link rel="stylesheet" href="/css/guild_characters.css">
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2>🏰 Guild Characters: {{ guild_name or "Active Guild" }}</h2>
+<div class="guild-database-heading mb-4">
+  <div>
+    <p class="section-kicker mb-1">Officer database</p>
+    <h2 class="mb-1">Guild Characters</h2>
+    <p class="text-muted mb-0">{{ guild_name or "Active Guild" }} · {{ users | length }} Discord members</p>
+  </div>
   <span class="badge bg-primary">Officer View</span>
 </div>
 
-{% if users %}
-  {% for user_group in users %}
-  <div class="user-section">
-    <div class="user-header">
-      <div>
-        <span class="fw-bold fs-5">{{ user_group.displayName }}</span>
-        <span class="text-muted ms-2">(@{{ user_group.username }})</span>
-        <code class="ms-2 small text-secondary">{{ user_group.userId | discordId }}</code>
-        {% if user_group.membershipStatus != 'active' %}
-          <span class="badge bg-danger ms-2">{{ user_group.membershipStatus | capitalize }}</span>
-        {% endif %}
-      </div>
-      <div>
-        <button class="btn btn-sm btn-outline-wow me-2" type="button" data-bs-toggle="collapse" data-bs-target="#addChar-{{ user_group.userId }}">
-          ➕ Add Character
+{% if users | length %}
+<div class="guild-database-layout">
+  <aside class="guild-member-sidebar" aria-label="Discord members">
+    <label class="visually-hidden" for="guildMemberSearch">Search Discord members</label>
+    <input type="search" id="guildMemberSearch"
+           class="form-control form-control-sm bg-dark text-light border-secondary"
+           placeholder="Search members…" autocomplete="off">
+    <div class="guild-member-count small text-muted mt-2 mb-2" id="guildMemberCount">
+      {{ users | length }} members
+    </div>
+    <nav class="guild-member-list" id="guildMemberList">
+      {% for member in users %}
+      <a href="/guild-characters?user={{ member.userId }}"
+         class="guild-member-link{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
+         data-member-search="{{ (member.displayName ~ ' ' ~ member.username) | lower }}"
+         {% if selectedUser and member.userId == selectedUser.userId %}aria-current="page"{% endif %}>
+        <span class="member-avatar" aria-hidden="true">{{ member.displayName | first | upper }}</span>
+        <span class="member-identity">
+          <strong>{{ member.displayName }}</strong>
+          <small>@{{ member.username }}</small>
+        </span>
+        <span class="member-character-count" title="{{ member.characterCount }} characters">
+          {{ member.characterCount }}
+        </span>
+      </a>
+      {% endfor %}
+    </nav>
+    <p class="small text-muted p-3 d-none" id="guildMemberEmpty">No members match that search.</p>
+  </aside>
+
+  <section class="guild-character-detail">
+    {% if selectedUser %}
+    <div class="selected-member-heading card mb-3">
+      <div class="card-body d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-3">
+          <span class="member-avatar member-avatar-large" aria-hidden="true">{{ selectedUser.displayName | first | upper }}</span>
+          <div>
+            <h3 class="h4 mb-0">{{ selectedUser.displayName }}</h3>
+            <p class="text-muted small mb-0">@{{ selectedUser.username }} · <code>{{ selectedUser.userId | discordId }}</code></p>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">
+          ➕ Add character
         </button>
-        <span class="badge bg-secondary">{{ user_group.charGroups | length }} Characters</span>
       </div>
     </div>
 
-    <!-- Add Character Form for User -->
-    <div class="collapse" id="addChar-{{ user_group.userId }}">
-      <div class="p-3 bg-dark border-bottom border-secondary">
-        <h6>Add Character for {{ user_group.displayName }}</h6>
+    <div class="collapse mb-3" id="addCharacterForMember">
+      <div class="card card-body">
+        <h4 class="h6 mb-3">Add a character for {{ selectedUser.displayName }}</h4>
         <form method="post" action="/guild-characters/register" class="row g-2 align-items-end">
-          <input type="hidden" name="discord_user_id" value="{{ user_group.userId }}">
-          <div class="col-auto">
+          <input type="hidden" name="discord_user_id" value="{{ selectedUser.userId }}">
+          <div class="col-sm-6 col-lg-3">
             <label class="form-label small">Name</label>
-            <input type="text" name="char_name" class="form-control form-control-sm bg-dark text-light border-secondary" required maxlength="50" />
+            <input type="text" name="char_name" class="form-control form-control-sm bg-dark text-light border-secondary" required maxlength="50">
           </div>
-          <div class="col-auto">
+          <div class="col-sm-6 col-lg-2">
             <label class="form-label small">Realm</label>
-            <input type="text" name="realm" class="form-control form-control-sm bg-dark text-light border-secondary" value="Icecrown" maxlength="50" />
+            <input type="text" name="realm" class="form-control form-control-sm bg-dark text-light border-secondary" value="Icecrown" maxlength="50">
           </div>
-          <div class="col-auto">
+          <div class="col-sm-6 col-lg-2">
             <label class="form-label small">Class</label>
             <select name="char_class" class="form-select form-select-sm bg-dark text-light border-secondary">
               <option value="">— select —</option>
-              <option>Death Knight</option>
-              <option>Druid</option>
-              <option>Hunter</option>
-              <option>Mage</option>
-              <option>Paladin</option>
-              <option>Priest</option>
-              <option>Rogue</option>
-              <option>Shaman</option>
-              <option>Warlock</option>
-              <option>Warrior</option>
+              {% for cls in ["Death Knight", "Druid", "Hunter", "Mage", "Paladin", "Priest", "Rogue", "Shaman", "Warlock", "Warrior"] %}
+              <option>{{ cls }}</option>
+              {% endfor %}
             </select>
           </div>
-          <div class="col-auto">
+          <div class="col-sm-6 col-lg-2">
             <label class="form-label small">Spec</label>
-            <input type="text" name="spec" class="form-control form-control-sm bg-dark text-light border-secondary" maxlength="50" />
+            <input type="text" name="spec" class="form-control form-control-sm bg-dark text-light border-secondary" maxlength="50">
           </div>
-          <div class="col-auto">
+          <div class="col-sm-6 col-lg-2">
             <label class="form-label small">GS</label>
-            <input type="text" name="gearscore" class="form-control form-control-sm bg-dark text-light border-secondary" style="width:70px" />
+            <input type="text" name="gearscore" class="form-control form-control-sm bg-dark text-light border-secondary">
           </div>
-          <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-wow">Add</button>
-          </div>
+          <div class="col-auto"><button type="submit" class="btn btn-sm btn-wow">Add</button></div>
         </form>
       </div>
     </div>
 
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-dark">
-          <tr>
-            <th>Character</th>
-            <th>Realm</th>
-            <th>Class</th>
-            <th>Spec</th>
-            <th>GS</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for group in user_group.charGroups %}
-          {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
-          {% set alt = "row-group-alt" if loop.index is even else "" %}
-          {% set group_id = group.rows[0].id %}
-          {% for row in group.rows %}
-          <tr class="{{ alt }}">
-            {% if loop.index == 1 %}
-            <td class="fw-bold cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">
-              <div class="d-flex align-items-center gap-1">
-                <span>{{ group.name }}</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="collapse" data-bs-target="#edit-name-{{ group_id }}"
-                        title="Edit Name">✏️</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="collapse" data-bs-target="#add-spec-{{ group_id }}"
-                        title="Add Spec">➕</button>
-              </div>
-              <div class="collapse mt-1" id="edit-name-{{ group_id }}">
-                <form method="post" action="/guild-characters/update-name/{{ group_id }}" class="d-flex gap-1">
-                  <input type="text" name="char_name" value="{{ group.name }}"
-                         class="form-control form-control-sm bg-dark text-light border-secondary"
-                         style="width:100px" required />
-                  <button type="submit" class="btn btn-sm btn-outline-success">💾</button>
-                </form>
-              </div>
-            </td>
-            <td class="text-muted" rowspan="{{ group.rows | length }}">{{ group.realm }}</td>
-            <td class="cls-{{ cls_key }}" rowspan="{{ group.rows | length }}">{{ group.char_class or "—" }}</td>
-            {% endif %}
-            <td>
-              <form method="post" action="/guild-characters/update-spec/{{ row.id }}"
-                    class="d-flex gap-1 align-items-center">
-                <input type="text" name="spec" value="{{ row.spec or '' }}"
-                       class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:110px" placeholder="—" />
-                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save Spec">💾</button>
-              </form>
-            </td>
-            <td>
-              <form method="post" action="/guild-characters/update-gs/{{ row.id }}"
-                    class="d-flex gap-1 align-items-center">
-                <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}"
-                       class="form-control form-control-sm bg-dark text-light border-secondary"
-                       style="width:80px" placeholder="—" />
-                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Save GS">💾</button>
-              </form>
-            </td>
-            <td class="text-end">
-              <form method="post" action="/guild-characters/delete/{{ row.id }}"
-                    onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})? This removes it from the list but keeps old raid history.')">
-                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hide">✕</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-          <tr class="{{ alt }}">
-            <td colspan="6" class="p-0 border-0">
-              <div class="collapse" id="add-spec-{{ group_id }}">
-                <div class="p-2 border-bottom border-secondary">
-                  <form method="post" action="/guild-characters/register" class="d-flex gap-2 align-items-center flex-wrap">
-                    <input type="hidden" name="discord_user_id" value="{{ user_group.userId }}" />
-                    <input type="hidden" name="char_name" value="{{ group.name }}" />
-                    <input type="hidden" name="realm" value="{{ group.realm }}" />
-                    <input type="hidden" name="char_class" value="{{ group.char_class or '' }}" />
-                    <input type="text" name="spec"
-                           class="form-control form-control-sm bg-dark text-light border-secondary"
-                           style="width:120px" placeholder="New spec" maxlength="50" />
-                    <input type="text" name="gearscore"
-                           class="form-control form-control-sm bg-dark text-light border-secondary"
-                           style="width:80px" placeholder="GS" maxlength="10" />
-                    <button type="submit" class="btn btn-sm btn-wow">Add Spec</button>
-                  </form>
+    {% if selectedUser.charGroups | length %}
+    <div class="card guild-character-table-card">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr><th>Character</th><th>Class</th><th>Builds</th><th class="text-end">Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for group in selectedUser.charGroups %}
+            {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+            {% set group_id = group.rows[0].id %}
+            <tr>
+              <td>
+                <strong class="cls-{{ cls_key }}">{{ group.name }}</strong>
+                <div class="small text-muted">{{ group.realm }}</div>
+              </td>
+              <td class="cls-{{ cls_key }}">{{ group.char_class or "—" }}</td>
+              <td>
+                <div class="guild-build-list">
+                  {% for row in group.rows %}
+                  <span>{{ row.spec or "No spec" }} <small>{{ row.gearscore | gsformat if row.gearscore else "No GS" }}</small></span>
+                  {% endfor %}
                 </div>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              </td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
+                        data-bs-target="#manageGuildChar-{{ group_id }}">Edit</button>
+              </td>
+            </tr>
+            <tr class="guild-character-editor-row">
+              <td colspan="4" class="p-0 border-0">
+                <div class="collapse" id="manageGuildChar-{{ group_id }}">
+                  <div class="guild-character-editor">
+                    <form method="post" action="/guild-characters/update-name/{{ group_id }}" class="d-flex gap-2 mb-2">
+                      <input type="hidden" name="return_user" value="{{ selectedUser.userId }}">
+                      <input type="text" name="char_name" value="{{ group.name }}" class="form-control form-control-sm bg-dark text-light border-secondary" required>
+                      <button type="submit" class="btn btn-sm btn-outline-success">Rename</button>
+                    </form>
+                    {% for row in group.rows %}
+                    <div class="guild-build-editor">
+                      <form method="post" action="/guild-characters/update-spec/{{ row.id }}" class="d-flex gap-2">
+                        <input type="hidden" name="return_user" value="{{ selectedUser.userId }}">
+                        <input type="text" name="spec" value="{{ row.spec or '' }}" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Spec">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                      </form>
+                      <form method="post" action="/guild-characters/update-gs/{{ row.id }}" class="d-flex gap-2">
+                        <input type="hidden" name="return_user" value="{{ selectedUser.userId }}">
+                        <input type="text" name="gearscore" value="{{ row.gearscore | gsformat if row.gearscore else '' }}" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="GS">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                      </form>
+                      <form method="post" action="/guild-characters/delete/{{ row.id }}" onsubmit="return confirm('Hide {{ group.name }} ({{ row.spec or 'this spec' }})?')">
+                        <input type="hidden" name="return_user" value="{{ selectedUser.userId }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Hide</button>
+                      </form>
+                    </div>
+                    {% endfor %}
+                    <form method="post" action="/guild-characters/register" class="guild-add-build mt-3">
+                      <input type="hidden" name="discord_user_id" value="{{ selectedUser.userId }}">
+                      <input type="hidden" name="char_name" value="{{ group.name }}">
+                      <input type="hidden" name="realm" value="{{ group.realm }}">
+                      <input type="hidden" name="char_class" value="{{ group.char_class or '' }}">
+                      <input type="text" name="spec" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="New spec" maxlength="50">
+                      <input type="text" name="gearscore" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="GS" maxlength="10">
+                      <button type="submit" class="btn btn-sm btn-wow">Add build</button>
+                    </form>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-  {% endfor %}
+    {% else %}
+    <div class="card empty-member-state text-center p-5">
+      <div class="fs-2 mb-2">🗂️</div>
+      <h4 class="h6">No characters registered</h4>
+      <p class="text-muted small mb-3">This Discord member is in the database index, but has no character records yet.</p>
+      <button class="btn btn-sm btn-wow mx-auto" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">Add their first character</button>
+    </div>
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
 {% else %}
-  <div class="alert alert-info">No members with registered characters found in this guild.</div>
+<div class="alert alert-info">No Discord members were found in this guild.</div>
 {% endif %}
-
 {% endblock %}
+
+{% block scripts %}<script src="/js/guild_characters.js"></script>{% endblock %}

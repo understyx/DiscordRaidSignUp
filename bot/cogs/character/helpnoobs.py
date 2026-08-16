@@ -147,7 +147,7 @@ def _useful_commands_embed() -> discord.Embed:
         value=(
             "`/addcharacters` — add one or more characters from a text form\n"
             "`/addcharacter` — add one character with slash-command options\n"
-            "`/my_characters` — list and edit your saved characters\n"
+            "`/my_characters` — view and edit character names, classes, specs, and GS\n"
             "`/remove_character` — remove a character or one of its specs"
         ),
         inline=False,
@@ -338,10 +338,15 @@ class DiscordMethodView(_OwnedView):
             user_id=self.user_id,
             guild_id=self.guild_id,
             characters=characters,
+            embed_builder=lambda all_characters, page: build_edit_picker_embed(
+                self.guild_name,
+                len(all_characters),
+                page,
+            ),
         )
         next_view.message = interaction.message
         await interaction.edit_original_response(
-            embed=build_edit_picker_embed(self.guild_name, len(characters)),
+            embed=next_view.build_embed(),
             view=next_view,
         )
 

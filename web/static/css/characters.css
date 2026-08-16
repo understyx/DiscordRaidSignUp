@@ -1,5 +1,89 @@
 .row-group-alt { --bs-table-bg: var(--bg-card-2); }
 
+/* ── Compact character records ───────────────────────────────────── */
+.character-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+.character-record {
+  border-color: var(--border-dim);
+  background: var(--bg-card);
+}
+.character-record-heading,
+.character-spec-summary,
+.preset-builder-toolbar,
+.saved-presets-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.character-record-heading { justify-content: space-between; }
+.character-spec-list { display: grid; gap: 0.4rem; }
+.character-spec-summary {
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+.character-spec-summary .text-muted { margin-left: auto; }
+.role-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #8791a3;
+}
+.role-dot.role-tank { background: #5c8ee6; }
+.role-dot.role-healer { background: #52c77a; }
+.role-dot.role-dps { background: #dc6d68; }
+.character-professions { border-top: 1px solid var(--border-dim); padding-top: 0.65rem; }
+.character-manage-panel { border-top: 1px solid var(--border-dim); }
+.character-spec-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem auto;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.character-add-spec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem auto;
+  gap: 0.5rem;
+  border-top: 1px dashed var(--border-dim);
+  padding-top: 0.75rem;
+}
+
+/* ── Preset builder ──────────────────────────────────────────────── */
+.preset-builder-toolbar {
+  flex-wrap: wrap;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.55rem;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+.saved-presets-panel {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--border-dim);
+  padding-top: 1rem;
+}
+.saved-preset-list { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.45rem; }
+.saved-preset-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  border: 1px solid #465169;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: #191f2b;
+  font-size: 0.82rem;
+}
+.saved-preset-choice:has(input:checked) {
+  border-color: #6f7dff;
+  background: rgba(88, 101, 242, 0.18);
+}
+.saved-preset-choice input { accent-color: #7580ff; }
+
 /* ── Guided character setup ───────────────────────────────────────── */
 .character-guide {
   border: 1px solid rgba(88, 101, 242, 0.65);
@@ -56,6 +140,11 @@
     align-items: flex-start;
     flex-direction: column;
   }
+  .character-record-grid { grid-template-columns: 1fr; }
+  .character-spec-editor,
+  .character-add-spec { grid-template-columns: 1fr; }
+  .saved-presets-panel { flex-direction: column; }
+  .saved-preset-list { justify-content: flex-start; }
 }
 
 /* ── Raid Saves grid ──────────────────────────────────────────────── */

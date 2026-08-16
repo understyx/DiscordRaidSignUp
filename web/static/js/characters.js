@@ -32,6 +32,26 @@ if (new URLSearchParams(window.location.search).get('tab') === 'presets') {
   if (presetsTab) bootstrap.Tab.getOrCreateInstance(presetsTab).show();
 }
 
+document.querySelectorAll('[data-preset-selection]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const selection = button.dataset.presetSelection;
+    const rows = Array.from(document.querySelectorAll('#presets-pane .signup-row'));
+    const groups = new Set();
+
+    rows.forEach((row) => {
+      const selected = selection === 'all' || (selection !== 'none' && row.dataset.role === selection);
+      setRowSelected(row, selected);
+      groups.add(row.dataset.groupIdx);
+    });
+    groups.forEach((groupIdx) => updateGroupState(groupIdx));
+    buildHiddenInputs();
+
+    const selectedCount = rows.filter((row) => row.classList.contains('row-selected')).length;
+    const label = selection === 'none' ? 'Selection cleared.' : `${selectedCount} specs selected.`;
+    setQuickActionFeedback(label);
+  });
+});
+
 const newCharacterForm = document.getElementById('newCharacterForm');
 if (newCharacterForm?.dataset.guided === 'true') {
   const nameInput = document.getElementById('newCharacterName');

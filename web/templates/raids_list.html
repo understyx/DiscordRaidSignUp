@@ -10,7 +10,7 @@
   {% endif %}
 </div>
 
-{% if raids %}
+{% if raids | length %}
 <div class="table-responsive">
   <table class="table table-hover table-bordered align-middle">
     <thead class="table-dark">
@@ -24,38 +24,24 @@
         <th>Actions</th>
       </tr>
     </thead>
-    <tbody>
-      {% for item in raids %}
-      {% set r = item.raid %}
-      <tr>
-        <td>{{ r.guild_raid_number }}</td>
-        <td class="fw-bold">{{ r.name }}</td>
-        <td>{{ r.raid_instance }}</td>
-        <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
-        <td>
-          {% if r.status == "open" %}
-            <span class="badge badge-open">🟢 Open</span>
-          {% else %}
-            <span class="badge badge-locked">🔒 Locked</span>
-          {% endif %}
-        </td>
-        <td>{{ item.signup_coming_count }} + {{ item.signup_tentative_count }}</td>
-        <td>
-          <a href="/raids/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
-          {% if item.can_manage %}
-          <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
-          {% else %}
-          <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
+    <tbody id="raidRows">{% include "raid_rows.html" %}</tbody>
   </table>
 </div>
+{% if has_more %}
+<div class="text-center mt-3">
+  <button type="button" class="btn btn-outline-secondary" id="loadMoreRaids"
+          data-offset="{{ raid_page_size }}">
+    Show 10 more raids
+  </button>
+  <p class="small text-muted mt-2 mb-0 d-none" id="loadMoreRaidsStatus" aria-live="polite"></p>
+</div>
+{% endif %}
 {% else %}
 <div class="text-center py-5">
   <p class="text-muted">No raids scheduled yet. Raids are created via Discord.</p>
 </div>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/js/raids_list.js"></script>
 {% endblock %}

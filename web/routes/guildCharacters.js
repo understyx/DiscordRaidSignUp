@@ -5,6 +5,12 @@ const { requireAdmin, popFlash, currentUser, parseGS, getRoleFromSpec } = requir
 const router = express.Router();
 const DISCORD_API = 'https://discord.com/api/v10';
 
+function guildCharactersUrl(userId) {
+  return userId
+    ? `/guild-characters?user=${encodeURIComponent(String(userId))}`
+    : '/guild-characters';
+}
+
 /**
  * Helper: Verify that a specific Discord user is a member of the given guild.
  * Uses the bot token to check membership via Discord API.
@@ -49,44 +55,64 @@ router.get('/', async (req, res) => {
       throw new Error(`Discord API error: ${resp.status} ${resp.statusText}`);
     }
 
-    const members = await resp.json();
-    const memberIds = members.map((m) => String(m.user.id));
+    const members = (await resp.json()).filter((member) => member.user && !member.user.bot);
+    const memberIds = members.map((member) => String(member.user.id));
 
     if (memberIds.length === 0) {
       return res.render('guild_characters.html', {
         users: [],
+        selectedUser: null,
+        guild_name: req.session.active_guild_name,
         flash: popFlash(req),
         user: currentUser(req),
       });
     }
 
-    // 2. Fetch characters for this guild (including members and non-members)
-    const [rows] = await pool.query(
-      `SELECT c.*, du.username as discord_username, du.display_name as discord_display_name
-       FROM characters c
-       LEFT JOIN discord_users du ON c.discord_user_id = du.discord_user_id
-       WHERE c.is_deleted = 0 AND c.guild_id = ?
-       ORDER BY du.username ASC, c.char_name ASC, c.id ASC`,
+    // 2. Build the user index from Discord itself so members without characters are included.
+    const [countRows] = await pool.query(
+      `SELECT discord_user_id, COUNT(DISTINCT CONCAT(char_name, '|', realm)) AS character_count
+       FROM characters
+       WHERE guild_id = ? AND is_deleted = 0
+       GROUP BY discord_user_id`,
       [guildId]
     );
+    const counts = new Map(
+      countRows.map((row) => [String(row.discord_user_id), Number(row.character_count)])
+    );
+    const users = members
+      .map((member) => ({
+        userId: String(member.user.id),
+        username: member.user.username || 'Unknown',
+        displayName:
+          member.nick || member.user.global_name || member.user.username || 'Unknown member',
+        characterCount: counts.get(String(member.user.id)) || 0,
+      }))
+      .sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+      );
 
-    // 3. Group by user, then by character name+realm
-    const byUser = {};
+    const requestedUserId = String(req.query.user || '');
+    const selectedUser =
+      users.find((entry) => entry.userId === requestedUserId) ||
+      users.find((entry) => entry.characterCount > 0) ||
+      users[0] ||
+      null;
 
-    for (const row of rows) {
-      const userId = String(row.discord_user_id);
-      if (!byUser[userId]) {
-        byUser[userId] = {
-          userId,
-          username: row.discord_username || 'Unknown',
-          displayName: row.discord_display_name || 'Unknown',
-          membershipStatus: row.membership_status || 'active',
-          charGroups: [],
-        };
-      }
+    // 3. Load only the selected member's records. Selecting another member loads that view on demand.
+    let selectedRows = [];
+    if (selectedUser) {
+      [selectedRows] = await pool.query(
+        `SELECT * FROM characters
+         WHERE is_deleted = 0 AND guild_id = ? AND discord_user_id = ?
+         ORDER BY char_name ASC, id ASC`,
+        [guildId, selectedUser.userId]
+      );
+    }
 
+    const charGroups = [];
+    for (const row of selectedRows) {
       const groupKey = `${row.char_name}|${row.realm}`;
-      let group = byUser[userId].charGroups.find((g) => `${g.name}|${g.realm}` === groupKey);
+      let group = charGroups.find((entry) => `${entry.name}|${entry.realm}` === groupKey);
       if (!group) {
         group = {
           name: row.char_name,
@@ -94,13 +120,15 @@ router.get('/', async (req, res) => {
           char_class: row.char_class,
           rows: [],
         };
-        byUser[userId].charGroups.push(group);
+        charGroups.push(group);
       }
       group.rows.push(row);
     }
+    if (selectedUser) selectedUser.charGroups = charGroups;
 
     res.render('guild_characters.html', {
-      users: Object.values(byUser),
+      users,
+      selectedUser,
       guild_name: req.session.active_guild_name,
       flash: popFlash(req),
       user: currentUser(req),
@@ -127,12 +155,12 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
     );
     if (!char) {
       req.session.flash = '❌ Character not found.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     if (!(await verifyGuildMembership(guildId, char.discord_user_id))) {
       req.session.flash = '❌ Permission denied: Character owner is not in this guild.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     const role = getRoleFromSpec(char.char_class, spec);
@@ -150,7 +178,7 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
     req.session.flash = '❌ Failed to update spec.';
   }
 
-  res.redirect('/guild-characters');
+  res.redirect(guildCharactersUrl(req.body.return_user));
 });
 
 // POST /guild-characters/update-name/:char_id
@@ -163,7 +191,7 @@ router.post('/update-name/:char_id', express.urlencoded({ extended: false }), as
 
   if (!newName) {
     req.session.flash = '❌ Character name cannot be empty.';
-    return res.redirect('/guild-characters');
+    return res.redirect(guildCharactersUrl(req.body.return_user));
   }
 
   const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
@@ -175,12 +203,12 @@ router.post('/update-name/:char_id', express.urlencoded({ extended: false }), as
     );
     if (!char) {
       req.session.flash = '❌ Character not found.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     if (!(await verifyGuildMembership(guildId, char.discord_user_id))) {
       req.session.flash = '❌ Permission denied: Character owner is not in this guild.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     // Update all specs for this character (matched by user + old name + realm)
@@ -194,7 +222,7 @@ router.post('/update-name/:char_id', express.urlencoded({ extended: false }), as
     req.session.flash = '❌ Failed to update name.';
   }
 
-  res.redirect('/guild-characters');
+  res.redirect(guildCharactersUrl(req.body.return_user));
 });
 
 // POST /guild-characters/update-gs/:char_id
@@ -212,12 +240,12 @@ router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), asyn
     );
     if (!char) {
       req.session.flash = '❌ Character not found.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     if (!(await verifyGuildMembership(guildId, char.discord_user_id))) {
       req.session.flash = '❌ Permission denied: Character owner is not in this guild.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     await pool.query(
@@ -230,7 +258,7 @@ router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), asyn
     req.session.flash = '❌ Failed to update GS.';
   }
 
-  res.redirect('/guild-characters');
+  res.redirect(guildCharactersUrl(req.body.return_user));
 });
 
 // POST /guild-characters/delete/:char_id
@@ -247,12 +275,12 @@ router.post('/delete/:char_id', express.urlencoded({ extended: false }), async (
     );
     if (!char) {
       req.session.flash = '❌ Character not found.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     if (!(await verifyGuildMembership(guildId, char.discord_user_id))) {
       req.session.flash = '❌ Permission denied: Character owner is not in this guild.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(req.body.return_user));
     }
 
     await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [
@@ -265,7 +293,7 @@ router.post('/delete/:char_id', express.urlencoded({ extended: false }), async (
     req.session.flash = '❌ Failed to delete character.';
   }
 
-  res.redirect('/guild-characters');
+  res.redirect(guildCharactersUrl(req.body.return_user));
 });
 
 // POST /guild-characters/register
@@ -282,13 +310,13 @@ router.post('/register', express.urlencoded({ extended: false }), async (req, re
 
   if (!targetUserId || !charName) {
     req.session.flash = '❌ User ID and character name are required.';
-    return res.redirect('/guild-characters');
+    return res.redirect(guildCharactersUrl(targetUserId));
   }
 
   try {
     if (!(await verifyGuildMembership(guildId, targetUserId))) {
       req.session.flash = '❌ Permission denied: Target user is not in this guild.';
-      return res.redirect('/guild-characters');
+      return res.redirect(guildCharactersUrl(targetUserId));
     }
 
     const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
@@ -345,7 +373,7 @@ router.post('/register', express.urlencoded({ extended: false }), async (req, re
     req.session.flash = '❌ Failed to register character.';
   }
 
-  res.redirect('/guild-characters');
+  res.redirect(guildCharactersUrl(targetUserId));
 });
 
 module.exports = router;

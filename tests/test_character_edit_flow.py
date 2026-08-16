@@ -11,7 +11,10 @@ os.environ.setdefault("DISCORD_BOT_TOKEN", "test-token")
 from bot.cogs.character.edit_flow import (
     CharacterEditError,
     CharacterEditView,
+    EditableCharacter,
+    EditableSpec,
     EditCharacterModal,
+    build_character_list_embed,
     fetch_editable_character,
     fetch_editable_characters,
     update_character_from_flow,
@@ -101,6 +104,54 @@ class CharacterEditFlowTests(unittest.TestCase):
         )
         self.assertEqual(modal.children[2].style, discord.TextStyle.paragraph)
         self.assertEqual(modal.children[2].default, "Holy / 6200\nProtection / 6100")
+
+    def test_character_picker_pages_after_25_characters(self):
+        characters = [
+            EditableCharacter(
+                id=index,
+                char_name=f"Character{index}",
+                realm="Icecrown",
+                char_class="Mage",
+                specs=(EditableSpec("Fire", 6000 + index),),
+            )
+            for index in range(1, 27)
+        ]
+        view = CharacterEditView(user_id=200, guild_id=100, characters=characters)
+
+        self.assertEqual(view.page_count, 2)
+        self.assertEqual(len(view.children[0].options), 25)
+        self.assertTrue(view.children[1].disabled)
+        self.assertEqual(view.children[2].to_component_dict()["label"], "Page 1/2")
+        self.assertFalse(view.children[3].disabled)
+
+        view.page = 1
+        view._rebuild_items()
+
+        self.assertEqual([option.value for option in view.children[0].options], ["26"])
+        self.assertFalse(view.children[1].disabled)
+        self.assertEqual(view.children[2].to_component_dict()["label"], "Page 2/2")
+        self.assertTrue(view.children[3].disabled)
+
+        first_embed = build_character_list_embed("Edgy", characters, 0)
+        second_embed = build_character_list_embed("Edgy", characters, 1)
+        self.assertEqual(len(first_embed.fields), 25)
+        self.assertEqual(len(second_embed.fields), 1)
+        self.assertEqual(second_embed.fields[0].name, "Character26")
+        self.assertIn("Showing 26–26 of 26 characters", second_embed.description)
+
+    def test_character_list_embed_shows_only_name_class_specs_and_gs(self):
+        characters = fetch_editable_characters(100, 200)
+
+        embed = build_character_list_embed("Edgy", characters, 0)
+        field = embed.fields[0]
+
+        self.assertEqual(field.name, "Arthas")
+        self.assertIn("**Class:** Paladin", field.value)
+        self.assertIn("**Holy:** GS 6200", field.value)
+        self.assertIn("**Protection:** GS 6100", field.value)
+        self.assertNotIn("Role", field.value)
+        self.assertNotIn("Realm", field.value)
+        self.assertNotIn("Icecrown", field.name)
 
     def test_edit_updates_the_whole_character_from_spec_lines(self):
         updated = update_character_from_flow(

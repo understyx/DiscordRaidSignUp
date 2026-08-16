@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import discord
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _CHARACTER_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
 _MAX_SPECS = 6
+_CHARACTERS_PER_PAGE = 25
 
 
 class CharacterEditError(ValueError):
@@ -292,7 +295,7 @@ def update_character_from_flow(
 class _CharacterSelect(discord.ui.Select):
     def __init__(self, characters: list[EditableCharacter]):
         options = []
-        for character in characters[:25]:
+        for character in characters:
             spec_summary = ", ".join(spec.name for spec in character.specs) or "No specs"
             options.append(
                 discord.SelectOption(
@@ -352,6 +355,32 @@ class _CharacterSelect(discord.ui.Select):
         )
 
 
+class _CharacterPageButton(discord.ui.Button):
+    def __init__(self, direction: int):
+        self.direction = direction
+        super().__init__(
+            label="Previous" if direction < 0 else "Next",
+            emoji="◀️" if direction < 0 else "▶️",
+            style=discord.ButtonStyle.secondary,
+            row=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = self.view
+        if isinstance(view, CharacterEditView):
+            await view.change_page(interaction, self.direction)
+
+
+class _CharacterPageIndicator(discord.ui.Button):
+    def __init__(self, page: int, page_count: int):
+        super().__init__(
+            label=f"Page {page + 1}/{page_count}",
+            style=discord.ButtonStyle.secondary,
+            disabled=True,
+            row=1,
+        )
+
+
 class CharacterEditView(discord.ui.View):
     """Owned character picker shared by the list and guided Discord flows."""
 
@@ -361,14 +390,52 @@ class CharacterEditView(discord.ui.View):
         user_id: int,
         guild_id: int,
         characters: list[EditableCharacter],
+        embed_builder: Callable[[list[EditableCharacter], int], discord.Embed] | None = None,
         timeout: float = 600,
     ):
         super().__init__(timeout=timeout)
         self.user_id = user_id
         self.guild_id = guild_id
         self.characters = characters
+        self.embed_builder = embed_builder
+        self.page = 0
         self.message: discord.Message | None = None
-        self.add_item(_CharacterSelect(characters))
+        self._rebuild_items()
+
+    @property
+    def page_count(self) -> int:
+        return max(1, math.ceil(len(self.characters) / _CHARACTERS_PER_PAGE))
+
+    @property
+    def page_characters(self) -> list[EditableCharacter]:
+        start = self.page * _CHARACTERS_PER_PAGE
+        return self.characters[start : start + _CHARACTERS_PER_PAGE]
+
+    def _rebuild_items(self) -> None:
+        self.clear_items()
+        self.add_item(_CharacterSelect(self.page_characters))
+        if self.page_count > 1:
+            previous = _CharacterPageButton(-1)
+            previous.disabled = self.page == 0
+            self.add_item(previous)
+            self.add_item(_CharacterPageIndicator(self.page, self.page_count))
+            following = _CharacterPageButton(1)
+            following.disabled = self.page == self.page_count - 1
+            self.add_item(following)
+
+    def build_embed(self) -> discord.Embed | None:
+        if self.embed_builder is None:
+            return None
+        return self.embed_builder(self.characters, self.page)
+
+    async def change_page(self, interaction: discord.Interaction, direction: int) -> None:
+        self.page = min(max(self.page + direction, 0), self.page_count - 1)
+        self._rebuild_items()
+        embed = self.build_embed()
+        if embed is None:
+            await interaction.response.edit_message(view=self)
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.user_id:
@@ -468,22 +535,59 @@ class EditCharacterModal(discord.ui.Modal):
         )
         embed = discord.Embed(
             title=f"✅ {updated.char_name} updated!",
-            description=(
-                f"**Class:** {updated.char_class}\n**Realm:** {updated.realm}\n{spec_lines}"
-            ),
+            description=f"**Class:** {updated.char_class}\n{spec_lines}",
             color=discord.Color.green(),
         )
         embed.set_footer(text="Use /my_characters to review or edit another character.")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-def build_edit_picker_embed(guild_name: str, character_count: int) -> discord.Embed:
+def build_character_list_embed(
+    display_name: str,
+    characters: list[EditableCharacter],
+    page: int,
+) -> discord.Embed:
+    """Build one page of the grouped `/my_characters` display."""
+    page_count = max(1, math.ceil(len(characters) / _CHARACTERS_PER_PAGE))
+    page = min(max(page, 0), page_count - 1)
+    start = page * _CHARACTERS_PER_PAGE
+    page_characters = characters[start : start + _CHARACTERS_PER_PAGE]
+
+    embed = discord.Embed(
+        title=f"Characters for {display_name}",
+        color=discord.Color.blurple(),
+    )
+    if page_count > 1:
+        embed.description = (
+            f"Page {page + 1} of {page_count} · "
+            f"Showing {start + 1}–{start + len(page_characters)} of {len(characters)} characters."
+        )
+    for character in page_characters:
+        spec_lines = "\n".join(
+            f"**{spec.name or 'Unknown spec'}:** GS {format_gs(spec.gearscore)}"
+            for spec in character.specs
+        )
+        embed.add_field(
+            name=character.char_name,
+            value=f"**Class:** {character.char_class or 'Unknown'}\n{spec_lines}",
+            inline=True,
+        )
+    embed.set_footer(text="Choose a character below to edit it.")
+    return embed
+
+
+def build_edit_picker_embed(
+    guild_name: str,
+    character_count: int,
+    page: int = 0,
+) -> discord.Embed:
+    page_count = max(1, math.ceil(character_count / _CHARACTERS_PER_PAGE))
     description = (
         f"Choose the character you want to update for **{guild_name}**. "
         "The form will be filled with its current name, class, specializations, and gearscores."
     )
-    if character_count > 25:
-        description += "\n\nOnly the first 25 characters are shown."
+    if page_count > 1:
+        description += f"\n\nPage {page + 1} of {page_count}."
     embed = discord.Embed(
         title="✏️ Edit a character",
         description=description,

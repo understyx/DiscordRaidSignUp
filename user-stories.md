@@ -86,10 +86,11 @@ The chosen guild is stored in the session for the rest of the visit.
 
 ### US-2.3 List My Characters
 **As a** player,  
-**I want to** see all my registered characters with their class, spec, gearscore, and role,  
+**I want to** see all my registered characters with their class, specs, and gearscores,
 **so that** I know what is on record before signing up for a raid.
 
-**Command:** `/my_characters` – reply is ephemeral (visible only to the caller).
+**Command:** `/my_characters` – reply is ephemeral (visible only to the caller). Characters are
+grouped by name and paginated 25 at a time; each card shows only name, class, specs, and gearscores.
 
 ---
 

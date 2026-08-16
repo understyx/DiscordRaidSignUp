@@ -1,5 +1,7 @@
 'use strict';
 
+const RAID_PAGE_SIZE = 10;
+
 function registerListRoutes(router, dependencies) {
   const {
     DISCORD_API,
@@ -29,6 +31,42 @@ function registerListRoutes(router, dependencies) {
     requireLogin,
     resolveIsAdmin,
   } = dependencies;
+
+  async function fetchRaidPage(guildId, isAdmin, offset = 0) {
+    const [rows] = await pool.query(
+      `SELECT
+       r.*,
+       COALESCE(SUM(CASE WHEN u.user_status = 'coming' THEN 1 ELSE 0 END), 0) AS signup_coming_count,
+       COALESCE(SUM(CASE WHEN u.user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS signup_tentative_count
+     FROM raids r
+     LEFT JOIN (
+       SELECT
+         raid_id,
+         discord_user_id,
+         CASE
+           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
+           ELSE 'tentative'
+         END AS user_status
+       FROM signups
+       GROUP BY raid_id, discord_user_id
+     ) u ON u.raid_id = r.id
+     WHERE r.guild_id = ?
+     GROUP BY r.id
+     ORDER BY r.id DESC
+     LIMIT ? OFFSET ?`,
+      [guildId, RAID_PAGE_SIZE + 1, offset]
+    );
+
+    const hasMore = rows.length > RAID_PAGE_SIZE;
+    const raids = rows.slice(0, RAID_PAGE_SIZE).map((raid) => ({
+      raid,
+      signup_coming_count: raid.signup_coming_count,
+      signup_tentative_count: raid.signup_tentative_count,
+      can_manage: isAdmin,
+    }));
+
+    return { raids, hasMore };
+  }
 
   // GET /raids
   router.get('/', async (req, res) => {
@@ -133,40 +171,35 @@ function registerListRoutes(router, dependencies) {
     const activeGuildId = req.session.active_guild_id;
     const isAdmin = await resolveIsAdmin(userId, activeGuildId);
 
-    const [raids] = await pool.query(
-      `SELECT
-       r.*,
-       COALESCE(SUM(CASE WHEN u.user_status = 'coming' THEN 1 ELSE 0 END), 0) AS signup_coming_count,
-       COALESCE(SUM(CASE WHEN u.user_status = 'tentative' THEN 1 ELSE 0 END), 0) AS signup_tentative_count
-     FROM raids r
-     LEFT JOIN (
-       SELECT
-         raid_id,
-         discord_user_id,
-         CASE
-           WHEN SUM(CASE WHEN status = '${SIGNUP_STATUS_SIGNED}' THEN 1 ELSE 0 END) > 0 THEN 'coming'
-           ELSE 'tentative'
-         END AS user_status
-       FROM signups
-       GROUP BY raid_id, discord_user_id
-     ) u ON u.raid_id = r.id
-     WHERE r.guild_id = ?
-     GROUP BY r.id
-     ORDER BY r.id DESC`,
-      [activeGuildId]
-    );
-
-    const raidData = raids.map((r) => ({
-      raid: r,
-      signup_coming_count: r.signup_coming_count,
-      signup_tentative_count: r.signup_tentative_count,
-      can_manage: isAdmin,
-    }));
+    const { raids, hasMore } = await fetchRaidPage(activeGuildId, isAdmin);
 
     res.render('raids_list.html', {
-      raids: raidData,
+      raids,
+      has_more: hasMore,
+      raid_page_size: RAID_PAGE_SIZE,
       flash: popFlash(req),
       user: currentUser(req),
+    });
+  });
+
+  // GET /raids/more?offset=10 — fetch the next page without reloading the list.
+  router.get('/more', async (req, res) => {
+    if (!requireLogin(req, res)) return;
+
+    const guildId = req.session.active_guild_id;
+    if (!guildId) return res.status(400).json({ ok: false, error: 'No active guild' });
+
+    const parsedOffset = Number.parseInt(req.query.offset, 10);
+    const offset = Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+    const isAdmin = await resolveIsAdmin(req.session.user_id, guildId);
+    const { raids, hasMore } = await fetchRaidPage(guildId, isAdmin, offset);
+
+    res.render('raid_rows.html', { raids }, (error, html) => {
+      if (error) {
+        console.error('[raids] Failed to render additional raids:', error);
+        return res.status(500).json({ ok: false, error: 'Could not load raids' });
+      }
+      return res.json({ ok: true, html, count: raids.length, has_more: hasMore });
     });
   });
 

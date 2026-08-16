@@ -256,6 +256,29 @@ async function loadPresets() {
         select.appendChild(option);
       });
     }
+    const presetList = document.getElementById('presetList');
+    if (presetList) {
+      presetList.replaceChildren();
+      if (signupPresets.length === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'small text-muted';
+        empty.textContent = 'No saved presets yet.';
+        presetList.appendChild(empty);
+      } else {
+        signupPresets.forEach((preset) => {
+          const label = document.createElement('label');
+          label.className = 'saved-preset-choice';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.className = 'saved-preset-input';
+          input.value = preset.id;
+          const name = document.createElement('span');
+          name.textContent = preset.name;
+          label.append(input, name);
+          presetList.appendChild(label);
+        });
+      }
+    }
     return true;
   } catch (error) {
     console.error('Failed to load presets', error);
@@ -537,7 +560,9 @@ async function deleteSelectedPresets() {
   const select = document.getElementById('presetSelect');
   const presetIds = select
     ? Array.from(select.selectedOptions, (option) => option.value).filter(Boolean)
-    : [];
+    : Array.from(document.querySelectorAll('#presetList .saved-preset-input:checked'), (input) =>
+        input.value
+      );
   if (presetIds.length === 0) {
     alert('Select one or more presets to delete.');
     return;
@@ -618,6 +643,15 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPresets();
     presetSelect.addEventListener('change', () => {
       applyPresets(Array.from(presetSelect.selectedOptions, (option) => option.value));
+    });
+  }
+  const presetList = document.getElementById('presetList');
+  if (presetList) {
+    loadPresets();
+    presetList.addEventListener('change', () => {
+      applyPresets(
+        Array.from(presetList.querySelectorAll('.saved-preset-input:checked'), (input) => input.value)
+      );
     });
   }
 });
