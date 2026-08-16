@@ -136,6 +136,37 @@ def _method_embed(guild_name: str) -> discord.Embed:
     return embed
 
 
+def _useful_commands_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="🧰 Useful bot commands",
+        description="These commands are private when the bot replies, so you can use them safely.",
+        color=discord.Color.blurple(),
+    )
+    embed.add_field(
+        name="Manage characters",
+        value=(
+            "`/addcharacters` — add one or more characters from a text form\n"
+            "`/addcharacter` — add one character with slash-command options\n"
+            "`/my_characters` — list and edit your saved characters\n"
+            "`/edit_characters` — quickly update a saved character\n"
+            "`/remove_character` — remove a character or one of its specs"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Manage raid saves",
+        value=(
+            "`/saves view` — view your characters' raid saves\n"
+            "`/saves set` — mark a character as saved or not saved\n"
+            "`/saves toggle` — switch a character's save state\n"
+            "`/savecharacter` — quickly toggle a character's save state"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Type / in Discord to browse all available bot commands.")
+    return embed
+
+
 def _bulk_text_embed(guild_name: str) -> discord.Embed:
     embed = discord.Embed(
         title="📝 Add all your characters at once",
@@ -688,3 +719,18 @@ class HelpNoobsChoiceView(discord.ui.View):
             view=WebsiteLinkView(build_character_guide_url(guild.id)),
             ephemeral=True,
         )
+
+    @discord.ui.button(
+        label="Show useful bot commands",
+        style=discord.ButtonStyle.secondary,
+        emoji="🧰",
+        custom_id="helpnoobs:commands",
+        row=1,
+    )
+    async def useful_commands(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        context = await self._member_context(interaction)
+        if context is None:
+            return
+        await interaction.response.send_message(embed=_useful_commands_embed(), ephemeral=True)

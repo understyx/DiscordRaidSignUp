@@ -536,16 +536,7 @@ A notification is posted to a dedicated Discord channel so the applicant is info
 
 ## 13. Developer Tools
 
-### US-13.1 Seed Fake Players (Dev – Bot)
-**As a** developer,  
-**I want to** populate the database with fake Discord users and characters,  
-**so that** I can test the UI with realistic data.
-
-**Command:** `/seed_fake_users` (Officer permission required; intended for dev/test environments only).
-
----
-
-### US-13.2 Seed Fake Sign-Ups (Dev – Web)
+### US-13.1 Seed Fake Sign-Ups (Dev – Web)
 **As a** developer,  
 **I want to** add fake sign-ups to a specific raid,  
 **so that** I can test the composition and manage pages with a full roster.
@@ -554,7 +545,7 @@ A notification is posted to a dedicated Discord channel so the applicant is info
 
 ---
 
-### US-13.3 Manage Spec Aliases (Developer)
+### US-13.2 Manage Spec Aliases (Developer)
 **As the** designated developer,  
 **I want to** add or remove spec name aliases in the database,  
 **so that** common abbreviations (e.g. "Ret" → "Retribution") are recognised when players post character lines.

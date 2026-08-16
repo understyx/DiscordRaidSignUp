@@ -701,7 +701,7 @@ class CharacterCog(commands.Cog):
         return await self.character_name_autocomplete(interaction, current)
 
     @app_commands.command(
-        name="edit_character",
+        name="edit_characters",
         description="Update your character's name, class, realm, role, or gearscore.",
     )
     @app_commands.guild_only()
@@ -721,7 +721,7 @@ class CharacterCog(commands.Cog):
             app_commands.Choice(name="DPS", value="dps"),
         ]
     )
-    async def edit_character(
+    async def edit_characters(
         self,
         interaction: discord.Interaction,
         name: str,
@@ -821,7 +821,7 @@ class CharacterCog(commands.Cog):
         else:
             await interaction.followup.send("ℹ️ No updates were performed.", ephemeral=True)
 
-    @edit_character.autocomplete("name")
+    @edit_characters.autocomplete("name")
     async def character_name_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:

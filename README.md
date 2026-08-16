@@ -274,7 +274,7 @@ configuration file rather than command-line arguments.
 | `/addcharacter` | Register a character with class, spec(s), and gearscore(s) (up to 6 specs) |
 | `/remove_character` | Remove a registered character (optionally by spec) |
 | `/my_characters` | List your registered characters and open the guided character editor |
-| `/edit_character` | Quickly update a character with slash-command options |
+| `/edit_characters` | Quickly update a character with slash-command options |
 | `/saves view` | Show all raid-save (lockout) states for your characters |
 | `/saves set` | Mark a character as saved or not saved for a raid instance |
 | `/saves toggle` | Toggle the save state for a character on a raid instance |
