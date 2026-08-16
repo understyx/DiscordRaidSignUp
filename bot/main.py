@@ -80,10 +80,12 @@ class RaidBot(commands.Bot):
         await self.load_extension("bot.cogs.admin")
         await self.load_extension("bot.cogs.saves")
 
-        # Register persistent SignupView so buttons survive bot restarts
+        # Register persistent views so their buttons survive bot restarts.
+        from bot.cogs.character.helpnoobs import HelpNoobsChoiceView
         from bot.cogs.signup import SignupView
 
         self.add_view(SignupView())
+        self.add_view(HelpNoobsChoiceView())
 
         await self.tree.sync()
         logger.info("Slash commands synced.")

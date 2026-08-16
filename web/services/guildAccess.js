@@ -28,4 +28,9 @@ function safeRelativeRedirect(candidate, fallback = '/raids') {
   return fallback;
 }
 
-module.exports = { safeRelativeRedirect, selectAvailableGuilds };
+function canStartCharacterGuide(userGuildIds, guildId) {
+  if (!/^\d+$/.test(String(guildId || ''))) return false;
+  return new Set((userGuildIds || []).map(String)).has(String(guildId));
+}
+
+module.exports = { canStartCharacterGuide, safeRelativeRedirect, selectAvailableGuilds };

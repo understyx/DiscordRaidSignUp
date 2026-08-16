@@ -1,5 +1,7 @@
 const express = require('express');
 const pool = require('../../db');
+const { canStartCharacterGuide } = require('../../services/guildAccess');
+const { resolveIsAdmin } = require('../adminCheck');
 const {
   BIS_GS,
   parseGS,
@@ -10,6 +12,38 @@ const {
 } = require('../helpers');
 
 const router = express.Router();
+
+// GET /help/add-characters/:guild_id
+// Entry point used by the Discord help launcher. Login is required and the
+// requested guild is activated only when Discord reported the user as a member.
+router.get('/help/add-characters/:guild_id', async (req, res) => {
+  if (!requireLogin(req, res)) return;
+
+  const guildId = String(req.params.guild_id || '');
+  if (!canStartCharacterGuide(req.session.user_guild_ids, guildId)) {
+    req.session.flash = '❌ You must be a member of that server to add characters to it.';
+    return res.redirect('/raids');
+  }
+
+  const [[guild]] = await pool.query(
+    'SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id = ? LIMIT 1',
+    [guildId]
+  );
+  if (!guild) {
+    req.session.flash = '❌ That server is not available in RaidBot.';
+    return res.redirect('/raids');
+  }
+
+  req.session.active_guild_id = String(guild.guild_id);
+  req.session.active_guild_name = guild.guild_name;
+  try {
+    req.session.is_admin = await resolveIsAdmin(req.session.user_id, guildId);
+  } catch (_err) {
+    req.session.is_admin = false;
+  }
+
+  res.redirect('/characters?guided=1');
+});
 
 // Instances that share the same weekly lockout are collapsed to a single
 // canonical name — mirrors LOCKOUT_CANONICAL in bot/cogs/saves.py.
@@ -229,6 +263,8 @@ router.get('/characters', async (req, res) => {
     savesMap,
     flash: popFlash(req),
     user: currentUser(req),
+    guidedMode: req.query.guided === '1',
+    guidedAdded: req.query.added === '1',
   });
 });
 
@@ -297,10 +333,20 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   const gearscore = parseGS(gsRaw);
   const prof1 = (req.body.prof_1 || '').trim() || null;
   const prof2 = (req.body.prof_2 || '').trim() || null;
+  const guidedMode = req.body.guided === '1';
+  const characterPage = guidedMode ? '/characters?guided=1' : '/characters';
 
   if (!charName) {
     req.session.flash = '❌ Character name is required.';
-    return res.redirect('/characters');
+    return res.redirect(characterPage);
+  }
+  if (guidedMode && !/^[A-Za-z]{1,12}$/.test(charName)) {
+    req.session.flash = '❌ Character names must contain 1–12 letters only.';
+    return res.redirect(characterPage);
+  }
+  if (guidedMode && (!charClass || !spec || !gsRaw || gearscore === null)) {
+    req.session.flash = '❌ Choose a class and spec, then enter a valid gearscore.';
+    return res.redirect(characterPage);
   }
 
   const charNameCap = charName.charAt(0).toUpperCase() + charName.slice(1).toLowerCase();
@@ -358,7 +404,7 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
   );
 
   req.session.flash = `✅ Character ${charNameCap} registered!`;
-  res.redirect('/characters');
+  res.redirect(guidedMode ? '/characters?guided=1&added=1' : '/characters');
 });
 
 // POST /characters/:char_id/update-gs

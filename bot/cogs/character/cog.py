@@ -10,12 +10,15 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.class_utils import normalize_class
+from bot.cogs.raid import is_officer
 from bot.cogs.signup import format_gs, parse_gs
 from bot.cogs.signup.parser import _parse_character_lines
 from bot.db import get_session
 from bot.discord_utils import get_top_role_name
 from bot.role_utils import get_role_from_spec
 from db.models import Character, CharacterSuggestion, SuggestionStatus
+
+from .helpnoobs import HelpNoobsChoiceView
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +292,39 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
 class CharacterCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    # ── /helpnoobs ────────────────────────────────────────────────────────
+    @app_commands.command(
+        name="helpnoobs",
+        description="Post the guided character setup launcher (Officer only).",
+    )
+    @app_commands.guild_only()
+    @is_officer()
+    async def helpnoobs(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="👋 Need help adding your characters?",
+            description=(
+                "Choose where you'd like to set them up. I'll guide you one step at a time, "
+                "and your answers will stay private.\n\n"
+                "💬 **Discord** — continue in a DM with me\n"
+                "🌐 **Website** — use a guided form in your browser"
+            ),
+            color=discord.Color.blurple(),
+        )
+        embed.set_footer(text="Anyone in this server can use these buttons.")
+        await interaction.response.send_message(embed=embed, view=HelpNoobsChoiceView())
+
+    @helpnoobs.error
+    async def helpnoobs_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ) -> None:
+        if isinstance(error, app_commands.CheckFailure):
+            await interaction.response.send_message(
+                "❌ You do not have permission to post the character setup guide.",
+                ephemeral=True,
+            )
+            return
+        raise error
 
     # ── /addcharacters ─────────────────────────────────────────────────────
     @app_commands.command(

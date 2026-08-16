@@ -7,6 +7,37 @@
 {% block content %}
 <h2 class="mb-4">⚔️ My Characters</h2>
 
+{% if guidedMode %}
+<section class="character-guide card mb-4" aria-labelledby="characterGuideTitle">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <p class="guide-kicker mb-1">Guided character setup</p>
+        <h3 class="h4 mb-2" id="characterGuideTitle">
+          {{ "Nice—your character was saved!" if guidedAdded else "Let's add your first character" }}
+        </h3>
+        <p class="text-muted mb-0">
+          {% if guidedAdded %}
+          Add another character or finish and review your list. You can update these details later.
+          {% else %}
+          Fill in the three short steps below. Optional professions can be added now or later.
+          {% endif %}
+        </p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-wow" href="#addCharForm">{{ "➕ Add another" if guidedAdded else "Start setup" }}</a>
+        {% if guidedAdded %}<a class="btn btn-outline-success" href="/characters">✅ Finish</a>{% endif %}
+      </div>
+    </div>
+    <ol class="guide-progress mt-3 mb-0" aria-label="Character setup steps">
+      <li data-guide-progress="1"><span>1</span>Character</li>
+      <li data-guide-progress="2"><span>2</span>Build</li>
+      <li data-guide-progress="3"><span>3</span>Review</li>
+    </ol>
+  </div>
+</section>
+{% endif %}
+
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-3" id="charTabs" role="tablist">
   <li class="nav-item" role="presentation">
@@ -172,27 +203,37 @@
     </div>
     {% endif %}
 
-    <button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm" aria-expanded="false">
-      ➕ Add new character
+    <button class="btn btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharForm"
+            aria-expanded="{{ 'true' if guidedMode else 'false' }}">
+      {{ "➕ Add another character" if guidedMode else "➕ Add new character" }}
     </button>
 
-    <div class="collapse mt-3" id="addCharForm">
+    <div class="collapse mt-3{{ ' show' if guidedMode else '' }}" id="addCharForm">
       <div class="card p-3">
-        <h6 class="mb-3">Add Character</h6>
-        <form method="post" action="/characters/register" class="row g-2 align-items-end">
+        <h6 class="mb-3">{{ "Guided setup" if guidedMode else "Add Character" }}</h6>
+        <form method="post" action="/characters/register" class="row g-2 align-items-end"
+              id="newCharacterForm" data-guided="{{ 'true' if guidedMode else 'false' }}">
+          {% if guidedMode %}<input type="hidden" name="guided" value="1" />{% endif %}
           <div class="col-auto">
-            <label class="form-label small">Character Name</label>
+            <label class="form-label small" for="newCharacterName">
+              {% if guidedMode %}<span class="guide-field-step">1</span>{% endif %} Character Name
+            </label>
             <input type="text" name="char_name" class="form-control bg-dark text-light border-secondary"
-                   required maxlength="50" placeholder="e.g. Arthas" />
+                   id="newCharacterName" required maxlength="{{ 12 if guidedMode else 50 }}"
+                   {% if guidedMode %}pattern="[A-Za-z]+" title="Use 1–12 letters"{% endif %}
+                   placeholder="e.g. Arthas" />
           </div>
           <div class="col-auto">
-            <label class="form-label small">Realm</label>
+            <label class="form-label small" for="newCharacterRealm">Realm</label>
             <input type="text" name="realm" class="form-control bg-dark text-light border-secondary"
-                   value="Icecrown" maxlength="50" />
+                   id="newCharacterRealm" value="Icecrown" maxlength="50" />
           </div>
           <div class="col-auto">
-            <label class="form-label small">Class</label>
-            <select name="char_class" class="form-select bg-dark text-light border-secondary">
+            <label class="form-label small" for="newCharacterClass">
+              {% if guidedMode %}<span class="guide-field-step">2</span>{% endif %} Class
+            </label>
+            <select name="char_class" id="newCharacterClass"
+                    class="form-select bg-dark text-light border-secondary" {{ 'required' if guidedMode }}>
               <option value="">— select —</option>
               <option>Death Knight</option>
               <option>Druid</option>
@@ -207,14 +248,22 @@
             </select>
           </div>
           <div class="col-auto">
-            <label class="form-label small">Spec</label>
+            <label class="form-label small" for="newCharacterSpec">Spec</label>
+            {% if guidedMode %}
+            <select name="spec" id="newCharacterSpec"
+                    class="form-select bg-dark text-light border-secondary" required disabled>
+              <option value="">— choose class first —</option>
+            </select>
+            {% else %}
             <input type="text" name="spec" class="form-control bg-dark text-light border-secondary"
-                   maxlength="50" placeholder="e.g. Holy" />
+                   id="newCharacterSpec" maxlength="50" placeholder="e.g. Holy" />
+            {% endif %}
           </div>
           <div class="col-auto">
-            <label class="form-label small">GS</label>
+            <label class="form-label small" for="newCharacterGearscore">GS</label>
             <input type="text" name="gearscore" class="form-control bg-dark text-light border-secondary"
-                   maxlength="10" placeholder="e.g. 6300" style="width:90px" />
+                   id="newCharacterGearscore" maxlength="10" placeholder="e.g. 6300"
+                   style="width:90px" {{ 'required' if guidedMode }} />
           </div>
           <div class="col-auto">
             <label class="form-label small">Prof 1</label>
@@ -250,8 +299,17 @@
               <option>Tailoring</option>
             </select>
           </div>
+          {% if guidedMode %}
+          <div class="col-12 guide-review mt-3" aria-live="polite">
+            <span class="guide-field-step">3</span>
+            <strong>Review:</strong>
+            <span id="characterGuideSummary" class="text-muted">Complete the fields above.</span>
+          </div>
+          {% endif %}
           <div class="col-auto">
-            <button type="submit" class="btn btn-wow">Add</button>
+            <button type="submit" class="btn btn-wow">
+              {{ "Save character" if guidedMode else "Add" }}
+            </button>
           </div>
         </form>
       </div>

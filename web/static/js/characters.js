@@ -31,3 +31,65 @@ if (new URLSearchParams(window.location.search).get('tab') === 'presets') {
   const presetsTab = document.getElementById('presets-tab');
   if (presetsTab) bootstrap.Tab.getOrCreateInstance(presetsTab).show();
 }
+
+const newCharacterForm = document.getElementById('newCharacterForm');
+if (newCharacterForm?.dataset.guided === 'true') {
+  const nameInput = document.getElementById('newCharacterName');
+  const realmInput = document.getElementById('newCharacterRealm');
+  const classSelect = document.getElementById('newCharacterClass');
+  const specSelect = document.getElementById('newCharacterSpec');
+  const gearscoreInput = document.getElementById('newCharacterGearscore');
+  const summary = document.getElementById('characterGuideSummary');
+  const progressItems = document.querySelectorAll('[data-guide-progress]');
+
+  const updateGuide = () => {
+    const hasCharacter = Boolean(nameInput.value.trim());
+    const hasBuild = Boolean(
+      classSelect.value && specSelect.value && gearscoreInput.value.trim()
+    );
+
+    progressItems.forEach((item) => {
+      const step = Number(item.dataset.guideProgress);
+      const complete = step === 1 ? hasCharacter : step === 2 ? hasBuild : hasCharacter && hasBuild;
+      item.classList.toggle('complete', complete);
+    });
+
+    if (hasCharacter && hasBuild) {
+      summary.textContent = `${nameInput.value.trim()}-${realmInput.value.trim()} · ${classSelect.value} · ${specSelect.value} · GS ${gearscoreInput.value.trim()}`;
+      summary.classList.remove('text-muted');
+    } else {
+      summary.textContent = 'Complete the fields above.';
+      summary.classList.add('text-muted');
+    }
+  };
+
+  classSelect.addEventListener('change', () => {
+    const classData = WOW_DATA.classes[classSelect.value];
+    specSelect.replaceChildren();
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = classData ? '— select —' : '— choose class first —';
+    specSelect.appendChild(placeholder);
+
+    if (classData) {
+      Object.keys(classData.specs).forEach((specName) => {
+        const option = document.createElement('option');
+        option.value = specName;
+        option.textContent = specName;
+        specSelect.appendChild(option);
+      });
+      specSelect.disabled = false;
+      specSelect.focus();
+    } else {
+      specSelect.disabled = true;
+    }
+    updateGuide();
+  });
+
+  [nameInput, realmInput, specSelect, gearscoreInput].forEach((field) => {
+    field.addEventListener('input', updateGuide);
+    field.addEventListener('change', updateGuide);
+  });
+  updateGuide();
+}

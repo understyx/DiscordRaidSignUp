@@ -93,6 +93,20 @@ The chosen guild is stored in the session for the rest of the visit.
 
 ---
 
+### US-2.4 Guided Character Setup
+**As a** new player,
+**I want to** choose a guided Discord or website flow,
+**so that** I can register characters without learning command syntax first.
+
+**Flow:** An officer posts the reusable `/helpnoobs` launcher → any server member chooses
+**Discord** or **Website** → the remaining setup is private and scoped to that server.
+
+- Discord asks for class, spec, name, realm, and gearscore one step at a time in DMs.
+- Website signs the member in, activates the originating guild, and opens the guided form.
+- After saving, the member can add another character or finish.
+
+---
+
 ## 3. Character Management (Web App)
 
 ### US-3.1 View My Characters

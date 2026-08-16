@@ -3,7 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { safeRelativeRedirect, selectAvailableGuilds } = require('../services/guildAccess');
+const {
+  canStartCharacterGuide,
+  safeRelativeRedirect,
+  selectAvailableGuilds,
+} = require('../services/guildAccess');
 
 const guilds = [
   { guild_id: '1', guild_name: 'One' },
@@ -29,4 +33,10 @@ test('redirects remain local to the application', () => {
   assert.equal(safeRelativeRedirect('//evil.example'), '/raids');
   assert.equal(safeRelativeRedirect('%2F%2Fevil.example'), '/raids');
   assert.equal(safeRelativeRedirect('/raids%0d%0aLocation:evil'), '/raids');
+});
+
+test('character guides can only activate a guild the user belongs to', () => {
+  assert.equal(canStartCharacterGuide(['1', '2'], '2'), true);
+  assert.equal(canStartCharacterGuide(['1', '2'], '3'), false);
+  assert.equal(canStartCharacterGuide(['1'], '../1'), false);
 });
