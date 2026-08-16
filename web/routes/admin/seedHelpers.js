@@ -1,51 +1,20 @@
-const _WOW_CLASSES = [
-  { name: 'Death Knight', specs: ['Blood', 'Frost', 'Unholy'] },
-  { name: 'Druid',        specs: ['Balance', 'Feral (Cat)', 'Feral (Bear)', 'Restoration'] },
-  { name: 'Hunter',       specs: ['Beast Mastery', 'Marksmanship', 'Survival'] },
-  { name: 'Mage',         specs: ['Arcane', 'Fire', 'Frost'] },
-  { name: 'Paladin',      specs: ['Holy', 'Protection', 'Retribution'] },
-  { name: 'Priest',       specs: ['Discipline', 'Holy', 'Shadow'] },
-  { name: 'Rogue',        specs: ['Assassination', 'Combat', 'Subtlety'] },
-  { name: 'Shaman',       specs: ['Elemental', 'Enhancement', 'Restoration'] },
-  { name: 'Warlock',      specs: ['Affliction', 'Demonology', 'Destruction'] },
-  { name: 'Warrior',      specs: ['Arms', 'Fury', 'Protection'] },
-];
+const WOW_DATA = require('../../../shared/wow.json');
 
-const _CLASS_SPEC_ROLES = {
-  'Death Knight.Blood':       'tank',
-  'Death Knight.Frost':       'dps',
-  'Death Knight.Unholy':      'dps',
-  'Druid.Balance':            'dps',
-  'Druid.Feral (Cat)':        'dps',
-  'Druid.Feral (Bear)':       'tank',
-  'Druid.Restoration':        'healer',
-  'Hunter.Beast Mastery':     'dps',
-  'Hunter.Marksmanship':      'dps',
-  'Hunter.Survival':          'dps',
-  'Mage.Arcane':              'dps',
-  'Mage.Fire':                'dps',
-  'Mage.Frost':               'dps',
-  'Paladin.Holy':             'healer',
-  'Paladin.Protection':       'tank',
-  'Paladin.Retribution':      'dps',
-  'Priest.Discipline':        'healer',
-  'Priest.Holy':              'healer',
-  'Priest.Shadow':            'dps',
-  'Rogue.Assassination':      'dps',
-  'Rogue.Combat':             'dps',
-  'Rogue.Subtlety':           'dps',
-  'Shaman.Elemental':         'dps',
-  'Shaman.Enhancement':       'dps',
-  'Shaman.Restoration':       'healer',
-  'Warlock.Affliction':       'dps',
-  'Warlock.Demonology':       'dps',
-  'Warlock.Destruction':      'dps',
-  'Warrior.Arms':             'dps',
-  'Warrior.Fury':             'dps',
-  'Warrior.Protection':       'tank',
-};
+const _WOW_CLASSES = Object.entries(WOW_DATA.classes).map(([name, classData]) => ({
+  name,
+  specs: Object.keys(classData.specs),
+}));
 
-const _REALMS = ['Icecrown', 'Lordaeron', 'Frostmourne'];
+const _CLASS_SPEC_ROLES = Object.fromEntries(
+  Object.entries(WOW_DATA.classes).flatMap(([className, classData]) =>
+    Object.entries(classData.specs).map(([specName, specData]) => [
+      `${className}.${specName}`,
+      specData.role,
+    ])
+  )
+);
+
+const _REALMS = WOW_DATA.realms;
 
 const _FAKE_USER_ID_MIN = BigInt('10000000000000000');
 const _FAKE_USER_ID_MAX = BigInt('999999999999999999');

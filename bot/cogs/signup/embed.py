@@ -120,9 +120,7 @@ def _build_signup_embed(
         else:
             coming_count += 1
 
-    status_emoji = {"open": "🟢", "locked": "🔒"}.get(
-        raid.get("status", "open"), "🟢"
-    )
+    status_emoji = {"open": "🟢", "locked": "🔒"}.get(raid.get("status", "open"), "🟢")
     is_open = raid.get("status", "open") == "open"
 
     embed = discord.Embed(
@@ -136,7 +134,9 @@ def _build_signup_embed(
         value=f"<t:{int(raid['date'].timestamp())}:F>",
         inline=True,
     )
-    embed.add_field(name="Status", value=f"{status_emoji} {raid['status'].capitalize()}", inline=True)
+    embed.add_field(
+        name="Status", value=f"{status_emoji} {raid['status'].capitalize()}", inline=True
+    )
     embed.add_field(
         name="👥 Players Signed Up",
         value=f"{coming_count} + {tentative_count} tentative",
@@ -244,13 +244,15 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             signup_data = []
             for s in sups:
                 char = s.character
-                signup_data.append({
-                    "discord_user_id": s.discord_user_id,
-                    "status": s.status.value if s.status else DEFAULT_SIGNUP_STATUS,
-                    "char_name": char.char_name if char else None,
-                    "char_class": char.char_class if char else None,
-                    "spec": char.spec if char else None,
-                })
+                signup_data.append(
+                    {
+                        "discord_user_id": s.discord_user_id,
+                        "status": s.status.value if s.status else DEFAULT_SIGNUP_STATUS,
+                        "char_name": char.char_name if char else None,
+                        "char_class": char.char_class if char else None,
+                        "spec": char.spec if char else None,
+                    }
+                )
             raid_data = {
                 "id": raid.id,
                 "name": raid.name,
@@ -265,8 +267,10 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
             # Load spec aliases for canonical spec name resolution.
             try:
                 alias_rows = session.execute(
-                    text("SELECT char_class, alias, canonical FROM spec_aliases WHERE guild_id = :guild_id"),
-                    {"guild_id": raid.guild_id}
+                    text(
+                        "SELECT char_class, alias, canonical FROM spec_aliases WHERE guild_id = :guild_id"
+                    ),
+                    {"guild_id": raid.guild_id},
                 ).fetchall()
                 spec_aliases: dict = {}
                 for char_class, alias, canonical in alias_rows:
@@ -286,9 +290,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
                         ),
                         {"ids": tuple(user_ids)},
                     ).fetchall()
-                    user_display_names: dict = {
-                        str(row[0]): row[1] or row[2] for row in dn_rows
-                    }
+                    user_display_names: dict = {str(row[0]): row[1] or row[2] for row in dn_rows}
                 else:
                     user_display_names = {}
             except Exception:
@@ -297,7 +299,9 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         finally:
             session.close()
 
-    raid_data, signup_data, spec_aliases, user_display_names = await loop.run_in_executor(None, _fetch)
+    raid_data, signup_data, spec_aliases, user_display_names = await loop.run_in_executor(
+        None, _fetch
+    )
 
     if not raid_data or not raid_data.get("discord_message_id"):
         return
@@ -307,7 +311,9 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         if channel is None:
             channel = await bot.fetch_channel(raid_data["discord_channel_id"])
         msg = await channel.fetch_message(raid_data["discord_message_id"])
-        embed = _build_signup_embed(raid_data, signup_data, spec_aliases=spec_aliases, user_display_names=user_display_names)
+        embed = _build_signup_embed(
+            raid_data, signup_data, spec_aliases=spec_aliases, user_display_names=user_display_names
+        )
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)

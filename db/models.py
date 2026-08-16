@@ -1,7 +1,20 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, Enum, Text, BigInteger, ForeignKey, Float, JSON
-from sqlalchemy.orm import DeclarativeBase, relationship
-import enum
 import datetime
+import enum
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
@@ -101,9 +114,12 @@ class RaidLogMessage(Base):
     discord_user_id = Column(BigInteger, primary_key=True)
     discord_thread_id = Column(BigInteger, nullable=False)
     discord_message_id = Column(BigInteger, nullable=False)
-    updated_at = Column(DateTime, nullable=False,
-                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     raid = relationship("Raid")
 
 
@@ -120,18 +136,27 @@ class Composition(Base):
     __tablename__ = "compositions"
     id = Column(Integer, primary_key=True, autoincrement=True)
     raid_id = Column(Integer, ForeignKey("raids.id"), nullable=False)
-    character_id = Column(Integer, ForeignKey("characters.id"), nullable=True)  # NULL for placeholder slots
-    placeholder_text = Column(String(100), nullable=True)  # e.g. "🛡️ Prot Paladin" when character_id is NULL
+    character_id = Column(
+        Integer, ForeignKey("characters.id"), nullable=True
+    )  # NULL for placeholder slots
+    placeholder_text = Column(
+        String(100), nullable=True
+    )  # e.g. "🛡️ Prot Paladin" when character_id is NULL
     role_slot = Column(String(50), nullable=False)  # e.g. "slot_1", "slot_3", "slot_10"
     slot_role = Column(String(20), nullable=False, default="dps")  # "tank", "healer", or "dps"
-    comp_number = Column(Integer, default=1, nullable=False)  # which sub-comp within the raid (1, 2, 3…)
+    comp_number = Column(
+        Integer, default=1, nullable=False
+    )  # which sub-comp within the raid (1, 2, 3…)
     is_sfs_collector = Column(Boolean, nullable=False, default=False)
     is_val_collector = Column(Boolean, nullable=False, default=False)
     created_by = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, nullable=False,
-                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     raid = relationship("Raid", back_populates="compositions")
     character = relationship("Character")
 
@@ -175,9 +200,12 @@ class GuildPlayerNote(Base):
     guild_id = Column(BigInteger, primary_key=True)
     discord_user_id = Column(BigInteger, primary_key=True)
     note = Column(Text, nullable=False)
-    updated_at = Column(DateTime, nullable=False,
-                        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-                        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
 
 
 class SignupPreset(Base):

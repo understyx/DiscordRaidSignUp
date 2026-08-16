@@ -38,7 +38,8 @@ async function postToDiscordChannel(channelId, payload) {
 
 async function editDiscordMessage(channelId, messageId, payload) {
   const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token || !channelId || !messageId) return { ok: false, reason: 'missing token/channel/message' };
+  if (!token || !channelId || !messageId)
+    return { ok: false, reason: 'missing token/channel/message' };
 
   try {
     const resp = await fetch(`${DISCORD_API}/channels/${channelId}/messages/${messageId}`, {
@@ -183,21 +184,33 @@ async function postToRaidLogThread(raidId, message, discordUserId = null) {
     finalMessage = ensureUserLogIdentityToken(finalMessage, raidId, discordUserId);
     const storedMessageId = await getStoredRaidUserLogMessageId(raidId, discordUserId);
     if (storedMessageId) {
-      const editStoredResult = await editDiscordMessage(threadId, storedMessageId, { content: finalMessage });
+      const editStoredResult = await editDiscordMessage(threadId, storedMessageId, {
+        content: finalMessage,
+      });
       if (editStoredResult.ok) {
         return;
       }
-      console.warn(`[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`);
+      console.warn(
+        `[log-thread] Failed to edit stored log message ${storedMessageId} in ${threadId}: ${editStoredResult.reason}`
+      );
       if (!isDiscordNotFound(editStoredResult)) {
         allowPostFallback = false;
       }
     }
 
-    const existingMessageId = await findExistingRaidUserLogMessageId(threadId, raidId, discordUserId);
+    const existingMessageId = await findExistingRaidUserLogMessageId(
+      threadId,
+      raidId,
+      discordUserId
+    );
     if (existingMessageId) {
-      const editResult = await editDiscordMessage(threadId, existingMessageId, { content: finalMessage });
+      const editResult = await editDiscordMessage(threadId, existingMessageId, {
+        content: finalMessage,
+      });
       if (!editResult.ok) {
-        console.warn(`[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`);
+        console.warn(
+          `[log-thread] Failed to edit log message ${existingMessageId} in ${threadId}: ${editResult.reason}`
+        );
         if (!isDiscordNotFound(editResult)) {
           allowPostFallback = false;
         }

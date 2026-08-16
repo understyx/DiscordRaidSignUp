@@ -15,14 +15,16 @@ async function fetchGuildRoles(guildId) {
       headers: { Authorization: `Bot ${botToken}` },
     });
     if (!resp.ok) {
-      console.warn(`[guild-settings] Discord API ${resp.status} fetching roles for guild ${guildId}`);
+      console.warn(
+        `[guild-settings] Discord API ${resp.status} fetching roles for guild ${guildId}`
+      );
       return [];
     }
     const roles = await resp.json();
     return roles
-      .filter(r => r.id !== guildId) // exclude @everyone
+      .filter((r) => r.id !== guildId) // exclude @everyone
       .sort((a, b) => b.position - a.position)
-      .map(r => ({
+      .map((r) => ({
         id: r.id,
         name: r.name,
         color_hex: r.color ? r.color.toString(16).padStart(6, '0') : null,
@@ -34,9 +36,30 @@ async function fetchGuildRoles(guildId) {
 }
 
 const RESERVED_SLUGS = new Set([
-  'www', 'api', 'admin', 'mail', 'auth', 'login', 'app', 'static', 'assets',
-  'cdn', 'ftp', 'smtp', 'pop', 'imap', 'dev', 'staging', 'test', 'beta',
-  'help', 'support', 'status', 'blog', 'shop', 'store',
+  'www',
+  'api',
+  'admin',
+  'mail',
+  'auth',
+  'login',
+  'app',
+  'static',
+  'assets',
+  'cdn',
+  'ftp',
+  'smtp',
+  'pop',
+  'imap',
+  'dev',
+  'staging',
+  'test',
+  'beta',
+  'help',
+  'support',
+  'status',
+  'blog',
+  'shop',
+  'store',
 ]);
 
 module.exports = { fetchGuildRoles, RESERVED_SLUGS };

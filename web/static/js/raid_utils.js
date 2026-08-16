@@ -34,20 +34,13 @@ function normalizeSpec(charClass, specText) {
 // ── Canonical spec → role lookup table ─────────────────────────────────
 // Keys are the canonical spec names produced by normalizeSpec() / SPEC_ALIASES.
 // Only healer and tank specs need entries; everything else defaults to 'dps'.
-const SPEC_TO_ROLE = {
-  // Healers
-  'holy':         'healer',
-  'discipline':   'healer',
-  'restoration':  'healer',
-  'mistweaver':   'healer',
-  // Tanks
-  'protection':   'tank',
-  'blood':        'tank',
-  'bear':         'tank',
-  'guardian':     'tank',
-  'brewmaster':   'tank',
-  'vengeance':    'tank',
-};
+const SPEC_TO_ROLE = Object.fromEntries(
+  Object.values(WOW_DATA.classes).flatMap(classData =>
+    Object.entries(classData.specs)
+      .filter(([, specData]) => specData.role !== 'dps')
+      .map(([specName, specData]) => [specName.toLowerCase(), specData.role])
+  )
+);
 
 // Pre-compiled regexes for canonical specs to avoid re-compiling in specToRole()
 const SPEC_ROLE_REGEXES = Object.keys(SPEC_TO_ROLE).map(canonical => ({
@@ -63,24 +56,20 @@ const ROLE_EMOJIS = {
   rdps: '🏹'
 };
 
-const CLASS_ROLES = {
-  'warrior': 'mdps',
-  'rogue': 'mdps',
-  'death knight': 'mdps',
-  'paladin': 'mdps', // Ret is mdps
-  'shaman': 'mdps', // Enhancement is mdps, Elemental is rdps
-  'hunter': 'rdps',
-  'druid': 'mdps', // Feral is mdps, Balance is rdps
-  'mage': 'rdps',
-  'warlock': 'rdps',
-  'priest': 'rdps'
-};
+const CLASS_ROLES = Object.fromEntries(
+  Object.entries(WOW_DATA.classes).map(([className, classData]) => [
+    className.toLowerCase(),
+    classData.default_dps_role,
+  ])
+);
 
-const SPEC_ROLES = {
-  'elemental': 'rdps',
-  'balance': 'rdps',
-  'shadow': 'rdps'
-};
+const SPEC_ROLES = Object.fromEntries(
+  Object.values(WOW_DATA.classes).flatMap(classData =>
+    Object.entries(classData.specs)
+      .filter(([, specData]) => specData.dps_role)
+      .map(([specName, specData]) => [specName.toLowerCase(), specData.dps_role])
+  )
+);
 
 /**
  * Detect role from spec name.

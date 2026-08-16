@@ -9,64 +9,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.db import get_session
 from bot.cogs.raid import is_officer
+from bot.db import get_session
+from bot.wow import CLASS_SPEC_ROLES, REALMS, classes_and_specs
 from db.models import Character, CharacterRole
 
 logger = logging.getLogger(__name__)
 
-_WOW_CLASSES = [
-    ("Death Knight", ["Blood", "Frost", "Unholy"]),
-    ("Druid", ["Balance", "Feral (Cat)", "Feral (Bear)", "Restoration"]),
-    ("Hunter", ["Beast Mastery", "Marksmanship", "Survival"]),
-    ("Mage", ["Arcane", "Fire", "Frost"]),
-    ("Paladin", ["Holy", "Protection", "Retribution"]),
-    ("Priest", ["Discipline", "Holy", "Shadow"]),
-    ("Rogue", ["Assassination", "Combat", "Subtlety"]),
-    ("Shaman", ["Elemental", "Enhancement", "Restoration"]),
-    ("Warlock", ["Affliction", "Demonology", "Destruction"]),
-    ("Warrior", ["Arms", "Fury", "Protection"]),
-]
+_WOW_CLASSES = classes_and_specs()
 
-# Maps each (class, spec) pair to a role so shared spec names don't collide.
-_CLASS_SPEC_ROLES: dict[tuple[str, str], CharacterRole] = {
-    ("Death Knight", "Blood"): CharacterRole.tank,
-    ("Death Knight", "Frost"): CharacterRole.dps,
-    ("Death Knight", "Unholy"): CharacterRole.dps,
-    ("Druid", "Balance"): CharacterRole.dps,
-    ("Druid", "Feral (Cat)"): CharacterRole.dps,
-    ("Druid", "Feral (Bear)"): CharacterRole.tank,
-    ("Druid", "Restoration"): CharacterRole.healer,
-    ("Hunter", "Beast Mastery"): CharacterRole.dps,
-    ("Hunter", "Marksmanship"): CharacterRole.dps,
-    ("Hunter", "Survival"): CharacterRole.dps,
-    ("Mage", "Arcane"): CharacterRole.dps,
-    ("Mage", "Fire"): CharacterRole.dps,
-    ("Mage", "Frost"): CharacterRole.dps,
-    ("Paladin", "Holy"): CharacterRole.healer,
-    ("Paladin", "Protection"): CharacterRole.tank,
-    ("Paladin", "Retribution"): CharacterRole.dps,
-    ("Priest", "Discipline"): CharacterRole.healer,
-    ("Priest", "Holy"): CharacterRole.healer,
-    ("Priest", "Shadow"): CharacterRole.dps,
-    ("Rogue", "Assassination"): CharacterRole.dps,
-    ("Rogue", "Combat"): CharacterRole.dps,
-    ("Rogue", "Subtlety"): CharacterRole.dps,
-    ("Shaman", "Elemental"): CharacterRole.dps,
-    ("Shaman", "Enhancement"): CharacterRole.dps,
-    ("Shaman", "Restoration"): CharacterRole.healer,
-    ("Warlock", "Affliction"): CharacterRole.dps,
-    ("Warlock", "Demonology"): CharacterRole.dps,
-    ("Warlock", "Destruction"): CharacterRole.dps,
-    ("Warrior", "Arms"): CharacterRole.dps,
-    ("Warrior", "Fury"): CharacterRole.dps,
-    ("Warrior", "Protection"): CharacterRole.tank,
-}
-
-_REALMS = ["Icecrown", "Lordaeron", "Frostmourne"]
-
-_FAKE_USER_ID_MIN = 10 ** 16
-_FAKE_USER_ID_MAX = 10 ** 18 - 1
+_FAKE_USER_ID_MIN = 10**16
+_FAKE_USER_ID_MAX = 10**18 - 1
 
 
 def _random_char_name(length: int) -> str:
@@ -83,9 +36,9 @@ def _generate_characters(discord_user_id: int, count: int) -> list[Character]:
         char_name = _random_char_name(name_len)
         char_class, specs = random.choice(_WOW_CLASSES)
         spec = random.choice(specs)
-        role = _CLASS_SPEC_ROLES.get((char_class, spec), CharacterRole.dps)
+        role = CharacterRole(CLASS_SPEC_ROLES.get((char_class, spec), "dps"))
         gearscore = round(random.uniform(4000.0, 6800.0), 0)
-        realm = random.choice(_REALMS)
+        realm = random.choice(REALMS)
         chars.append(
             Character(
                 discord_user_id=discord_user_id,
@@ -157,12 +110,16 @@ class DevCog(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         if not interaction.guild:
-            await interaction.followup.send("This command can only be used in a server.", ephemeral=True)
+            await interaction.followup.send(
+                "This command can only be used in a server.", ephemeral=True
+            )
             return
 
         emojis = interaction.guild.emojis
         if not emojis:
-            await interaction.followup.send("No custom emojis found in this server.", ephemeral=True)
+            await interaction.followup.send(
+                "No custom emojis found in this server.", ephemeral=True
+            )
             return
 
         # Format: <:name:id> or <a:name:id> for animated

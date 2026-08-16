@@ -21,7 +21,6 @@ const VALID_RESTRICTIONS = ['all', 'guild_member', 'role'];
 
 const router = express.Router();
 
-
 // ── GET /guild-settings ───────────────────────────────────────────────────────
 
 router.get('/', async (req, res) => {
@@ -33,17 +32,15 @@ router.get('/', async (req, res) => {
   let configuredAdminRoles = [];
   let guildSubdomain = null;
   if (guildId) {
-    const [rows] = await pool.query(
-      'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
-      [guildId]
-    );
-    configuredAdminRoles = rows.map(r => String(r.role_id));
+    const [rows] = await pool.query('SELECT role_id FROM guild_admin_roles WHERE guild_id = ?', [
+      guildId,
+    ]);
+    configuredAdminRoles = rows.map((r) => String(r.role_id));
 
     // Fetch subdomain for this guild
-    const [[bgRow]] = await pool.query(
-      'SELECT subdomain FROM bot_guilds WHERE guild_id = ?',
-      [guildId]
-    );
+    const [[bgRow]] = await pool.query('SELECT subdomain FROM bot_guilds WHERE guild_id = ?', [
+      guildId,
+    ]);
     if (bgRow) guildSubdomain = bgRow.subdomain || null;
   }
 
@@ -54,7 +51,7 @@ router.get('/', async (req, res) => {
     embed_title: null,
     embed_description: null,
     embed_image_url: null,
-    embed_color: null
+    embed_color: null,
   };
   if (guildId) {
     const [[row]] = await pool.query(
@@ -68,13 +65,13 @@ router.get('/', async (req, res) => {
         embed_title: row.embed_title,
         embed_description: row.embed_description,
         embed_image_url: row.embed_image_url,
-        embed_color: row.embed_color
+        embed_color: row.embed_color,
       };
     }
   }
 
   const guildRoles = await fetchGuildRoles(guildId);
-  const guildRolesMap = Object.fromEntries(guildRoles.map(r => [r.id, r]));
+  const guildRolesMap = Object.fromEntries(guildRoles.map((r) => [r.id, r]));
 
   res.render('guild_settings.html', {
     guild_id: guildId,
@@ -145,10 +142,10 @@ router.post('/admin-roles/add', express.urlencoded({ extended: false }), async (
     return res.redirect('/guild-settings');
   }
 
-  await pool.query(
-    'INSERT IGNORE INTO guild_admin_roles (guild_id, role_id) VALUES (?, ?)',
-    [guildId, roleId]
-  );
+  await pool.query('INSERT IGNORE INTO guild_admin_roles (guild_id, role_id) VALUES (?, ?)', [
+    guildId,
+    roleId,
+  ]);
 
   req.session.flash = '✅ Role added to admin roles.';
   res.redirect('/guild-settings');
@@ -171,10 +168,10 @@ router.post('/admin-roles/remove', express.urlencoded({ extended: false }), asyn
     return res.redirect('/guild-settings');
   }
 
-  await pool.query(
-    'DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ?',
-    [guildId, roleId]
-  );
+  await pool.query('DELETE FROM guild_admin_roles WHERE guild_id = ? AND role_id = ?', [
+    guildId,
+    roleId,
+  ]);
 
   req.session.flash = '✅ Role removed from admin roles.';
   res.redirect('/guild-settings');
@@ -191,14 +188,15 @@ router.post('/subdomain', express.urlencoded({ extended: false }), async (req, r
     return res.redirect('/guild-settings');
   }
 
-  const raw = String(req.body.subdomain || '').trim().toLowerCase();
+  const raw = String(req.body.subdomain || '')
+    .trim()
+    .toLowerCase();
 
   // Empty value means clear the subdomain.
   if (!raw) {
-    const [result] = await pool.query(
-      'UPDATE bot_guilds SET subdomain = NULL WHERE guild_id = ?',
-      [guildId]
-    );
+    const [result] = await pool.query('UPDATE bot_guilds SET subdomain = NULL WHERE guild_id = ?', [
+      guildId,
+    ]);
     if (result.affectedRows === 0) {
       req.session.flash = '❌ Guild not found.';
     } else {
@@ -220,10 +218,10 @@ router.post('/subdomain', express.urlencoded({ extended: false }), async (req, r
   }
 
   try {
-    const [result] = await pool.query(
-      'UPDATE bot_guilds SET subdomain = ? WHERE guild_id = ?',
-      [raw, guildId]
-    );
+    const [result] = await pool.query('UPDATE bot_guilds SET subdomain = ? WHERE guild_id = ?', [
+      raw,
+      guildId,
+    ]);
     if (result.affectedRows === 0) {
       req.session.flash = '❌ Guild not found.';
     } else {

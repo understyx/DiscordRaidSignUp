@@ -42,9 +42,7 @@
     "name": "Attack Power: Static",
     "desc": "+AP (Battle Shout – Warrior / Blessing of Might – Paladin)",
     "cat": "Raid Buffs",
-    "preferred": [
-      { "cls": "paladin", "spec": null }
-    ],
+    "preferred": [{ "cls": "paladin", "spec": null }],
     "can_bring": [{ "cls": "warrior", "spec": null }]
   },
   {
@@ -53,8 +51,8 @@
     "desc": "+10% AP (Trueshot Aura – MM Hunter / Unleashed Rage – Enha Shaman / Abomination's Might – Blood DK)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "hunter",       "spec": "Marksmanship" },
-      { "cls": "shaman",       "spec": "Enhancement" },
+      { "cls": "hunter", "spec": "Marksmanship" },
+      { "cls": "shaman", "spec": "Enhancement" },
       { "cls": "death knight", "spec": "Blood (Tank)" },
       { "cls": "death knight", "spec": "Blood (DPS)" }
     ],
@@ -66,8 +64,8 @@
     "desc": "+5% Melee/Ranged Crit (Leader of the Pack – Feral / Rampage – Fury Warrior)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "druid",   "spec": "Feral (Cat)" },
-      { "cls": "druid",   "spec": "Feral (Bear)" },
+      { "cls": "druid", "spec": "Feral (Cat)" },
+      { "cls": "druid", "spec": "Feral (Bear)" },
       { "cls": "warrior", "spec": "Fury" }
     ],
     "can_bring": []
@@ -78,7 +76,7 @@
     "desc": "+Melee Haste (Windfury Totem – Enha Shaman / Improved Icy Talons – Frost DK)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "shaman",       "spec": "Enhancement" },
+      { "cls": "shaman", "spec": "Enhancement" },
       { "cls": "death knight", "spec": "Frost (Tank)" },
       { "cls": "death knight", "spec": "Frost (DPS)" },
       { "cls": "death knight", "spec": "Blood (Tank)" }
@@ -94,9 +92,9 @@
     "desc": "+3% Damage (Ferocious Inspiration – BM Hunter / Sanctified Retribution – Ret / Arcane Empowerment – Arcane Mage)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "hunter",  "spec": "Beast Mastery" },
+      { "cls": "hunter", "spec": "Beast Mastery" },
       { "cls": "paladin", "spec": "Retribution" },
-      { "cls": "mage",    "spec": "Arcane" }
+      { "cls": "mage", "spec": "Arcane" }
     ],
     "can_bring": []
   },
@@ -107,7 +105,7 @@
     "cat": "Raid Buffs",
     "preferred": [
       { "cls": "paladin", "spec": "Retribution" },
-      { "cls": "druid",   "spec": "Balance" }
+      { "cls": "druid", "spec": "Balance" }
     ],
     "can_bring": []
   },
@@ -124,7 +122,10 @@
     "name": "Intellect",
     "desc": "+Intellect (Arcane Brilliance – Mage)",
     "cat": "Raid Buffs",
-    "preferred": [{ "cls": "mage", "spec": null }, { "cls": "warlock", "spec": "Affliction" }],
+    "preferred": [
+      { "cls": "mage", "spec": null },
+      { "cls": "warlock", "spec": "Affliction" }
+    ],
     "can_bring": []
   },
   {
@@ -133,7 +134,7 @@
     "desc": "+SP (Totem of Wrath – Ele Shaman / Demonic Pact – Demo Warlock)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "shaman",  "spec": "Elemental" },
+      { "cls": "shaman", "spec": "Elemental" },
       { "cls": "warlock", "spec": "Demonology" }
     ],
     "can_bring": [
@@ -147,7 +148,7 @@
     "desc": "+5% Spell Crit (Moonkin Aura – Balance Druid / Elemental Oath – Ele Shaman)",
     "cat": "Raid Buffs",
     "preferred": [
-      { "cls": "druid",  "spec": "Balance" },
+      { "cls": "druid", "spec": "Balance" },
       { "cls": "shaman", "spec": "Elemental" }
     ],
     "can_bring": []
@@ -157,7 +158,10 @@
     "name": "5% Spell Haste",
     "desc": "+5% Spell Haste (Wrath of Air Totem – any Shaman)",
     "cat": "Raid Buffs",
-    "preferred": [{ "cls": "shaman", "spec": "Restoration" }, { "cls": "shaman", "spec": "Elemental" }],
+    "preferred": [
+      { "cls": "shaman", "spec": "Restoration" },
+      { "cls": "shaman", "spec": "Elemental" }
+    ],
     "can_bring": [{ "cls": "shaman", "spec": "Enhancement" }]
   },
   {
@@ -181,11 +185,9 @@
     "name": "Health",
     "desc": "+Max Health (Commanding Shout – Warrior / Blood Pact – Warlock Imp)",
     "cat": "Raid Buffs",
-    "preferred": [
-      { "cls": "warrior", "spec": null }
-    ],
+    "preferred": [{ "cls": "warrior", "spec": null }],
     "can_bring": [
-      { "cls": "warlock", "spec": "Demonology"},
+      { "cls": "warlock", "spec": "Demonology" },
       { "cls": "warlock", "spec": "Affliction" },
       { "cls": "warlock", "spec": "Destruction" }
     ]
@@ -196,7 +198,11 @@
     "name": "Focus Magic",
     "desc": "+Spell Crit chance on one target (Arcane Mage)",
     "cat": "Single-Player Buffs",
-    "preferred": [{ "cls": "mage", "spec": "Arcane" }, { "cls": "mage", "spec": "Fire" }, { "cls": "mage", "spec": "Frost" }],
+    "preferred": [
+      { "cls": "mage", "spec": "Arcane" },
+      { "cls": "mage", "spec": "Fire" },
+      { "cls": "mage", "spec": "Frost" }
+    ],
     "can_bring": []
   },
   {
@@ -204,7 +210,10 @@
     "name": "Hysteria",
     "desc": "20% Physical damage",
     "cat": "Single-Player Buffs",
-    "preferred": [{ "cls": "death knight", "spec": "Blood (DPS)" }, { "cls": "death knight", "spec": "Blood (Tank)" }],
+    "preferred": [
+      { "cls": "death knight", "spec": "Blood (DPS)" },
+      { "cls": "death knight", "spec": "Blood (Tank)" }
+    ],
     "can_bring": []
   },
   {
@@ -232,8 +241,8 @@
     "preferred": [
       { "cls": "priest", "spec": null },
       { "cls": "shaman", "spec": null },
-      { "cls": "mage",   "spec": null },
-      { "cls": "warlock",   "spec": "Affliction" }
+      { "cls": "mage", "spec": null },
+      { "cls": "warlock", "spec": "Affliction" }
     ],
     "can_bring": []
   },
@@ -243,9 +252,7 @@
     "desc": "Enrage Dispel",
     "cat": "Offensive Dispel",
     "preferred": [{ "cls": "hunter", "spec": null }],
-    "can_bring": [
-      { "cls": "rogue", "spec": null }
-    ]
+    "can_bring": [{ "cls": "rogue", "spec": null }]
   },
 
   {
@@ -254,7 +261,7 @@
     "desc": "Defensive Magic Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
-      { "cls": "priest",  "spec": null },
+      { "cls": "priest", "spec": null },
       { "cls": "paladin", "spec": null },
       { "cls": "warlock", "spec": "Affliction" }
     ],
@@ -266,7 +273,7 @@
     "desc": "Curse Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
-      { "cls": "mage",  "spec": null },
+      { "cls": "mage", "spec": null },
       { "cls": "druid", "spec": null },
       { "cls": "shaman", "spec": "Restoration" }
     ],
@@ -278,7 +285,7 @@
     "desc": "Disease Dispel",
     "cat": "Defensive Dispel",
     "preferred": [
-      { "cls": "priest",  "spec": null },
+      { "cls": "priest", "spec": null },
       { "cls": "paladin", "spec": null },
       { "cls": "shaman", "spec": null }
     ],
@@ -290,9 +297,9 @@
     "desc": "Poison Dispel (Abolish Poison – Druid / Cleanse – Paladin / Cure Toxins – Shaman)",
     "cat": "Defensive Dispel",
     "preferred": [
-      { "cls": "druid",   "spec": null },
+      { "cls": "druid", "spec": null },
       { "cls": "paladin", "spec": null },
-      { "cls": "shaman",  "spec": null }
+      { "cls": "shaman", "spec": null }
     ],
     "can_bring": []
   },
@@ -303,8 +310,8 @@
     "desc": "+30% Bleed dmg taken (Mangle – Feral Druid / Trauma – Arms Warrior)",
     "cat": "Offensive Debuffs",
     "preferred": [
-      { "cls": "druid",   "spec": "Feral (Cat)" },
-      { "cls": "druid",   "spec": "Feral (Bear)" },
+      { "cls": "druid", "spec": "Feral (Cat)" },
+      { "cls": "druid", "spec": "Feral (Bear)" },
       { "cls": "warrior", "spec": "Arms" }
     ],
     "can_bring": []
@@ -316,7 +323,7 @@
     "cat": "Offensive Debuffs",
     "preferred": [
       { "cls": "warrior", "spec": "Arms" },
-      { "cls": "rogue",   "spec": "Combat" }
+      { "cls": "rogue", "spec": "Combat" }
     ],
     "can_bring": []
   },
@@ -325,7 +332,10 @@
     "name": "3% Crit",
     "desc": "+3% Crit chance vs target",
     "cat": "Offensive Debuffs",
-    "preferred": [{ "cls": "paladin", "spec": "Retribution" }, { "cls": "shaman", "spec": "Elemental" }],
+    "preferred": [
+      { "cls": "paladin", "spec": "Retribution" },
+      { "cls": "shaman", "spec": "Elemental" }
+    ],
     "can_bring": []
   },
   {
@@ -333,7 +343,12 @@
     "name": "5% Spell Crit Taken",
     "desc": "+5% Spell Crit vs target",
     "cat": "Offensive Debuffs",
-    "preferred": [{ "cls": "mage", "spec": "Fire" }, { "cls": "warlock", "spec": null }, { "cls": "mage", "spec": "Frost" }, { "cls": "mage", "spec": "Frostfire" }],
+    "preferred": [
+      { "cls": "mage", "spec": "Fire" },
+      { "cls": "warlock", "spec": null },
+      { "cls": "mage", "spec": "Frost" },
+      { "cls": "mage", "spec": "Frostfire" }
+    ],
     "can_bring": []
   },
   {
@@ -343,7 +358,7 @@
     "cat": "Offensive Debuffs",
     "preferred": [
       { "cls": "priest", "spec": "Shadow" },
-      { "cls": "druid",  "spec": "Balance" }
+      { "cls": "druid", "spec": "Balance" }
     ],
     "can_bring": []
   },
@@ -353,8 +368,8 @@
     "desc": "+13% Magic dmg taken (Curse of the Elements – Warlock / Earth and Moon – Balance Druid / Ebon Plaguebringer – Unholy DK)",
     "cat": "Offensive Debuffs",
     "preferred": [
-      { "cls": "warlock",      "spec": null },
-      { "cls": "druid",        "spec": "Balance" },
+      { "cls": "warlock", "spec": null },
+      { "cls": "druid", "spec": "Balance" },
       { "cls": "death knight", "spec": "Unholy" }
     ],
     "can_bring": []
@@ -367,7 +382,7 @@
     "cat": "Reduction Debuffs",
     "preferred": [
       { "cls": "warrior", "spec": null },
-      { "cls": "rogue",   "spec": null }
+      { "cls": "rogue", "spec": null }
     ],
     "can_bring": [{ "cls": "hunter", "spec": "Beast Mastery" }]
   },
@@ -379,7 +394,7 @@
     "preferred": [{ "cls": "druid", "spec": null }],
     "can_bring": [
       { "cls": "warlock", "spec": null },
-      { "cls": "hunter",  "spec": null }
+      { "cls": "hunter", "spec": null }
     ]
   },
   {
@@ -388,12 +403,12 @@
     "desc": "-20% Melee Attack Speed (Thunderclap – Warrior / Frost Fever – DK / Infected Wounds – Feral / Judgements of the Just – Prot Paladin)",
     "cat": "Reduction Debuffs",
     "preferred": [
-      { "cls": "warrior",      "spec": null },
+      { "cls": "warrior", "spec": null },
       { "cls": "death knight", "spec": null }
     ],
     "can_bring": [
-      { "cls": "druid",   "spec": "Feral (Cat)" },
-      { "cls": "druid",   "spec": "Feral (Bear)" },
+      { "cls": "druid", "spec": "Feral (Cat)" },
+      { "cls": "druid", "spec": "Feral (Bear)" },
       { "cls": "paladin", "spec": "Protection" }
     ]
   },
@@ -405,8 +420,8 @@
     "preferred": [
       { "cls": "paladin", "spec": "Protection" },
       { "cls": "warrior", "spec": null },
-      { "cls": "druid",   "spec": "Feral (Cat)" },
-      { "cls": "druid",   "spec": "Feral (Bear)" }
+      { "cls": "druid", "spec": "Feral (Cat)" },
+      { "cls": "druid", "spec": "Feral (Bear)" }
     ],
     "can_bring": [
       { "cls": "warlock", "spec": null },
@@ -429,7 +444,7 @@
     "cat": "Reduction Debuffs",
     "preferred": [
       { "cls": "warrior", "spec": "Arms" },
-      { "cls": "hunter",  "spec": "Marksmanship" }
+      { "cls": "hunter", "spec": "Marksmanship" }
     ],
     "can_bring": [{ "cls": "rogue", "spec": null }]
   },
@@ -448,22 +463,20 @@
     "desc": "+Mana/sec (Shadow Priest / Survival Hunter / Ret Paladin / Frost Mage / Destro Warlock)",
     "cat": "Resource Return",
     "preferred": [
-      { "cls": "hunter",   "spec": "Survival" },
-      { "cls": "paladin",  "spec": "Retribution" },
-      { "cls": "mage",     "spec": "Frost" },
-      { "cls": "warlock",  "spec": "Destruction" }
+      { "cls": "hunter", "spec": "Survival" },
+      { "cls": "paladin", "spec": "Retribution" },
+      { "cls": "mage", "spec": "Frost" },
+      { "cls": "warlock", "spec": "Destruction" }
     ],
-    "can_bring": [{ "cls": "priest",   "spec": "Shadow" }]
+    "can_bring": [{ "cls": "priest", "spec": "Shadow" }]
   },
   {
     "id": "mana_restore",
     "name": "Mana Restoration",
     "desc": "+MP5 (Mana Spring Totem – Shaman / Blessing of Wisdom – Paladin)",
     "cat": "Resource Return",
-    "preferred": [
-      { "cls": "paladin", "spec": null }
-    ],
-    "can_bring": [{ "cls": "shaman",  "spec": null }]
+    "preferred": [{ "cls": "paladin", "spec": null }],
+    "can_bring": [{ "cls": "shaman", "spec": null }]
   },
   {
     "id": "mana_tide",
@@ -511,7 +524,10 @@
     "name": "Imp Leader of the Pack",
     "desc": "Heals raid on crit (Improved LotP – Feral Druid)",
     "cat": "Health Return",
-    "preferred": [{ "cls": "druid", "spec": "Feral (Cat)" }, { "cls": "druid", "spec": "Feral (Bear)" }],
+    "preferred": [
+      { "cls": "druid", "spec": "Feral (Cat)" },
+      { "cls": "druid", "spec": "Feral (Bear)" }
+    ],
     "can_bring": []
   },
   {

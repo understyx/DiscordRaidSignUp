@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -28,9 +29,13 @@ class RaidAdminGroup(app_commands.Group):
     """Manage which roles have raid-admin privileges."""
 
     def __init__(self):
-        super().__init__(name="raidadmin", description="Manage raid admin roles (server managers only).")
+        super().__init__(
+            name="raidadmin", description="Manage raid admin roles (server managers only)."
+        )
 
-    async def on_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+    async def on_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ) -> None:
         if isinstance(error, app_commands.CheckFailure):
             await interaction.response.send_message(
                 "❌ You do not have permission to use this command. "
@@ -45,10 +50,13 @@ class RaidAdminGroup(app_commands.Group):
     async def add(self, interaction: discord.Interaction, role: discord.Role):
         guild_id = interaction.guild_id
         if guild_id is None:
-            await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ This command must be used in a server.", ephemeral=True
+            )
             return
 
         import asyncio
+
         loop = asyncio.get_running_loop()
 
         def _add():
@@ -78,10 +86,13 @@ class RaidAdminGroup(app_commands.Group):
     async def remove(self, interaction: discord.Interaction, role: discord.Role):
         guild_id = interaction.guild_id
         if guild_id is None:
-            await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ This command must be used in a server.", ephemeral=True
+            )
             return
 
         import asyncio
+
         loop = asyncio.get_running_loop()
 
         def _remove():
@@ -111,19 +122,27 @@ class RaidAdminGroup(app_commands.Group):
     async def list_roles(self, interaction: discord.Interaction):
         guild_id = interaction.guild_id
         if guild_id is None:
-            await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ This command must be used in a server.", ephemeral=True
+            )
             return
 
         import asyncio
+
         loop = asyncio.get_running_loop()
 
         def _list():
             session = get_session()
             try:
                 from sqlalchemy import select
-                rows = session.execute(
-                    select(GuildAdminRole).where(GuildAdminRole.guild_id == guild_id)
-                ).scalars().all()
+
+                rows = (
+                    session.execute(
+                        select(GuildAdminRole).where(GuildAdminRole.guild_id == guild_id)
+                    )
+                    .scalars()
+                    .all()
+                )
                 return [r.role_id for r in rows]
             finally:
                 session.close()

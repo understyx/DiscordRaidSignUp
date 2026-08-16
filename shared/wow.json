@@ -1,0 +1,96 @@
+{
+  "realms": ["Icecrown", "Lordaeron", "Frostmourne"],
+  "classes": {
+    "Death Knight": {
+      "aliases": ["dk", "deathknight", "death knight"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Blood": { "role": "tank" },
+        "Frost": { "role": "dps", "dps_role": "mdps" },
+        "Unholy": { "role": "dps", "dps_role": "mdps" }
+      }
+    },
+    "Druid": {
+      "aliases": ["druid", "dudu", "drood", "druide"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Balance": { "role": "dps", "dps_role": "rdps" },
+        "Feral (Cat)": { "role": "dps", "dps_role": "mdps" },
+        "Feral (Bear)": { "role": "tank" },
+        "Restoration": { "role": "healer" }
+      }
+    },
+    "Hunter": {
+      "aliases": ["hunter", "hunt", "huntr"],
+      "default_dps_role": "rdps",
+      "specs": {
+        "Beast Mastery": { "role": "dps", "dps_role": "rdps" },
+        "Marksmanship": { "role": "dps", "dps_role": "rdps" },
+        "Survival": { "role": "dps", "dps_role": "rdps" }
+      }
+    },
+    "Mage": {
+      "aliases": ["mage", "maje"],
+      "default_dps_role": "rdps",
+      "specs": {
+        "Arcane": { "role": "dps", "dps_role": "rdps" },
+        "Fire": { "role": "dps", "dps_role": "rdps" },
+        "Frost": { "role": "dps", "dps_role": "rdps" }
+      }
+    },
+    "Paladin": {
+      "aliases": ["paladin", "pala", "pally", "pallie", "palladin"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Holy": { "role": "healer" },
+        "Protection": { "role": "tank" },
+        "Retribution": { "role": "dps", "dps_role": "mdps" }
+      }
+    },
+    "Priest": {
+      "aliases": ["priest", "prst", "preist"],
+      "default_dps_role": "rdps",
+      "specs": {
+        "Discipline": { "role": "healer" },
+        "Holy": { "role": "healer" },
+        "Shadow": { "role": "dps", "dps_role": "rdps" }
+      }
+    },
+    "Rogue": {
+      "aliases": ["rogue", "rouge", "rog", "roge"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Assassination": { "role": "dps", "dps_role": "mdps" },
+        "Combat": { "role": "dps", "dps_role": "mdps" },
+        "Subtlety": { "role": "dps", "dps_role": "mdps" }
+      }
+    },
+    "Shaman": {
+      "aliases": ["shaman", "sham", "shammy", "shamy"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Elemental": { "role": "dps", "dps_role": "rdps" },
+        "Enhancement": { "role": "dps", "dps_role": "mdps" },
+        "Restoration": { "role": "healer" }
+      }
+    },
+    "Warlock": {
+      "aliases": ["warlock", "lock", "wlock", "warlok"],
+      "default_dps_role": "rdps",
+      "specs": {
+        "Affliction": { "role": "dps", "dps_role": "rdps" },
+        "Demonology": { "role": "dps", "dps_role": "rdps" },
+        "Destruction": { "role": "dps", "dps_role": "rdps" }
+      }
+    },
+    "Warrior": {
+      "aliases": ["warrior", "war", "warr", "warior"],
+      "default_dps_role": "mdps",
+      "specs": {
+        "Arms": { "role": "dps", "dps_role": "mdps" },
+        "Fury": { "role": "dps", "dps_role": "mdps" },
+        "Protection": { "role": "tank" }
+      }
+    }
+  }
+}

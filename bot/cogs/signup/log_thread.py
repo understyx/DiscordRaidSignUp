@@ -76,13 +76,17 @@ async def _post_to_raid_log(
         log_message = _ensure_user_log_identity_token(log_message, raid_id, discord_user_id)
         async with _get_log_post_lock(raid_id, discord_user_id):
             await _do_post_to_raid_log(
-                bot, raid_id, log_message,
+                bot,
+                raid_id,
+                log_message,
                 discord_user_id=discord_user_id,
                 thread_id=thread_id,
             )
     else:
         await _do_post_to_raid_log(
-            bot, raid_id, log_message,
+            bot,
+            raid_id,
+            log_message,
             discord_user_id=None,
             thread_id=thread_id,
         )
@@ -102,6 +106,7 @@ async def _do_post_to_raid_log(
     allow_new_post = True
 
     if thread_id is None or discord_user_id:
+
         def _get_log_refs():
             session = get_session()
             try:
@@ -170,7 +175,9 @@ async def _do_post_to_raid_log(
             thread = await bot.fetch_channel(thread_id)
         if discord_user_id and stored_message_id:
             try:
-                edited = await thread.get_partial_message(stored_message_id).edit(content=log_message)
+                edited = await thread.get_partial_message(stored_message_id).edit(
+                    content=log_message
+                )
                 await _safe_save_log_ref(edited.id)
                 return
             except discord.NotFound:
@@ -216,7 +223,9 @@ async def _create_log_thread(
             auto_archive_duration=10080,  # 7 days in minutes
             type=discord.ChannelType.public_thread,
         )
-        await thread.send(f"📋 **Sign-Up Log for {raid_name}**\nPlayer sign-ups will be recorded here.")
+        await thread.send(
+            f"📋 **Sign-Up Log for {raid_name}**\nPlayer sign-ups will be recorded here."
+        )
         new_thread_id = thread.id
 
         loop = asyncio.get_event_loop()

@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+import asyncio
+import logging
+from typing import Literal
 
 import discord
 from discord import app_commands
+from discord.ext import commands
 
-from bot.db import get_session
-from db.models import Character
+from bot.cogs.raid import is_officer
+
 from .helpers import (
-    RAID_SAVE_INSTANCES,
     _autocomplete_instance,
+    _clear_all_saves,
+    _fetch_all_saves_for_user,
     _fetch_user_chars,
     _get_save_state,
     _set_save_state,
-    _fetch_all_saves_for_user,
-    _clear_all_saves,
 )
-
-import asyncio
-import logging
-from discord.ext import commands
-from bot.cogs.raid import is_officer
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +41,7 @@ class SavesCog(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         loop = asyncio.get_event_loop()
 
-        rows = await loop.run_in_executor(
-            None, _fetch_all_saves_for_user, interaction.user.id
-        )
+        rows = await loop.run_in_executor(None, _fetch_all_saves_for_user, interaction.user.id)
 
         if not rows:
             await interaction.followup.send(
@@ -67,10 +62,7 @@ class SavesCog(commands.Cog):
             color=discord.Color.orange(),
         )
         for char_key, saves in grouped.items():
-            lines = [
-                f"{'🟢' if s['is_saved'] else '🔴'} {s['instance_name']}"
-                for s in saves
-            ]
+            lines = [f"{'🟢' if s['is_saved'] else '🔴'} {s['instance_name']}" for s in saves]
             embed.add_field(name=char_key, value="\n".join(lines), inline=True)
 
         embed.set_footer(text="🟢 = saved (locked out)  |  🔴 = not saved")
@@ -98,9 +90,7 @@ class SavesCog(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         loop = asyncio.get_event_loop()
 
-        chars = await loop.run_in_executor(
-            None, _fetch_user_chars, interaction.user.id, character
-        )
+        chars = await loop.run_in_executor(None, _fetch_user_chars, interaction.user.id, character)
 
         if not chars:
             await interaction.followup.send(
@@ -114,9 +104,7 @@ class SavesCog(commands.Cog):
         is_saved_val = 1 if saved == "yes" else 0
         instance_clean = instance.strip()
 
-        await loop.run_in_executor(
-            None, _set_save_state, char.id, instance_clean, is_saved_val
-        )
+        await loop.run_in_executor(None, _set_save_state, char.id, instance_clean, is_saved_val)
 
         state_str = "🟢 **saved** (locked out)" if is_saved_val else "🔴 **not saved**"
         await interaction.followup.send(
@@ -144,9 +132,7 @@ class SavesCog(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         loop = asyncio.get_event_loop()
 
-        chars = await loop.run_in_executor(
-            None, _fetch_user_chars, interaction.user.id, character
-        )
+        chars = await loop.run_in_executor(None, _fetch_user_chars, interaction.user.id, character)
 
         if not chars:
             await interaction.followup.send(
@@ -158,14 +144,10 @@ class SavesCog(commands.Cog):
         char = chars[0]
         instance_clean = instance.strip()
 
-        current = await loop.run_in_executor(
-            None, _get_save_state, char.id, instance_clean
-        )
+        current = await loop.run_in_executor(None, _get_save_state, char.id, instance_clean)
         new_state = 0 if current else 1
 
-        await loop.run_in_executor(
-            None, _set_save_state, char.id, instance_clean, new_state
-        )
+        await loop.run_in_executor(None, _set_save_state, char.id, instance_clean, new_state)
 
         state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
         await interaction.followup.send(
@@ -191,7 +173,6 @@ class SavesCog(commands.Cog):
             ephemeral=True,
         )
 
-
     # ── /savecharacter  (top-level shortcut) ──────────────────────────────
 
     @app_commands.command(
@@ -212,9 +193,7 @@ class SavesCog(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         loop = asyncio.get_event_loop()
 
-        chars = await loop.run_in_executor(
-            None, _fetch_user_chars, interaction.user.id, character
-        )
+        chars = await loop.run_in_executor(None, _fetch_user_chars, interaction.user.id, character)
 
         if not chars:
             await interaction.followup.send(
@@ -226,14 +205,10 @@ class SavesCog(commands.Cog):
         char = chars[0]
         instance_clean = instance.strip()
 
-        current = await loop.run_in_executor(
-            None, _get_save_state, char.id, instance_clean
-        )
+        current = await loop.run_in_executor(None, _get_save_state, char.id, instance_clean)
         new_state = 0 if current else 1
 
-        await loop.run_in_executor(
-            None, _set_save_state, char.id, instance_clean, new_state
-        )
+        await loop.run_in_executor(None, _set_save_state, char.id, instance_clean, new_state)
 
         state_str = "🟢 **saved** (locked out)" if new_state else "🔴 **not saved**"
         await interaction.followup.send(

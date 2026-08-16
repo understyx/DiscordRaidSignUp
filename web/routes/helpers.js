@@ -7,6 +7,8 @@
 
 'use strict';
 
+const WOW_DATA = require('../../shared/wow.json');
+
 /** Sentinel GS value stored in the database to represent "Best in Slot". */
 const BIS_GS = 99999;
 
@@ -98,18 +100,20 @@ function currentUser(req) {
   };
 }
 
-const CLASS_SPEC_ROLES = {
-  'Death Knight': { 'Blood': 'tank', 'Frost': 'dps', 'Unholy': 'dps' },
-  'Druid': { 'Balance': 'dps', 'Feral (Cat)': 'dps', 'Feral (Bear)': 'tank', 'Restoration': 'healer' },
-  'Hunter': { 'Beast Mastery': 'dps', 'Marksmanship': 'dps', 'Survival': 'dps' },
-  'Mage': { 'Arcane': 'dps', 'Fire': 'dps', 'Frost': 'dps' },
-  'Paladin': { 'Holy': 'healer', 'Protection': 'tank', 'Retribution': 'dps' },
-  'Priest': { 'Discipline': 'healer', 'Holy': 'healer', 'Shadow': 'dps' },
-  'Rogue': { 'Assassination': 'dps', 'Combat': 'dps', 'Subtlety': 'dps' },
-  'Shaman': { 'Elemental': 'dps', 'Enhancement': 'dps', 'Restoration': 'healer' },
-  'Warlock': { 'Affliction': 'dps', 'Demonology': 'dps', 'Destruction': 'dps' },
-  'Warrior': { 'Arms': 'dps', 'Fury': 'dps', 'Protection': 'tank' },
-};
+const CLASS_SPEC_ROLES = Object.fromEntries(
+  Object.entries(WOW_DATA.classes).map(([className, classData]) => [
+    className,
+    Object.fromEntries(
+      Object.entries(classData.specs).map(([specName, specData]) => [specName, specData.role])
+    ),
+  ])
+);
+
+const CLASS_ALIASES = Object.fromEntries(
+  Object.entries(WOW_DATA.classes).flatMap(([className, classData]) =>
+    [className, ...classData.aliases].map((alias) => [alias.toLowerCase(), className])
+  )
+);
 
 /**
  * Determine role from class and spec names.
@@ -121,8 +125,13 @@ const CLASS_SPEC_ROLES = {
 function getRoleFromSpec(charClass, spec) {
   if (!charClass || !spec) return 'dps';
 
-  let c = charClass.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-  if (c === 'Dk') c = 'Death Knight';
+  const rawClass = charClass.trim();
+  const c =
+    CLASS_ALIASES[rawClass.toLowerCase()] ||
+    rawClass
+      .split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
 
   let s = spec.trim();
   s = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -150,10 +159,30 @@ function getRoleFromSpec(charClass, spec) {
   }
 
   const sLow = s.toLowerCase();
-  if (sLow.includes('tank') || sLow.includes('protection') || sLow.includes('blood') || sLow.includes('bear')) return 'tank';
-  if (sLow.includes('heal') || sLow.includes('holy') || sLow.includes('restoration') || sLow.includes('discipline')) return 'healer';
+  if (
+    sLow.includes('tank') ||
+    sLow.includes('protection') ||
+    sLow.includes('blood') ||
+    sLow.includes('bear')
+  )
+    return 'tank';
+  if (
+    sLow.includes('heal') ||
+    sLow.includes('holy') ||
+    sLow.includes('restoration') ||
+    sLow.includes('discipline')
+  )
+    return 'healer';
 
   return 'dps';
 }
 
-module.exports = { BIS_GS, parseGS, requireLogin, requireAdmin, popFlash, currentUser, getRoleFromSpec };
+module.exports = {
+  BIS_GS,
+  parseGS,
+  requireLogin,
+  requireAdmin,
+  popFlash,
+  currentUser,
+  getRoleFromSpec,
+};

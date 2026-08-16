@@ -9,12 +9,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.db import get_session
 from bot.class_utils import normalize_class
-from bot.role_utils import get_role_from_spec
-from bot.discord_utils import get_top_role_name
-from bot.cogs.signup import parse_gs, format_gs
+from bot.cogs.signup import format_gs, parse_gs
 from bot.cogs.signup.parser import _parse_character_lines
+from bot.db import get_session
+from bot.discord_utils import get_top_role_name
+from bot.role_utils import get_role_from_spec
 from db.models import Character, CharacterSuggestion, SuggestionStatus
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,7 @@ logger = logging.getLogger(__name__)
 
 def get_mutual_guilds(bot: commands.Bot, user_id: int) -> list[discord.Guild]:
     """Return all guilds where the bot is present AND the given user is a member."""
-    return [
-        guild for guild in bot.guilds
-        if guild.get_member(user_id) is not None
-    ]
+    return [guild for guild in bot.guilds if guild.get_member(user_id) is not None]
 
 
 def _build_success_embed(
@@ -35,12 +32,8 @@ def _build_success_embed(
     """Build the success embed shown after characters are saved."""
     lines = []
     for data in char_spec_info.values():
-        spec_parts = [
-            f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
-        ]
-        lines.append(
-            f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
-        )
+        spec_parts = [f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]]
+        lines.append(f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}")
     title = "✅ Character(s) added!"
     if guild_name:
         title += f" → {guild_name}"
@@ -93,11 +86,13 @@ def _upsert_parsed_characters(
         session.query(Character).filter_by(
             guild_id=guild_id,
             discord_user_id=discord_user_id,
-        ).update({
-            "discord_role": top_role,
-            "membership_status": "active",
-            "last_updated": datetime.datetime.now(datetime.timezone.utc)
-        })
+        ).update(
+            {
+                "discord_role": top_role,
+                "membership_status": "active",
+                "last_updated": datetime.datetime.now(datetime.timezone.utc),
+            }
+        )
 
         for entry in parsed:
             key = entry["char_name"].lower()
@@ -224,7 +219,11 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             await interaction.followup.send(error_text, ephemeral=True)
             return
 
-        top_role = get_top_role_name(interaction.user) if isinstance(interaction.user, discord.Member) else None
+        top_role = (
+            get_top_role_name(interaction.user)
+            if isinstance(interaction.user, discord.Member)
+            else None
+        )
 
         # ── DM context: no guild_id on the interaction ─────────────────────
         if guild_id is None:
@@ -357,7 +356,10 @@ class CharacterCog(commands.Cog):
         try:
             parsed_gs1 = parse_gs(gs1)
         except ValueError:
-            await interaction.followup.send(f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, `6.2` (auto-scaled to 6200), or `BiS`.", ephemeral=True)
+            await interaction.followup.send(
+                f"❌ Invalid gearscore: `{gs1}`. Use a number like `6200`, `6.2k`, `6.2` (auto-scaled to 6200), or `BiS`.",
+                ephemeral=True,
+            )
             return
 
         specs: list[tuple[str, float]] = [(spec1.strip(), parsed_gs1)]
@@ -365,31 +367,41 @@ class CharacterCog(commands.Cog):
             try:
                 specs.append((spec2.strip(), parse_gs(gs2)))
             except ValueError:
-                await interaction.followup.send(f"❌ Invalid gearscore for spec 2: `{gs2}`.", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Invalid gearscore for spec 2: `{gs2}`.", ephemeral=True
+                )
                 return
         if spec3 and gs3 is not None:
             try:
                 specs.append((spec3.strip(), parse_gs(gs3)))
             except ValueError:
-                await interaction.followup.send(f"❌ Invalid gearscore for spec 3: `{gs3}`.", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Invalid gearscore for spec 3: `{gs3}`.", ephemeral=True
+                )
                 return
         if spec4 and gs4 is not None:
             try:
                 specs.append((spec4.strip(), parse_gs(gs4)))
             except ValueError:
-                await interaction.followup.send(f"❌ Invalid gearscore for spec 4: `{gs4}`.", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Invalid gearscore for spec 4: `{gs4}`.", ephemeral=True
+                )
                 return
         if spec5 and gs5 is not None:
             try:
                 specs.append((spec5.strip(), parse_gs(gs5)))
             except ValueError:
-                await interaction.followup.send(f"❌ Invalid gearscore for spec 5: `{gs5}`.", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Invalid gearscore for spec 5: `{gs5}`.", ephemeral=True
+                )
                 return
         if spec6 and gs6 is not None:
             try:
                 specs.append((spec6.strip(), parse_gs(gs6)))
             except ValueError:
-                await interaction.followup.send(f"❌ Invalid gearscore for spec 6: `{gs6}`.", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Invalid gearscore for spec 6: `{gs6}`.", ephemeral=True
+                )
                 return
 
         def _upsert_all(top_role: Optional[str]):
@@ -433,25 +445,28 @@ class CharacterCog(commands.Cog):
                 session.query(Character).filter_by(
                     guild_id=guild_id,
                     discord_user_id=discord_user_id,
-                ).update({
-                    "discord_role": top_role,
-                    "membership_status": "active",
-                    "last_updated": datetime.datetime.now(datetime.timezone.utc)
-                })
+                ).update(
+                    {
+                        "discord_role": top_role,
+                        "membership_status": "active",
+                        "last_updated": datetime.datetime.now(datetime.timezone.utc),
+                    }
+                )
 
                 session.commit()
                 return saved_ids
             finally:
                 session.close()
 
-        top_role = get_top_role_name(interaction.user) if isinstance(interaction.user, discord.Member) else None
-        char_ids = await loop.run_in_executor(None, _upsert_all, top_role)
+        top_role = (
+            get_top_role_name(interaction.user)
+            if isinstance(interaction.user, discord.Member)
+            else None
+        )
+        await loop.run_in_executor(None, _upsert_all, top_role)
 
         canonical_class = normalize_class(char_class)
-        lines = [
-            f"• **{spec}** – GS {gs:.0f}"
-            for spec, gs in specs
-        ]
+        lines = [f"• **{spec}** – GS {gs:.0f}" for spec, gs in specs]
         embed = discord.Embed(
             title=f"✅ {name.capitalize()}-{realm.capitalize()} added!",
             description=f"**Class:** {canonical_class}\n" + "\n".join(lines),
@@ -487,27 +502,38 @@ class CharacterCog(commands.Cog):
             try:
                 count = int(amount)
                 if not (0 <= count <= 50):
-                    await interaction.followup.send("❌ Amount must be between 0 and 50.", ephemeral=True)
+                    await interaction.followup.send(
+                        "❌ Amount must be between 0 and 50.", ephemeral=True
+                    )
                     return
             except ValueError:
-                await interaction.followup.send("❌ Amount must be a number or 'remove'.", ephemeral=True)
+                await interaction.followup.send(
+                    "❌ Amount must be a number or 'remove'.", ephemeral=True
+                )
                 return
 
         def _update():
             session = get_session()
             try:
-                chars = session.query(Character).filter_by(
-                    guild_id=guild_id,
-                    discord_user_id=discord_user_id,
-                    char_name=name.capitalize(),
-                    is_deleted=False
-                ).all()
+                chars = (
+                    session.query(Character)
+                    .filter_by(
+                        guild_id=guild_id,
+                        discord_user_id=discord_user_id,
+                        char_name=name.capitalize(),
+                        is_deleted=False,
+                    )
+                    .all()
+                )
 
                 if not chars:
                     return False, "Character not found."
 
                 if chars[0].char_class not in valid_classes:
-                    return False, f"❌ Shadowfrost Shards can only be tracked for: {', '.join(valid_classes)}."
+                    return (
+                        False,
+                        f"❌ Shadowfrost Shards can only be tracked for: {', '.join(valid_classes)}.",
+                    )
 
                 for c in chars:
                     c.sfs_count = count
@@ -551,27 +577,38 @@ class CharacterCog(commands.Cog):
             try:
                 count = int(amount)
                 if not (0 <= count <= 30):
-                    await interaction.followup.send("❌ Amount must be between 0 and 30.", ephemeral=True)
+                    await interaction.followup.send(
+                        "❌ Amount must be between 0 and 30.", ephemeral=True
+                    )
                     return
             except ValueError:
-                await interaction.followup.send("❌ Amount must be a number or 'remove'.", ephemeral=True)
+                await interaction.followup.send(
+                    "❌ Amount must be a number or 'remove'.", ephemeral=True
+                )
                 return
 
         def _update():
             session = get_session()
             try:
-                chars = session.query(Character).filter_by(
-                    guild_id=guild_id,
-                    discord_user_id=discord_user_id,
-                    char_name=name.capitalize(),
-                    is_deleted=False
-                ).all()
+                chars = (
+                    session.query(Character)
+                    .filter_by(
+                        guild_id=guild_id,
+                        discord_user_id=discord_user_id,
+                        char_name=name.capitalize(),
+                        is_deleted=False,
+                    )
+                    .all()
+                )
 
                 if not chars:
                     return False, "Character not found."
 
                 if chars[0].char_class not in valid_classes:
-                    return False, f"❌ Fragments of Val'anyr can only be tracked for: {', '.join(valid_classes)}."
+                    return (
+                        False,
+                        f"❌ Fragments of Val'anyr can only be tracked for: {', '.join(valid_classes)}.",
+                    )
 
                 for c in chars:
                     c.val_count = count
@@ -823,7 +860,6 @@ class CharacterCog(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         return await self.character_name_autocomplete(interaction, current)
 
-
     @app_commands.command(
         name="my_characters",
         description="List all your registered characters.",
@@ -840,9 +876,7 @@ class CharacterCog(commands.Cog):
             try:
                 return (
                     session.query(Character)
-                    .filter_by(
-                        guild_id=guild_id, discord_user_id=discord_user_id, is_deleted=False
-                    )
+                    .filter_by(guild_id=guild_id, discord_user_id=discord_user_id, is_deleted=False)
                     .all()
                 )
             finally:
@@ -934,12 +968,11 @@ class CharacterCog(commands.Cog):
         if error:
             await interaction.followup.send(f"❌ {error}", ephemeral=True)
         else:
-            await interaction.followup.send(f"✅ Suggestion for **{char_name}** has been **{action}**.", ephemeral=True)
+            await interaction.followup.send(
+                f"✅ Suggestion for **{char_name}** has been **{action}**.", ephemeral=True
+            )
             # Update the original message to remove buttons
             try:
                 await interaction.edit_original_response(view=None)
             except discord.HTTPException:
                 pass
-
-
-

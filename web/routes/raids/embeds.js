@@ -58,10 +58,9 @@ function getRoleBasedSpec(charClass, role) {
 }
 
 async function fetchCompLabels(raidId) {
-  const [rows] = await pool.query(
-    'SELECT comp_number, label FROM comp_labels WHERE raid_id = ?',
-    [raidId]
-  );
+  const [rows] = await pool.query('SELECT comp_number, label FROM comp_labels WHERE raid_id = ?', [
+    raidId,
+  ]);
   const map = {};
   for (const r of rows) map[r.comp_number] = r.label;
   return map;
@@ -92,21 +91,21 @@ async function fetchUserGuildRoles(guildId, userIds) {
     }
 
     const memberResults = await Promise.all(
-      userIds.map(async userId => {
+      userIds.map(async (userId) => {
         try {
           const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
             headers: { Authorization: `Bot ${botToken}` },
           });
           if (!resp.ok) return [userId, null];
           const member = await resp.json();
-          const memberRoleIds = (member.roles || []).filter(rid => rid !== guildId);
+          const memberRoleIds = (member.roles || []).filter((rid) => rid !== guildId);
           if (!memberRoleIds.length) return [userId, null];
           const topRoleId = memberRoleIds.reduce((best, rid) => {
             const pos = roleMap[rid]?.position ?? -1;
             const bestPos = best !== null ? (roleMap[best]?.position ?? -1) : -Infinity;
             return pos > bestPos ? rid : best;
           }, null);
-          return [userId, topRoleId ? (roleMap[topRoleId]?.name || null) : null];
+          return [userId, topRoleId ? roleMap[topRoleId]?.name || null : null];
         } catch (_) {
           return [userId, null];
         }
@@ -130,7 +129,9 @@ function collectUniqueUserIds(groups) {
   const ids = [];
   for (const roleKey of ['tank', 'healer', 'mdps', 'rdps', 'dps']) {
     for (const e of groups[roleKey] || []) {
-      const userId = e.is_player_placeholder ? e.discord_user_id : (e.character && e.character.discord_user_id);
+      const userId = e.is_player_placeholder
+        ? e.discord_user_id
+        : e.character && e.character.discord_user_id;
       if (userId) {
         const id = String(userId);
         if (!seen.has(id)) {
@@ -156,7 +157,7 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
     healer: '💚',
     mdps: '🗡️',
     rdps: '🏹',
-    dps: '⚔️'
+    dps: '⚔️',
   };
 
   const sections = [
@@ -173,7 +174,7 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
 
     if (entries.length === 0) continue;
 
-    const lines = entries.map(e => {
+    const lines = entries.map((e) => {
       let emoji = roleEmojis[e.slot_role] || '❓';
 
       if (!e.is_placeholder && !e.is_player_placeholder && e.character) {
@@ -226,7 +227,7 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
 
     // Chunk strings to respect the strict 1024 character value limit per field
     // Chunk strings to respect the strict 1024 character value limit per field
-    let currentFieldText = "";
+    let currentFieldText = '';
     let chunkIndex = 1;
 
     for (const line of lines) {
@@ -256,7 +257,7 @@ function buildCompEmbed(raid, groups, compNumber, totalComps, compLabels, specAl
   }
 
   const allIds = collectUniqueUserIds(groups);
-  const content = allIds.map(id => `<@${id}>`).join(' ');
+  const content = allIds.map((id) => `<@${id}>`).join(' ');
 
   return {
     content: content || undefined,

@@ -16,59 +16,47 @@ const pool = require('../db');
 const { isDevFullAdminEnabled } = require('../server/runtimeFlags');
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const DEV_USER_ID = process.env.DEV_USER_ID || '';
+function createAdminResolver(options) {
+  const database = options.pool;
+  const fetchMember = options.fetch;
+  const botToken = options.botToken || '';
+  const devUserId = options.devUserId || '';
+  const devOverrideEnabled = options.devOverrideEnabled || (() => false);
 
-function isDevFullAdmin(userId) {
-  return isDevFullAdminEnabled() && !!DEV_USER_ID && String(userId) === DEV_USER_ID;
-}
+  return async function resolveIsAdmin(userId, guildId) {
+    const isDev = devOverrideEnabled() && devUserId && String(userId) === String(devUserId);
+    if (isDev) return true;
 
-/**
- * Returns true if the given Discord user ID should be treated as a raid admin.
- *
- * @param {string} userId   Discord user ID (string snowflake)
- * @param {string|null} guildId  Active guild ID (string snowflake), or null
- * @returns {Promise<boolean>}
- */
-async function resolveIsAdmin(userId, guildId) {
-  if (isDevFullAdmin(userId)) return true;
+    // Preserve the legacy single-guild behavior when no guild context exists.
+    if (!guildId) return true;
 
-  const botToken = process.env.DISCORD_BOT_TOKEN;
+    const [rows] = await database.query(
+      'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
+      [guildId]
+    );
+    if (!rows || rows.length === 0) return true;
+    if (!botToken) return false;
 
-  // If guild ID is not provided, grant admin to everyone (backward-compatible).
-  if (!guildId) return true;
-
-  // Check if any admin roles are configured for this guild.
-  const [rows] = await pool.query(
-    'SELECT role_id FROM guild_admin_roles WHERE guild_id = ?',
-    [guildId]
-  );
-
-  // If no admin roles are configured yet, grant admin to everyone.
-  if (!rows || rows.length === 0) return true;
-
-  const adminRoleIds = new Set(rows.map(r => String(r.role_id)));
-
-  // Fetch the user's guild member info using the bot token.
-  if (!botToken) return false;
-
-  try {
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-
-    if (!resp.ok) {
-      // User is not a member of the guild or an error occurred.
+    const adminRoleIds = new Set(rows.map((row) => String(row.role_id)));
+    try {
+      const response = await fetchMember(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (!response.ok) return false;
+      const member = await response.json();
+      return (member.roles || []).some((roleId) => adminRoleIds.has(String(roleId)));
+    } catch (_error) {
       return false;
     }
-
-    const member = await resp.json();
-    const memberRoles = member.roles || [];
-
-    return memberRoles.some(rid => adminRoleIds.has(String(rid)));
-  } catch (_err) {
-    // Network or parse error — fail closed.
-    return false;
-  }
+  };
 }
 
-module.exports = { resolveIsAdmin };
+const resolveIsAdmin = createAdminResolver({
+  botToken: process.env.DISCORD_BOT_TOKEN,
+  devOverrideEnabled: isDevFullAdminEnabled,
+  devUserId: process.env.DEV_USER_ID,
+  fetch,
+  pool,
+});
+
+module.exports = { createAdminResolver, resolveIsAdmin };

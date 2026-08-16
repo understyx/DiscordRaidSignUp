@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
-from bot.class_utils import normalize_class, KNOWN_CLASSES
+from bot.class_utils import KNOWN_CLASSES, normalize_class
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -154,7 +153,7 @@ def _parse_character_lines(text: str) -> tuple[list[dict], list[str]]:
         pre_extracted_note = ""
         note_split_m = _NOTE_SPLIT_RE.search(clean)
         if note_split_m:
-            pre_extracted_note = clean[note_split_m.end():]
+            pre_extracted_note = clean[note_split_m.end() :]
             clean = clean[: note_split_m.start()]
 
         parts = [p.strip() for p in clean.split("/")]

@@ -8,7 +8,7 @@ const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
 
 // Notification Discord server — applicants are directed here to receive status updates
-const NOTIFY_GUILD_ID   = '1495371293183180932';
+const NOTIFY_GUILD_ID = '1495371293183180932';
 const NOTIFY_CHANNEL_ID = '1495371294026366978';
 const NOTIFY_INVITE_URL = 'https://discord.gg/VfgQ4UKSEP';
 

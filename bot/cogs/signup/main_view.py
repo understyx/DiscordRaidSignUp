@@ -6,19 +6,29 @@ from typing import Optional
 
 import discord
 
-from bot.config import WEB_BASE_URL, BASE_DOMAIN
+from bot.config import BASE_DOMAIN, WEB_BASE_URL
 from bot.db import get_session
-from db.models import BotGuild, Character, Raid, RaidStatus, Signup, SignupPreset, SignupStatus, SignupType
+from db.models import (
+    BotGuild,
+    Character,
+    Raid,
+    RaidStatus,
+    Signup,
+    SignupPreset,
+    SignupStatus,
+    SignupType,
+)
+
 from .char_helpers import _chars_to_dicts, _group_chars_by_name
-from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .embed import update_raid_embed
+from .log_thread import _post_to_raid_log, format_user_raid_log_message
 from .parser import format_gs
 from .views import (
+    EditNotesModal,
     SignupCharacterSelectView,
     SignupPresetSelectView,
     SignupTesting2ClassSelectView,
     TextSignupModal,
-    EditNotesModal
 )
 
 logger = logging.getLogger(__name__)
@@ -90,9 +100,7 @@ class SignupView(discord.ui.View):
         status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
-            await interaction.response.send_message(
-                "❌ Could not find this raid.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Could not find this raid.", ephemeral=True)
             return
 
         if status != RaidStatus.open:
@@ -129,7 +137,9 @@ class SignupView(discord.ui.View):
             )
             return
 
-        view = SignupCharacterSelectView(char_dicts, raid_id, signup_status, selected_ids=signup_ids)
+        view = SignupCharacterSelectView(
+            char_dicts, raid_id, signup_status, selected_ids=signup_ids
+        )
         await interaction.response.send_message(
             view._step_text(),
             view=view,
@@ -188,9 +198,7 @@ class SignupView(discord.ui.View):
         status, char_dicts, presets = await loop.run_in_executor(None, _fetch)
 
         if status is None:
-            await interaction.response.send_message(
-                "❌ Could not find this raid.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Could not find this raid.", ephemeral=True)
             return
         if status != RaidStatus.open:
             await interaction.response.send_message(
@@ -244,7 +252,9 @@ class SignupView(discord.ui.View):
         emoji="🧪",
         row=0,
     )
-    async def btn_signup_testing2(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def btn_signup_testing2(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._start_signup_testing2_flow(interaction)
 
     async def _start_signup_testing2_flow(
@@ -294,9 +304,7 @@ class SignupView(discord.ui.View):
         status, char_dicts, signup_ids = await loop.run_in_executor(None, _fetch)
 
         if status is None:
-            await interaction.response.send_message(
-                "❌ Could not find this raid.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Could not find this raid.", ephemeral=True)
             return
 
         if status != RaidStatus.open:
@@ -347,7 +355,9 @@ class SignupView(discord.ui.View):
         emoji="📋",
         row=0,
     )
-    async def btn_show_characters(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def btn_show_characters(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         raid_id = self._get_raid_id(interaction)
         if raid_id is None:
             await interaction.response.send_message(
@@ -563,7 +573,9 @@ class SignupView(discord.ui.View):
         emoji="❓",
         row=1,
     )
-    async def btn_status_tentative(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def btn_status_tentative(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._change_status(interaction, SignupStatus.tentative)
 
     @discord.ui.button(

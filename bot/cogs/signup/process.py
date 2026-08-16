@@ -7,19 +7,20 @@ from typing import Optional
 
 import discord
 
-from db.models import Character, DiscordUser, Signup, SignupType, SignupStatus, Raid
 from bot.db import get_session
-from bot.role_utils import get_role_from_spec
 from bot.discord_utils import get_top_role_name
+from bot.role_utils import get_role_from_spec
+from db.models import Character, DiscordUser, Raid, Signup, SignupStatus, SignupType
+
+from .embed import update_raid_embed
+from .log_thread import _create_log_thread, _post_to_raid_log, format_user_raid_log_message
 from .parser import (
-    _find_random_text_lines,
-    _parse_character_lines,
-    _is_tentative_message,
     _MAX_RANDOM_LINES_IN_ERROR,
+    _find_random_text_lines,
+    _is_tentative_message,
+    _parse_character_lines,
     format_gs,
 )
-from .embed import update_raid_embed
-from .log_thread import _post_to_raid_log, _create_log_thread, format_user_raid_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +40,14 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
         existing.display_name = display
         existing.updated_at = datetime.datetime.now(datetime.timezone.utc)
     else:
-        session.add(DiscordUser(
-            discord_user_id=user.id,
-            username=user.name,
-            display_name=display,
-            updated_at=datetime.datetime.now(datetime.timezone.utc),
-        ))
+        session.add(
+            DiscordUser(
+                discord_user_id=user.id,
+                username=user.name,
+                display_name=display,
+                updated_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
 
 
 async def process_text_signup(
@@ -92,10 +95,7 @@ async def process_text_signup(
                 "No valid sign-up lines could be parsed. "
                 "Expected format: `CharName / Class / Spec / GS`"
             )
-        error_text = (
-            f"❌ {user.mention} Sign-up rejected:\n"
-            + "\n".join(all_errors)
-        )
+        error_text = f"❌ {user.mention} Sign-up rejected:\n" + "\n".join(all_errors)
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(error_text, ephemeral=True)
@@ -154,16 +154,16 @@ async def process_text_signup(
             session.query(Character).filter_by(
                 guild_id=_raid_id_to_guild_id(session, raid_id),
                 discord_user_id=discord_user_id,
-            ).update({
-                "discord_role": top_role,
-                "membership_status": "active",
-                "last_updated": datetime.datetime.now(datetime.timezone.utc)
-            })
+            ).update(
+                {
+                    "discord_role": top_role,
+                    "membership_status": "active",
+                    "last_updated": datetime.datetime.now(datetime.timezone.utc),
+                }
+            )
 
             for entry in parsed:
-                signup_type = (
-                    SignupType.prio_character if entry["is_prio"] else SignupType.fill
-                )
+                signup_type = SignupType.prio_character if entry["is_prio"] else SignupType.fill
                 session.add(
                     Signup(
                         raid_id=raid_id,

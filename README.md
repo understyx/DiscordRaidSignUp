@@ -4,14 +4,14 @@ A World of Warcraft raid management system consisting of three components:
 
 - **Discord Bot** – slash commands for officers and players to manage raids and sign-ups
 - **Web App** – Node.js / Express web interface with Discord OAuth2 login
-- **Database** – MariaDB with SQLAlchemy 2.0 ORM and Alembic migrations
+- **Database** – MariaDB with SQLAlchemy 2.0 models and ordered SQL migrations
 
 ---
 
 ## Prerequisites
 
 - [Python](https://www.python.org/downloads/) 3.11+
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) v18.18+
 - [MariaDB](https://mariadb.org/download/) 10.6+ (or MySQL 8+) running locally
 - A [Discord Application](https://discord.com/developers/applications) with a bot token
 
@@ -71,7 +71,7 @@ OFFICER_ROLE_NAME=Officer
 
 ---
 
-## Running Locally (without Docker)
+## Running Locally
 
 ### 1. Set up the database
 
@@ -84,31 +84,29 @@ GRANT ALL PRIVILEGES ON raidbot.* TO 'raidbot'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Then import the item seed data:
-
-```bash
-mysql -u raidbot -p raidbot < items.sql
-```
-
-### 2. Install Python dependencies
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
+cd web
+npm ci
+cd ..
 ```
 
-### 3. Apply database migrations
+For development tools, install `requirements-dev.txt` instead of `requirements.txt`.
 
-Run Alembic from the project root to create all tables:
+### 3. Initialize the database
+
+Apply the ordered SQL migrations, then import the item seed data:
 
 ```bash
-alembic upgrade head
+cd web
+npm run migrate
+cd ..
+mysql -u raidbot -p raidbot < items.sql
 ```
 
-To create a new migration after changing `db/models.py`:
-
-```bash
-alembic revision --autogenerate -m "describe your change"
-```
+Migrations are never run as an application import or web-server side effect. Add schema changes as the next numbered file in `db/migrations/` and run `npm run migrate` before starting or restarting services.
 
 ### 4. Run the Discord bot
 
@@ -120,7 +118,6 @@ python -m bot.main
 
 ```bash
 cd web
-npm install
 npm start
 ```
 
@@ -149,7 +146,7 @@ restart automatically on failure, and log to the journal.
   ```
 - Node.js dependencies must be installed:
   ```bash
-  cd /opt/DiscordRaidSignUp/web && npm install --production
+  cd /opt/DiscordRaidSignUp/web && npm ci --omit=dev
   ```
 - The `.env` file must be present at `<APP_DIR>/.env`.
 
@@ -163,8 +160,8 @@ sudo bash /opt/DiscordRaidSignUp/systemd/install.sh \
   --user raidbot
 ```
 
-This copies both service files to `/etc/systemd/system/`, enables them to
-start at boot, and starts them immediately.
+This copies both service files to `/etc/systemd/system/`, runs the database
+migrations as the service user, enables the services at boot, and restarts them.
 
 ### Common management commands
 
@@ -185,27 +182,70 @@ journalctl -u discord-raid-web -f
 
 ---
 
-## Running with Docker Compose
+## Development Checks
 
-If you prefer containers, Docker Compose is also supported:
-
-```bash
-docker compose up --build
-```
-
-| Container | Description        | Port  |
-|-----------|--------------------|-------|
-| `db`      | MariaDB database   | –     |
-| `bot`     | Discord bot        | –     |
-| `web`     | Web interface      | 8000  |
-
-> When using Docker Compose, set `DB_HOST=db` in your `.env` (the compose service name).
-
-Apply migrations inside the running container:
+Install the pinned development tools and web dependencies:
 
 ```bash
-docker compose exec bot alembic upgrade head
+pip install -r requirements-dev.txt
+cd web && npm ci && cd ..
 ```
+
+The root `Makefile` exposes the standard workflow:
+
+```bash
+make test      # Python and JavaScript tests
+make lint      # Ruff and ESLint
+make format    # Ruff formatter and Prettier
+make check     # all tests, lint, and format checks
+make migrate   # apply pending SQL migrations
+make db-backup # create a timestamped compressed database backup
+make lock      # regenerate Python and Node dependency locks (requires uv)
+```
+
+---
+
+## Database Backups
+
+The database utility reads `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and
+`DB_NAME` from the project `.env`. It requires the MariaDB command-line tools
+(`mariadb-dump` and `mariadb`) or their MySQL equivalents.
+
+Create a timestamped, compressed backup in the git-ignored `backups/` directory:
+
+```bash
+python scripts/database_backup.py backup
+```
+
+An explicit output path can be supplied when backups belong on separate storage:
+
+```bash
+python scripts/database_backup.py backup /secure/backups/raidbot.sql.gz
+```
+
+Restore a compressed or plain SQL backup:
+
+```bash
+python scripts/database_backup.py restore backups/backup-raidbot-TIMESTAMP.sql.gz
+```
+
+Restore replaces the database configured by `DB_NAME`. The command requires you
+to type that database name before proceeding and, when the database already
+exists, creates a timestamped `pre-restore-...sql.gz` safety backup first. Use
+`--yes` only for a deliberate non-interactive restore.
+
+To use another environment file or backup directory, put those global options
+before the command:
+
+```bash
+python scripts/database_backup.py \
+  --env-file /path/to/database.env \
+  --backup-dir /secure/backups \
+  backup
+```
+
+Database passwords are passed to the client through a private temporary
+configuration file rather than command-line arguments.
 
 ---
 
@@ -263,44 +303,45 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 .
 ├── bot/                  # Discord bot (discord.py 2.x slash commands)
 │   ├── cogs/
-│   │   ├── admin.py      # /raidadmin commands (server managers only)
-│   │   ├── character.py  # Character management commands
-│   │   ├── dev.py        # Developer-only seeding commands
-│   │   ├── raid.py       # Raid creation/management (officers only)
-│   │   ├── saves.py      # Raid-save (lockout) management commands
-│   │   └── signup.py     # Sign-up button views and chat-message parser
+│   │   ├── character/    # Character commands
+│   │   ├── raid/         # Raid creation commands
+│   │   ├── saves/        # Lockout management
+│   │   └── signup/       # Discord sign-up workflow and views
 │   ├── class_utils.py    # WoW class/spec normalisation helpers
 │   ├── config.py
 │   ├── db.py
 │   ├── main.py
-│   └── warmane.py        # Warmane armory integration
+│   └── wow.py             # Shared WoW data loader
 ├── db/                   # Database layer
-│   ├── migrations/       # Alembic migration scripts
+│   ├── migrations/       # Ordered SQL migration history
 │   └── models.py         # SQLAlchemy 2.0 ORM models
+├── shared/
+│   └── wow.json          # Canonical class/spec/role/realm data
+├── scripts/
+│   └── database_backup.py # .env-driven database backup and restore utility
 ├── web/                  # Web interface (Node.js / Express + Nunjucks)
-│   ├── routes/
-│   │   ├── admin.js          # Admin-only actions (spec aliases, fake-data seeding)
-│   │   ├── adminCheck.js     # Shared admin-permission helper
-│   │   ├── auth.js           # Discord OAuth2 login / logout
-│   │   ├── characters.js     # Character registration and raid-save management
-│   │   ├── guildSettings.js  # Guild settings (admin roles, signup restriction, subdomain)
-│   │   ├── raids.js          # Raid listing, detail, sign-up, composition management
-│   │   └── recruitment.js    # Guild recruitment forms and applications
+│   ├── repositories/     # Database access boundaries
+│   ├── routes/           # Small route modules grouped by feature
+│   ├── services/         # Domain and access policy
 │   ├── templates/        # Nunjucks HTML templates
+│   ├── test/             # Node test suite
 │   ├── db.js
+│   ├── migrate-cli.js
 │   ├── migrate.js
 │   ├── server.js
-│   ├── warmane.js        # Warmane armory integration (server-side)
 │   └── wotlk_buffs.json  # WotLK raid-buff definitions
+├── tests/                 # Python unit tests
 ├── systemd/              # systemd service files + install script
 │   ├── discord-raid-bot.service
 │   ├── discord-raid-web.service
 │   └── install.sh
 ├── .env.example          # Environment variable template
-├── docker-compose.yml
-├── Dockerfile.bot
-├── Dockerfile.web
+├── Makefile
+├── pyproject.toml
 ├── items.sql             # Initial item seed data
+├── requirements-dev.txt
+├── requirements-dev.in
+├── requirements.in
 └── requirements.txt
 ```
 

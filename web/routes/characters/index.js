@@ -1,6 +1,13 @@
 const express = require('express');
 const pool = require('../../db');
-const { BIS_GS, parseGS, requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
+const {
+  BIS_GS,
+  parseGS,
+  requireLogin,
+  popFlash,
+  currentUser,
+  getRoleFromSpec,
+} = require('../helpers');
 
 const router = express.Router();
 
@@ -9,10 +16,10 @@ const router = express.Router();
 const LOCKOUT_CANONICAL = {
   'ICC10 HC': 'ICC10',
   'ICC25 HC': 'ICC25',
-  'TOGC10':   'TOC10',
-  'TOGC25':   'TOC25',
-  'RS10 HC':  'RS10',
-  'RS25 HC':  'RS25',
+  TOGC10: 'TOC10',
+  TOGC25: 'TOC25',
+  'RS10 HC': 'RS10',
+  'RS25 HC': 'RS25',
 };
 
 function canonicalizeInstance(name) {
@@ -61,7 +68,7 @@ router.post('/characters/presets', express.json(), async (req, res) => {
   }
 
   const normalizeIds = (ids) => {
-    const normalized = ids.map(id => Number(id));
+    const normalized = ids.map((id) => Number(id));
     return normalized.every(Number.isInteger) ? [...new Set(normalized)] : null;
   };
   const characterIds = normalizeIds(character_ids);
@@ -69,8 +76,10 @@ router.post('/characters/presets', express.json(), async (req, res) => {
   if (!characterIds || characterIds.length === 0) {
     return res.status(400).json({ ok: false, error: 'character_ids must contain valid IDs' });
   }
-  if (!priorityIds || priorityIds.some(id => !characterIds.includes(id))) {
-    return res.status(400).json({ ok: false, error: 'priority_ids must refer to selected characters' });
+  if (!priorityIds || priorityIds.some((id) => !characterIds.includes(id))) {
+    return res
+      .status(400)
+      .json({ ok: false, error: 'priority_ids must refer to selected characters' });
   }
 
   const charPlaceholders = characterIds.map(() => '?').join(', ');
@@ -80,7 +89,9 @@ router.post('/characters/presets', express.json(), async (req, res) => {
     [...characterIds, userId, guildId]
   );
   if (ownedRows.length !== characterIds.length) {
-    return res.status(400).json({ ok: false, error: 'character_ids must belong to the current user and guild' });
+    return res
+      .status(400)
+      .json({ ok: false, error: 'character_ids must belong to the current user and guild' });
   }
 
   const normalizedNotes = {};
@@ -98,7 +109,14 @@ router.post('/characters/presets', express.json(), async (req, res) => {
   try {
     const [result] = await pool.query(
       'INSERT INTO signup_presets (discord_user_id, guild_id, name, character_ids, priority_ids, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, guildId, trimmedName, JSON.stringify(characterIds), JSON.stringify(priorityIds), JSON.stringify(normalizedNotes)]
+      [
+        userId,
+        guildId,
+        trimmedName,
+        JSON.stringify(characterIds),
+        JSON.stringify(priorityIds),
+        JSON.stringify(normalizedNotes),
+      ]
     );
     res.json({ ok: true, id: result.insertId, name: trimmedName });
   } catch (err) {
@@ -165,23 +183,31 @@ router.get('/characters', async (req, res) => {
   // HC variants and TOGC share a lockout with their canonical counterpart, so
   // only the canonical name is listed here (matching bot/cogs/saves.py).
   const instances = [
-    'RS10', 'RS25',
-    'ICC10', 'ICC25',
-    'TOC10', 'TOC25',
-    'ONY10', 'ONY25',
-    'ULD10', 'ULD25',
-    'EOE10', 'EOE25',
-    'OS10', 'OS25',
-    'NAXX10', 'NAXX25',
+    'RS10',
+    'RS25',
+    'ICC10',
+    'ICC25',
+    'TOC10',
+    'TOC25',
+    'ONY10',
+    'ONY25',
+    'ULD10',
+    'ULD25',
+    'EOE10',
+    'EOE25',
+    'OS10',
+    'OS25',
+    'NAXX10',
+    'NAXX25',
   ];
 
   // Build a flat list of character rows for the grid (one row per character name).
   // We use the first spec row's id as a stable representative ID for the character,
   // since raid saves are tracked per-character-name, not per-spec.
-  const gridChars = charGroups.map(g => ({ id: g.rows[0].id, name: g.name }));
+  const gridChars = charGroups.map((g) => ({ id: g.rows[0].id, name: g.name }));
 
   // Fetch all save records for this user's characters
-  const charIds = chars.map(c => c.id);
+  const charIds = chars.map((c) => c.id);
   let savesMap = {}; // key: `${char_id}:${instance_name}` → is_saved (0/1)
   if (charIds.length > 0) {
     // Build placeholder list from a known-safe integer array (charIds are parsed with parseInt).
@@ -212,40 +238,44 @@ router.get('/profile', (req, res) => {
 });
 
 // POST /characters/:char_id/update-name
-router.post('/characters/:char_id/update-name', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
+router.post(
+  '/characters/:char_id/update-name',
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    if (!requireLogin(req, res)) return;
 
-  const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id;
-  const charId = parseInt(req.params.char_id);
-  const newName = (req.body.char_name || '').trim();
+    const userId = req.session.user_id;
+    const guildId = req.session.active_guild_id;
+    const charId = parseInt(req.params.char_id);
+    const newName = (req.body.char_name || '').trim();
 
-  if (!newName) {
-    req.session.flash = '❌ Character name cannot be empty.';
-    return res.redirect('/characters');
-  }
+    if (!newName) {
+      req.session.flash = '❌ Character name cannot be empty.';
+      return res.redirect('/characters');
+    }
 
-  const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
+    const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
 
-  // Fetch the character to get its current name and realm
-  const [[char]] = await pool.query(
-    'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
-    [charId, userId, guildId]
-  );
-
-  if (char) {
-    // Update all specs for this character (matched by old name + realm)
-    await pool.query(
-      'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
-      [newNameCap, userId, guildId, char.char_name, char.realm]
+    // Fetch the character to get its current name and realm
+    const [[char]] = await pool.query(
+      'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, userId, guildId]
     );
-    req.session.flash = `✅ Character renamed to ${newNameCap}.`;
-  } else {
-    req.session.flash = '❌ Character not found.';
-  }
 
-  res.redirect('/characters');
-});
+    if (char) {
+      // Update all specs for this character (matched by old name + realm)
+      await pool.query(
+        'UPDATE characters SET char_name = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+        [newNameCap, userId, guildId, char.char_name, char.realm]
+      );
+      req.session.flash = `✅ Character renamed to ${newNameCap}.`;
+    } else {
+      req.session.flash = '❌ Character not found.';
+    }
+
+    res.redirect('/characters');
+  }
+);
 
 // POST /characters/register
 router.post('/characters/register', express.urlencoded({ extended: false }), async (req, res) => {
@@ -305,7 +335,19 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
     await pool.query(
       `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, discord_role, membership_status, gearscore, prof_1, prof_2, is_deleted, last_updated)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, "active", ?, ?, ?, 0, NOW())`,
-      [userId, guildId, charNameCap, realmCap, charClass, spec, role, discordRole, gearscore, prof1, prof2]
+      [
+        userId,
+        guildId,
+        charNameCap,
+        realmCap,
+        charClass,
+        spec,
+        role,
+        discordRole,
+        gearscore,
+        prof1,
+        prof2,
+      ]
     );
   }
 
@@ -320,86 +362,104 @@ router.post('/characters/register', express.urlencoded({ extended: false }), asy
 });
 
 // POST /characters/:char_id/update-gs
-router.post('/characters/:char_id/update-gs', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
+router.post(
+  '/characters/:char_id/update-gs',
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    if (!requireLogin(req, res)) return;
 
-  const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id;
-  const charId = parseInt(req.params.char_id);
-  const gsRaw = (req.body.gearscore || '').trim();
-  const gearscore = parseGS(gsRaw);
+    const userId = req.session.user_id;
+    const guildId = req.session.active_guild_id;
+    const charId = parseInt(req.params.char_id);
+    const gsRaw = (req.body.gearscore || '').trim();
+    const gearscore = parseGS(gsRaw);
 
-  const [[char]] = await pool.query(
-    'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
-    [charId, userId, guildId]
-  );
+    const [[char]] = await pool.query(
+      'SELECT id, char_name FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, userId, guildId]
+    );
 
-  if (char) {
-    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?', [gearscore, char.id, guildId]);
-    req.session.flash = `✅ GS updated for ${char.char_name}.`;
-  } else {
-    req.session.flash = '❌ Character not found.';
+    if (char) {
+      await pool.query(
+        'UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?',
+        [gearscore, char.id, guildId]
+      );
+      req.session.flash = `✅ GS updated for ${char.char_name}.`;
+    } else {
+      req.session.flash = '❌ Character not found.';
+    }
+
+    res.redirect('/characters');
   }
-
-  res.redirect('/characters');
-});
+);
 
 // POST /characters/:char_id/update-professions
-router.post('/characters/:char_id/update-professions', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
+router.post(
+  '/characters/:char_id/update-professions',
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    if (!requireLogin(req, res)) return;
 
-  const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id;
-  const charId = parseInt(req.params.char_id);
-  const prof1 = (req.body.prof_1 || '').trim() || null;
-  const prof2 = (req.body.prof_2 || '').trim() || null;
+    const userId = req.session.user_id;
+    const guildId = req.session.active_guild_id;
+    const charId = parseInt(req.params.char_id);
+    const prof1 = (req.body.prof_1 || '').trim() || null;
+    const prof2 = (req.body.prof_2 || '').trim() || null;
 
-  const [[char]] = await pool.query(
-    'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
-    [charId, userId, guildId]
-  );
-
-  if (char) {
-    await pool.query(
-      'UPDATE characters SET prof_1 = ?, prof_2 = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
-      [prof1, prof2, userId, guildId, char.char_name, char.realm]
+    const [[char]] = await pool.query(
+      'SELECT char_name, realm FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, userId, guildId]
     );
-    req.session.flash = `✅ Professions updated for ${char.char_name}.`;
-  } else {
-    req.session.flash = '❌ Character not found.';
-  }
 
-  res.redirect('/characters');
-});
+    if (char) {
+      await pool.query(
+        'UPDATE characters SET prof_1 = ?, prof_2 = ?, last_updated = NOW() WHERE discord_user_id = ? AND guild_id = ? AND char_name = ? AND realm = ?',
+        [prof1, prof2, userId, guildId, char.char_name, char.realm]
+      );
+      req.session.flash = `✅ Professions updated for ${char.char_name}.`;
+    } else {
+      req.session.flash = '❌ Character not found.';
+    }
+
+    res.redirect('/characters');
+  }
+);
 
 // POST /characters/:char_id/update-spec
-router.post('/characters/:char_id/update-spec', express.urlencoded({ extended: false }), async (req, res) => {
-  if (!requireLogin(req, res)) return;
+router.post(
+  '/characters/:char_id/update-spec',
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    if (!requireLogin(req, res)) return;
 
-  const userId = req.session.user_id;
-  const guildId = req.session.active_guild_id;
-  const charId = parseInt(req.params.char_id);
-  const spec = (req.body.spec || '').trim() || null;
+    const userId = req.session.user_id;
+    const guildId = req.session.active_guild_id;
+    const charId = parseInt(req.params.char_id);
+    const spec = (req.body.spec || '').trim() || null;
 
-  const [[char]] = await pool.query(
-    'SELECT id, char_name, char_class FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
-    [charId, userId, guildId]
-  );
+    const [[char]] = await pool.query(
+      'SELECT id, char_name, char_class FROM characters WHERE id = ? AND discord_user_id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, userId, guildId]
+    );
 
-  if (char) {
-    const role = getRoleFromSpec(char.char_class, spec);
-    const { fetchUserGuildRoles } = require('../raids/embeds');
-    const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
-    const discordRole = userGuildRolesMap[userId] || null;
+    if (char) {
+      const role = getRoleFromSpec(char.char_class, spec);
+      const { fetchUserGuildRoles } = require('../raids/embeds');
+      const userGuildRolesMap = await fetchUserGuildRoles(guildId, [userId]);
+      const discordRole = userGuildRolesMap[userId] || null;
 
-    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?', [spec, role, discordRole, char.id, guildId]);
-    req.session.flash = `✅ Spec updated for ${char.char_name}.`;
-  } else {
-    req.session.flash = '❌ Character not found.';
+      await pool.query(
+        'UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?',
+        [spec, role, discordRole, char.id, guildId]
+      );
+      req.session.flash = `✅ Spec updated for ${char.char_name}.`;
+    } else {
+      req.session.flash = '❌ Character not found.';
+    }
+
+    res.redirect('/characters');
   }
-
-  res.redirect('/characters');
-});
+);
 
 // POST /characters/:char_id/delete
 router.post('/characters/:char_id/delete', async (req, res) => {
@@ -415,7 +475,10 @@ router.post('/characters/:char_id/delete', async (req, res) => {
   );
 
   if (char) {
-    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [char.id, guildId]);
+    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [
+      char.id,
+      guildId,
+    ]);
     req.session.flash = `✅ Character '${char.char_name}' hidden.`;
   } else {
     req.session.flash = '❌ Character not found.';

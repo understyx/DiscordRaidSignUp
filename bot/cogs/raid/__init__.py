@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .cog import is_officer, _build_signup_embed, CreateRaidModal, RaidCog
+from .cog import CreateRaidModal, RaidCog, _build_signup_embed, is_officer
 
 
 async def setup(bot):

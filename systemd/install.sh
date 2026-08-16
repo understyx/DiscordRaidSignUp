@@ -7,7 +7,8 @@
 # The script will:
 #   1. Copy both .service files to /etc/systemd/system/
 #   2. Replace placeholder paths/users with the actual values you supply
-#   3. Reload systemd, enable and start the services
+#   3. Apply database migrations
+#   4. Reload systemd, enable and restart the services
 
 set -euo pipefail
 
@@ -50,6 +51,13 @@ for svc in discord-raid-bot discord-raid-web; do
 done
 
 echo ""
+echo "==> Applying database migrations"
+(
+  cd "$APP_DIR/web"
+  runuser -u "$APP_USER" -- npm run migrate
+)
+
+echo ""
 echo "==> Reloading systemd daemon"
 systemctl daemon-reload
 
@@ -57,8 +65,8 @@ echo "==> Enabling services (start at boot)"
 systemctl enable discord-raid-bot.service discord-raid-web.service
 
 echo ""
-echo "==> Starting services"
-systemctl start discord-raid-bot.service discord-raid-web.service
+echo "==> Restarting services"
+systemctl restart discord-raid-bot.service discord-raid-web.service
 
 echo ""
 echo "Done!  Check status with:"

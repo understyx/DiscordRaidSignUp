@@ -50,7 +50,7 @@ router.get('/', async (req, res) => {
     }
 
     const members = await resp.json();
-    const memberIds = members.map(m => String(m.user.id));
+    const memberIds = members.map((m) => String(m.user.id));
 
     if (memberIds.length === 0) {
       return res.render('guild_characters.html', {
@@ -81,18 +81,18 @@ router.get('/', async (req, res) => {
           username: row.discord_username || 'Unknown',
           displayName: row.discord_display_name || 'Unknown',
           membershipStatus: row.membership_status || 'active',
-          charGroups: []
+          charGroups: [],
         };
       }
 
       const groupKey = `${row.char_name}|${row.realm}`;
-      let group = byUser[userId].charGroups.find(g => `${g.name}|${g.realm}` === groupKey);
+      let group = byUser[userId].charGroups.find((g) => `${g.name}|${g.realm}` === groupKey);
       if (!group) {
         group = {
           name: row.char_name,
           realm: row.realm,
           char_class: row.char_class,
-          rows: []
+          rows: [],
         };
         byUser[userId].charGroups.push(group);
       }
@@ -105,7 +105,6 @@ router.get('/', async (req, res) => {
       flash: popFlash(req),
       user: currentUser(req),
     });
-
   } catch (err) {
     console.error('[guild-characters] Error:', err);
     req.session.flash = '❌ Failed to load guild characters.';
@@ -122,7 +121,10 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
   const spec = (req.body.spec || '').trim() || null;
 
   try {
-    const [[char]] = await pool.query('SELECT discord_user_id, char_name, char_class FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0', [charId, guildId]);
+    const [[char]] = await pool.query(
+      'SELECT discord_user_id, char_name, char_class FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, guildId]
+    );
     if (!char) {
       req.session.flash = '❌ Character not found.';
       return res.redirect('/guild-characters');
@@ -138,7 +140,10 @@ router.post('/update-spec/:char_id', express.urlencoded({ extended: false }), as
     const userGuildRolesMap = await fetchUserGuildRoles(guildId, [char.discord_user_id]);
     const discordRole = userGuildRolesMap[char.discord_user_id] || null;
 
-    await pool.query('UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?', [spec, role, discordRole, charId, guildId]);
+    await pool.query(
+      'UPDATE characters SET spec = ?, role = ?, discord_role = ?, membership_status = "active", last_updated = NOW() WHERE id = ? AND guild_id = ?',
+      [spec, role, discordRole, charId, guildId]
+    );
     req.session.flash = `✅ Spec updated for ${char.char_name}.`;
   } catch (err) {
     console.error('[guild-characters] Update spec error:', err);
@@ -164,7 +169,10 @@ router.post('/update-name/:char_id', express.urlencoded({ extended: false }), as
   const newNameCap = newName.charAt(0).toUpperCase() + newName.slice(1).toLowerCase();
 
   try {
-    const [[char]] = await pool.query('SELECT discord_user_id, char_name, realm FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0', [charId, guildId]);
+    const [[char]] = await pool.query(
+      'SELECT discord_user_id, char_name, realm FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, guildId]
+    );
     if (!char) {
       req.session.flash = '❌ Character not found.';
       return res.redirect('/guild-characters');
@@ -198,7 +206,10 @@ router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), asyn
   const gearscore = parseGS(req.body.gearscore);
 
   try {
-    const [[char]] = await pool.query('SELECT discord_user_id, char_name FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0', [charId, guildId]);
+    const [[char]] = await pool.query(
+      'SELECT discord_user_id, char_name FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, guildId]
+    );
     if (!char) {
       req.session.flash = '❌ Character not found.';
       return res.redirect('/guild-characters');
@@ -209,7 +220,10 @@ router.post('/update-gs/:char_id', express.urlencoded({ extended: false }), asyn
       return res.redirect('/guild-characters');
     }
 
-    await pool.query('UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?', [gearscore, charId, guildId]);
+    await pool.query(
+      'UPDATE characters SET gearscore = ?, last_updated = NOW() WHERE id = ? AND guild_id = ?',
+      [gearscore, charId, guildId]
+    );
     req.session.flash = `✅ GS updated for ${char.char_name}.`;
   } catch (err) {
     console.error('[guild-characters] Update GS error:', err);
@@ -227,7 +241,10 @@ router.post('/delete/:char_id', express.urlencoded({ extended: false }), async (
   const charId = parseInt(req.params.char_id);
 
   try {
-    const [[char]] = await pool.query('SELECT discord_user_id, char_name FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0', [charId, guildId]);
+    const [[char]] = await pool.query(
+      'SELECT discord_user_id, char_name FROM characters WHERE id = ? AND guild_id = ? AND is_deleted = 0',
+      [charId, guildId]
+    );
     if (!char) {
       req.session.flash = '❌ Character not found.';
       return res.redirect('/guild-characters');
@@ -238,7 +255,10 @@ router.post('/delete/:char_id', express.urlencoded({ extended: false }), async (
       return res.redirect('/guild-characters');
     }
 
-    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [charId, guildId]);
+    await pool.query('UPDATE characters SET is_deleted = 1 WHERE id = ? AND guild_id = ?', [
+      charId,
+      guildId,
+    ]);
     req.session.flash = `✅ Character ${char.char_name} hidden.`;
   } catch (err) {
     console.error('[guild-characters] Delete error:', err);
@@ -297,7 +317,17 @@ router.post('/register', express.urlencoded({ extended: false }), async (req, re
       await pool.query(
         `INSERT INTO characters (discord_user_id, guild_id, char_name, realm, char_class, spec, role, discord_role, membership_status, gearscore, is_deleted, last_updated)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, "active", ?, 0, NOW())`,
-        [targetUserId, guildId, charNameCap, realmCap, charClass, spec, role, discordRole, gearscore]
+        [
+          targetUserId,
+          guildId,
+          charNameCap,
+          realmCap,
+          charClass,
+          spec,
+          role,
+          discordRole,
+          gearscore,
+        ]
       );
     }
 

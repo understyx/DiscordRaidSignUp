@@ -3,21 +3,21 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
-from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from bot.db import get_session
 from db.models import Character, Raid, RaidStatus
+
 from .parser import (
     _CHAR_LINE_RE,
+    _MAX_RANDOM_LINES_IN_ERROR,
     _find_random_text_lines,
     _parse_character_lines,
-    _MAX_RANDOM_LINES_IN_ERROR,
     format_gs,
 )
-from .process import process_text_signup, _upsert_discord_user
+from .process import _upsert_discord_user, process_text_signup
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,7 @@ class SignupCog(commands.Cog):
         content = message.content
         # Silently ignore DMs that contain no character sign-up lines
         if not any(
-            _CHAR_LINE_RE.match(line.strip())
-            for line in content.splitlines()
-            if line.strip()
+            _CHAR_LINE_RE.match(line.strip()) for line in content.splitlines() if line.strip()
         ):
             return
 
@@ -78,8 +76,7 @@ class SignupCog(commands.Cog):
 
         # ── Resolve which guild to register characters under ───────────────
         mutual_guilds = [
-            guild for guild in self.bot.guilds
-            if guild.get_member(discord_user_id) is not None
+            guild for guild in self.bot.guilds if guild.get_member(discord_user_id) is not None
         ]
 
         if not mutual_guilds:
@@ -190,7 +187,9 @@ class SignupCog(commands.Cog):
                 discord_user_id,
                 guild.id,
             )
-            err = "❌ An error occurred while registering your character(s). Please try again later."
+            err = (
+                "❌ An error occurred while registering your character(s). Please try again later."
+            )
             try:
                 if reply_target is not None:
                     await reply_target.edit_original_response(content=err, embed=None, view=None)
@@ -202,9 +201,7 @@ class SignupCog(commands.Cog):
 
         summaries = []
         for data in char_spec_info.values():
-            spec_parts = [
-                f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]
-            ]
+            spec_parts = [f"{s['spec']} GS {format_gs(s['gearscore'])}" for s in data["specs"]]
             summaries.append(
                 f"• **{data['char_name']}** ({data['char_class']}) – {' / '.join(spec_parts)}"
             )
@@ -264,9 +261,7 @@ class SignupCog(commands.Cog):
         # character sign-up line?  If not, ignore silently (normal chat).
         content = message.content
         if not any(
-            _CHAR_LINE_RE.match(line.strip())
-            for line in content.splitlines()
-            if line.strip()
+            _CHAR_LINE_RE.match(line.strip()) for line in content.splitlines() if line.strip()
         ):
             return
 

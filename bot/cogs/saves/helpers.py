@@ -12,16 +12,24 @@ from db.models import Character
 
 RAID_SAVE_INSTANCES = [
     # RS10 / RS10 HC and RS25 / RS25 HC share a lockout — stored as "RS10" / "RS25"
-    "RS10", "RS25",
+    "RS10",
+    "RS25",
     # ICC10 / ICC10 HC share a lockout — stored as "ICC10"
-    "ICC10", "ICC25",
+    "ICC10",
+    "ICC25",
     # TOC10 / TOGC10 and TOC25 / TOGC25 share a lockout — stored as "TOC10" / "TOC25"
-    "TOC10", "TOC25",
-    "ONY10", "ONY25",
-    "ULD10", "ULD25",
-    "EOE10", "EOE25",
-    "OS10", "OS25",
-    "NAXX10", "NAXX25",
+    "TOC10",
+    "TOC25",
+    "ONY10",
+    "ONY25",
+    "ULD10",
+    "ULD25",
+    "EOE10",
+    "EOE25",
+    "OS10",
+    "OS25",
+    "NAXX10",
+    "NAXX25",
 ]
 
 # Instances that share the same weekly lockout are mapped to a single canonical
@@ -31,10 +39,10 @@ RAID_SAVE_INSTANCES = [
 LOCKOUT_CANONICAL: dict[str, str] = {
     "ICC10 HC": "ICC10",
     "ICC25 HC": "ICC25",
-    "TOGC10":   "TOC10",
-    "TOGC25":   "TOC25",
-    "RS10 HC":  "RS10",
-    "RS25 HC":  "RS25",
+    "TOGC10": "TOC10",
+    "TOGC25": "TOC25",
+    "RS10 HC": "RS10",
+    "RS25 HC": "RS25",
 }
 
 
@@ -56,6 +64,7 @@ async def _autocomplete_instance(
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _fetch_user_chars(discord_user_id: int, name_filter: Optional[str] = None) -> list[Character]:
     """Return non-deleted characters for a Discord user, optionally filtered by name."""
     session = get_session()
@@ -74,8 +83,10 @@ def _fetch_user_chars(discord_user_id: int, name_filter: Optional[str] = None) -
 def _get_save_state(character_id: int, instance_name: str) -> int:
     """Return current is_saved value (0 or 1) for the given character/instance."""
     from bot.db import engine
+
     with engine.connect() as conn:
         from sqlalchemy import text
+
         row = conn.execute(
             text(
                 "SELECT is_saved FROM char_raid_saves"
@@ -88,8 +99,10 @@ def _get_save_state(character_id: int, instance_name: str) -> int:
 
 def _set_save_state(character_id: int, instance_name: str, is_saved: int) -> None:
     """Upsert save state for the given character/instance (canonical lockout key)."""
-    from bot.db import engine
     from sqlalchemy import text
+
+    from bot.db import engine
+
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -106,8 +119,10 @@ def _fetch_all_saves_for_user(discord_user_id: int) -> list[dict]:
     Return a list of dicts {char_name, realm, instance_name, is_saved} for all
     non-deleted characters belonging to the given Discord user.
     """
-    from bot.db import engine
     from sqlalchemy import text
+
+    from bot.db import engine
+
     with engine.connect() as conn:
         rows = conn.execute(
             text(
@@ -127,10 +142,10 @@ def _fetch_all_saves_for_user(discord_user_id: int) -> list[dict]:
 
 def _clear_all_saves() -> int:
     """Delete all is_saved=1 rows.  Returns number of rows deleted."""
-    from bot.db import engine
     from sqlalchemy import text
+
+    from bot.db import engine
+
     with engine.begin() as conn:
-        result = conn.execute(
-            text("DELETE FROM char_raid_saves WHERE is_saved = 1")
-        )
+        result = conn.execute(text("DELETE FROM char_raid_saves WHERE is_saved = 1"))
     return result.rowcount

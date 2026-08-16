@@ -8,12 +8,13 @@ from typing import Optional
 import discord
 
 from bot.db import get_session
-from db.models import Raid, Signup, SignupType, SignupStatus
-from .parser import format_gs
-from .char_helpers import _char_label, _char_display_description
-from .process import process_text_signup, _upsert_discord_user
+from db.models import Raid, Signup, SignupStatus, SignupType
+
+from .char_helpers import _char_display_description, _char_label
+from .embed import _EMOJIS, update_raid_embed
 from .log_thread import _post_to_raid_log, format_user_raid_log_message
-from .embed import update_raid_embed, _EMOJIS
+from .parser import format_gs
+from .process import _upsert_discord_user, process_text_signup
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,9 @@ class TextSignupModal(discord.ui.Modal):
         max_length=2000,
     )
 
-    def __init__(self, raid_id: int, raid_name: str, log_thread_id: Optional[int], initial_text: str = ""):
+    def __init__(
+        self, raid_id: int, raid_name: str, log_thread_id: Optional[int], initial_text: str = ""
+    ):
         super().__init__(title=f"Sign Up: {raid_name}"[:45])
         self.raid_id = raid_id
         self.raid_name = raid_name
@@ -337,7 +340,9 @@ class SignupPrioritySelectView(discord.ui.View):
                     "specs": [],
                 }
             star = " ⭐" if c["id"] in priority_ids else ""
-            grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
+            grouped[key]["specs"].append(
+                f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}"
+            )
         bullets = []
         for key, d in grouped.items():
             note_str = f" 💬 *{notes[key]}*" if key in notes else ""
@@ -587,8 +592,8 @@ class SignupCharacterSelectView(discord.ui.View):
         is_tentative = self.signup_status == SignupStatus.tentative
         base = (
             "**Step 1 of 2:** Select the spec(s) you want to sign up tentatively with:"
-            if is_tentative else
-            "**Step 1 of 2:** Select the spec(s) you want to sign up with:"
+            if is_tentative
+            else "**Step 1 of 2:** Select the spec(s) you want to sign up with:"
         )
         if max_pages > 1:
             # Smart character list formatting to avoid 2000-char limit
@@ -645,8 +650,12 @@ class SignupCharacterSelectView(discord.ui.View):
             )
             return
 
-        priority_ids = {c["id"] for c in selected_chars if c.get("signup_type") == SignupType.prio_character}
-        view = SignupPrioritySelectView(selected_chars, self.raid_id, self.signup_status, priority_ids=priority_ids)
+        priority_ids = {
+            c["id"] for c in selected_chars if c.get("signup_type") == SignupType.prio_character
+        }
+        view = SignupPrioritySelectView(
+            selected_chars, self.raid_id, self.signup_status, priority_ids=priority_ids
+        )
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
@@ -656,8 +665,12 @@ class SignupCharacterSelectView(discord.ui.View):
     async def _on_all_chars(self, interaction: discord.Interaction):
         self.selected_ids = {c["id"] for c in self.char_dicts}
         # Update priority_ids in the next view to match what's currently marked as priority (signup_type)
-        priority_ids = {c["id"] for c in self.char_dicts if c.get("signup_type") == SignupType.prio_character}
-        view = SignupPrioritySelectView(self.char_dicts, self.raid_id, self.signup_status, priority_ids=priority_ids)
+        priority_ids = {
+            c["id"] for c in self.char_dicts if c.get("signup_type") == SignupType.prio_character
+        }
+        view = SignupPrioritySelectView(
+            self.char_dicts, self.raid_id, self.signup_status, priority_ids=priority_ids
+        )
         await interaction.response.edit_message(
             content=view._step_text(),
             embed=None,
@@ -884,7 +897,7 @@ async def _finish_raid_helper_signup(
     interaction: discord.Interaction,
     raid_id: int,
     selected_chars: list[dict],
-    priority_ids: set[int]
+    priority_ids: set[int],
 ):
     discord_user_id = interaction.user.id
     signup_status = SignupStatus.signed
@@ -928,7 +941,7 @@ async def _finish_raid_helper_signup(
         lines.append(f"• **{_char_label(c)}**{prio_str}")
 
     await interaction.response.edit_message(
-        content=f"✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
+        content="✅ Signed up (raid helper) for the raid:\n" + "\n".join(lines),
         view=None,
     )
 
@@ -942,12 +955,12 @@ async def _finish_raid_helper_signup(
                 "specs": [],
             }
         star = " ⭐" if c["id"] in priority_ids else ""
-        grouped[key]["specs"].append(f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}")
+        grouped[key]["specs"].append(
+            f"{c.get('spec') or '?'}{star} GS {format_gs(c.get('gearscore', 0.0))}"
+        )
     bullets = []
     for key, d in grouped.items():
-        bullets.append(
-            f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}"
-        )
+        bullets.append(f"• **{d['char_name']}** ({d['char_class']}) – {' / '.join(d['specs'])}")
     log_message = format_user_raid_log_message(
         raid_id=raid_id,
         discord_user_id=interaction.user.id,
@@ -970,13 +983,14 @@ class SignupTestingPriorityView(discord.ui.View):
     """
     Raid helper flow Step 2: Mark preferred characters using buttons.
     """
+
     def __init__(
         self,
         all_char_dicts: list[dict],
         raid_id: int,
         selected_ids: set[int] | None = None,
         priority_ids: set[int] | None = None,
-        page: int = 0
+        page: int = 0,
     ):
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
@@ -1020,20 +1034,28 @@ class SignupTestingPriorityView(discord.ui.View):
             self.add_item(btn)
 
         if has_prev:
-            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn = discord.ui.Button(
+                label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️"
+            )
             prev_btn.callback = self._on_prev_page
             self.add_item(prev_btn)
 
         if has_next:
-            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn = discord.ui.Button(
+                label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️"
+            )
             next_btn.callback = self._on_next_page
             self.add_item(next_btn)
 
-        back_btn = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="↩️", row=4)
+        back_btn = discord.ui.Button(
+            label="Back", style=discord.ButtonStyle.secondary, emoji="↩️", row=4
+        )
         back_btn.callback = self._on_back
         self.add_item(back_btn)
 
-        finish_btn = discord.ui.Button(label="Finish", style=discord.ButtonStyle.primary, emoji="✅", row=4)
+        finish_btn = discord.ui.Button(
+            label="Finish", style=discord.ButtonStyle.primary, emoji="✅", row=4
+        )
         finish_btn.callback = self.finish
         self.add_item(finish_btn)
 
@@ -1045,12 +1067,15 @@ class SignupTestingPriorityView(discord.ui.View):
                 self.priority_ids.add(char_id)
             self._build_components()
             await interaction.response.edit_message(content=self._step_text(), view=self)
+
         return callback
 
     def _step_text(self) -> str:
         total_chars = len(self.selected_chars)
         if total_chars <= 23:
-            return "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+            return (
+                "**Step 2:** Click buttons to mark characters as preferred (⭐), then click Finish."
+            )
 
         # Calculate total pages
         if total_chars <= 23:
@@ -1076,27 +1101,30 @@ class SignupTestingPriorityView(discord.ui.View):
         await interaction.delete_original_response()
 
         view = SignupTesting2ClassSelectView(
-            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.all_char_dicts,
+            self.raid_id,
+            selected_ids=self.selected_ids,
+            priority_ids=self.priority_ids,
         )
-        await interaction.followup.send(
-            "**Step 1:** Select a class:",
-            view=view,
-            ephemeral=True
-        )
+        await interaction.followup.send("**Step 1:** Select a class:", view=view, ephemeral=True)
 
     async def finish(self, interaction: discord.Interaction):
-        await _finish_raid_helper_signup(interaction, self.raid_id, self.selected_chars, self.priority_ids)
+        await _finish_raid_helper_signup(
+            interaction, self.raid_id, self.selected_chars, self.priority_ids
+        )
+
 
 class SignupTesting2ClassSelectView(discord.ui.View):
     """
     Raid helper flow Step 1: Select class via buttons.
     """
+
     def __init__(
         self,
         char_dicts: list[dict],
         raid_id: int,
         selected_ids: set[int] | None = None,
-        priority_ids: set[int] | None = None
+        priority_ids: set[int] | None = None,
     ):
         super().__init__(timeout=120)
         self.char_dicts = char_dicts
@@ -1108,8 +1136,7 @@ class SignupTesting2ClassSelectView(discord.ui.View):
         else:
             # Fallback: check char_dicts for existing priority signup types
             self.priority_ids = {
-                c["id"] for c in char_dicts
-                if c.get("signup_type") == SignupType.prio_character
+                c["id"] for c in char_dicts if c.get("signup_type") == SignupType.prio_character
             }
 
         self._build_components()
@@ -1137,7 +1164,7 @@ class SignupTesting2ClassSelectView(discord.ui.View):
                 label=label,
                 style=discord.ButtonStyle.success if is_selected else discord.ButtonStyle.secondary,
                 emoji=emoji,
-                disabled=not has_class
+                disabled=not has_class,
             )
             btn.callback = self._create_class_callback(class_name)
             self.add_item(btn)
@@ -1147,7 +1174,7 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             style=discord.ButtonStyle.success,
             emoji="✅",
             disabled=not self.selected_ids,
-            row=4
+            row=4,
         )
         finish_btn.callback = self._on_finish
         self.add_item(finish_btn)
@@ -1157,7 +1184,7 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             style=discord.ButtonStyle.secondary,
             emoji="⭐",
             disabled=not self.selected_ids,
-            row=4
+            row=4,
         )
         prio_btn.callback = self._on_select_preferred
         self.add_item(prio_btn)
@@ -1170,38 +1197,43 @@ class SignupTesting2ClassSelectView(discord.ui.View):
             await interaction.delete_original_response()
 
             view = SignupTesting2CharacterSelectView(
-                self.char_dicts, class_chars, self.raid_id, class_name,
-                selected_ids=self.selected_ids, priority_ids=self.priority_ids
+                self.char_dicts,
+                class_chars,
+                self.raid_id,
+                class_name,
+                selected_ids=self.selected_ids,
+                priority_ids=self.priority_ids,
             )
             await interaction.followup.send(
-                f"**Step 2:** Select characters for **{class_name}**:",
-                view=view,
-                ephemeral=True
+                f"**Step 2:** Select characters for **{class_name}**:", view=view, ephemeral=True
             )
+
         return callback
 
     async def _on_finish(self, interaction: discord.Interaction):
         selected_chars = [c for c in self.char_dicts if c["id"] in self.selected_ids]
-        await _finish_raid_helper_signup(interaction, self.raid_id, selected_chars, self.priority_ids)
+        await _finish_raid_helper_signup(
+            interaction, self.raid_id, selected_chars, self.priority_ids
+        )
 
     async def _on_select_preferred(self, interaction: discord.Interaction):
         await interaction.response.defer()
         await interaction.delete_original_response()
 
         view = SignupTestingPriorityView(
-            self.char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.char_dicts,
+            self.raid_id,
+            selected_ids=self.selected_ids,
+            priority_ids=self.priority_ids,
         )
-        await interaction.followup.send(
-            view._step_text(),
-            view=view,
-            ephemeral=True
-        )
+        await interaction.followup.send(view._step_text(), view=view, ephemeral=True)
 
 
 class SignupTesting2CharacterSelectView(discord.ui.View):
     """
     Raid helper flow Step 2: Select characters of a specific class via buttons.
     """
+
     def __init__(
         self,
         all_char_dicts: list[dict],
@@ -1210,7 +1242,7 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         class_name: str,
         selected_ids: set[int] | None = None,
         priority_ids: set[int] | None = None,
-        page: int = 0
+        page: int = 0,
     ):
         super().__init__(timeout=120)
         self.all_char_dicts = all_char_dicts
@@ -1255,12 +1287,16 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
             self.add_item(btn)
 
         if has_prev:
-            prev_btn = discord.ui.Button(label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️")
+            prev_btn = discord.ui.Button(
+                label="Prev Page", style=discord.ButtonStyle.secondary, emoji="⬅️"
+            )
             prev_btn.callback = self._on_prev_page
             self.add_item(prev_btn)
 
         if has_next:
-            next_btn = discord.ui.Button(label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️")
+            next_btn = discord.ui.Button(
+                label="Next Page", style=discord.ButtonStyle.secondary, emoji="➡️"
+            )
             next_btn.callback = self._on_next_page
             self.add_item(next_btn)
 
@@ -1270,7 +1306,7 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
             style=discord.ButtonStyle.primary,
             emoji="↩️",
             disabled=not self.selected_ids,
-            row=4
+            row=4,
         )
         next_btn.callback = self._on_next_step
         self.add_item(next_btn)
@@ -1286,6 +1322,7 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
                 self.selected_ids.add(char_id)
             self._build_components()
             await interaction.response.edit_message(view=self)
+
         return callback
 
     async def _on_prev_page(self, interaction: discord.Interaction):
@@ -1303,10 +1340,9 @@ class SignupTesting2CharacterSelectView(discord.ui.View):
         await interaction.delete_original_response()
 
         view = SignupTesting2ClassSelectView(
-            self.all_char_dicts, self.raid_id, selected_ids=self.selected_ids, priority_ids=self.priority_ids
+            self.all_char_dicts,
+            self.raid_id,
+            selected_ids=self.selected_ids,
+            priority_ids=self.priority_ids,
         )
-        await interaction.followup.send(
-            "**Step 1:** Select a class:",
-            view=view,
-            ephemeral=True
-        )
+        await interaction.followup.send("**Step 1:** Select a class:", view=view, ephemeral=True)

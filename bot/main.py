@@ -1,7 +1,9 @@
 import asyncio
 import logging
+
 import discord
 from discord.ext import commands
+
 from bot.config import BOT_TOKEN
 from bot.db import get_session
 from db.models import BotGuild, Character
@@ -19,11 +21,13 @@ def _upsert_guild_sync(guild: discord.Guild) -> None:
             existing.guild_name = guild.name
             existing.icon = str(guild.icon) if guild.icon else None
         else:
-            session.add(BotGuild(
-                guild_id=guild.id,
-                guild_name=guild.name,
-                icon=str(guild.icon) if guild.icon else None,
-            ))
+            session.add(
+                BotGuild(
+                    guild_id=guild.id,
+                    guild_name=guild.name,
+                    icon=str(guild.icon) if guild.icon else None,
+                )
+            )
         session.commit()
     finally:
         session.close()
@@ -41,7 +45,9 @@ def _delete_guild_sync(guild_id: int) -> None:
         session.close()
 
 
-def _update_membership_status_sync(guild_id: int, user_id: int, status: str, discord_role: str = None) -> None:
+def _update_membership_status_sync(
+    guild_id: int, user_id: int, status: str, discord_role: str = None
+) -> None:
     """Update membership_status for all characters of a user in a guild."""
     session = get_session()
     try:
@@ -76,6 +82,7 @@ class RaidBot(commands.Bot):
 
         # Register persistent SignupView so buttons survive bot restarts
         from bot.cogs.signup import SignupView
+
         self.add_view(SignupView())
 
         await self.tree.sync()
@@ -84,9 +91,7 @@ class RaidBot(commands.Bot):
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.watching, name="raid sign-ups"
-            )
+            activity=discord.Activity(type=discord.ActivityType.watching, name="raid sign-ups")
         )
         # Sync all current guilds to bot_guilds table
         loop = asyncio.get_running_loop()
@@ -94,7 +99,9 @@ class RaidBot(commands.Bot):
             try:
                 await loop.run_in_executor(None, _upsert_guild_sync, guild)
             except Exception:
-                logger.warning("Failed to upsert guild %s (%s)", guild.id, guild.name, exc_info=True)
+                logger.warning(
+                    "Failed to upsert guild %s (%s)", guild.id, guild.name, exc_info=True
+                )
 
     async def on_guild_join(self, guild: discord.Guild):
         loop = asyncio.get_running_loop()
@@ -123,12 +130,21 @@ class RaidBot(commands.Bot):
     async def on_member_join(self, member: discord.Member):
         loop = asyncio.get_running_loop()
         from bot.discord_utils import get_top_role_name
+
         top_role = get_top_role_name(member)
         try:
-            await loop.run_in_executor(None, _update_membership_status_sync, member.guild.id, member.id, "active", top_role)
-            logger.info("Member %s joined guild %s — marked characters as active.", member.id, member.guild.id)
+            await loop.run_in_executor(
+                None, _update_membership_status_sync, member.guild.id, member.id, "active", top_role
+            )
+            logger.info(
+                "Member %s joined guild %s — marked characters as active.",
+                member.id,
+                member.guild.id,
+            )
         except Exception:
-            logger.warning("Failed to update membership status for member %s on join", member.id, exc_info=True)
+            logger.warning(
+                "Failed to update membership status for member %s on join", member.id, exc_info=True
+            )
 
     async def on_member_remove(self, member: discord.Member):
         loop = asyncio.get_running_loop()
@@ -141,7 +157,9 @@ class RaidBot(commands.Bot):
                     status = "kicked"
                     break
             if status == "left":
-                async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.ban):
+                async for entry in member.guild.audit_logs(
+                    limit=5, action=discord.AuditLogAction.ban
+                ):
                     if entry.target.id == member.id:
                         status = "banned"
                         break
@@ -150,18 +168,33 @@ class RaidBot(commands.Bot):
             pass
 
         try:
-            await loop.run_in_executor(None, _update_membership_status_sync, member.guild.id, member.id, status)
-            logger.info("Member %s left guild %s (status: %s) — updated characters.", member.id, member.guild.id, status)
+            await loop.run_in_executor(
+                None, _update_membership_status_sync, member.guild.id, member.id, status
+            )
+            logger.info(
+                "Member %s left guild %s (status: %s) — updated characters.",
+                member.id,
+                member.guild.id,
+                status,
+            )
         except Exception:
-            logger.warning("Failed to update membership status for member %s on remove", member.id, exc_info=True)
+            logger.warning(
+                "Failed to update membership status for member %s on remove",
+                member.id,
+                exc_info=True,
+            )
 
     async def on_member_ban(self, guild: discord.Guild, user: discord.User | discord.Member):
         loop = asyncio.get_running_loop()
         try:
-            await loop.run_in_executor(None, _update_membership_status_sync, guild.id, user.id, "banned")
+            await loop.run_in_executor(
+                None, _update_membership_status_sync, guild.id, user.id, "banned"
+            )
             logger.info("Member %s banned from guild %s — updated characters.", user.id, guild.id)
         except Exception:
-            logger.warning("Failed to update membership status for user %s on ban", user.id, exc_info=True)
+            logger.warning(
+                "Failed to update membership status for user %s on ban", user.id, exc_info=True
+            )
 
 
 async def main():

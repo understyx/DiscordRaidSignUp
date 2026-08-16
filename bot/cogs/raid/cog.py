@@ -4,14 +4,15 @@ import asyncio
 import datetime
 import logging
 from dataclasses import dataclass, field
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
-from db.models import Raid, RaidStatus, GuildAdminRole
+from db.models import GuildAdminRole, Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _RaidEmbed:
     """Lightweight dataclass used to build a signup embed before the DB object is available."""
+
     id: int
     name: str
     date: datetime.datetime
@@ -40,14 +42,21 @@ def is_officer():
 
         if interaction.guild_id:
             import asyncio
+
             loop = asyncio.get_running_loop()
 
             def _get_admin_roles():
                 session = get_session()
                 try:
-                    return session.execute(
-                        select(GuildAdminRole.role_id).where(GuildAdminRole.guild_id == interaction.guild_id)
-                    ).scalars().all()
+                    return (
+                        session.execute(
+                            select(GuildAdminRole.role_id).where(
+                                GuildAdminRole.guild_id == interaction.guild_id
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
                 finally:
                     session.close()
 
@@ -63,9 +72,7 @@ def is_officer():
 
 
 def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
-    unique_players = len(set(
-        s.discord_user_id for s in signups if s.discord_user_id
-    ))
+    unique_players = len(set(s.discord_user_id for s in signups if s.discord_user_id))
 
     status_emoji = {"open": "🟢", "locked": "🔒"}.get(
         raid.status.value if raid.status else "open", "🟢"
@@ -82,7 +89,9 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
         value=f"<t:{int(raid.date.timestamp())}:F>",
         inline=True,
     )
-    embed.add_field(name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True)
+    embed.add_field(
+        name="Status", value=f"{status_emoji} {raid.status.value.capitalize()}", inline=True
+    )
     embed.add_field(
         name="👥 Players Signed Up",
         value=str(unique_players),
@@ -94,7 +103,9 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
 
 class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
     raid_name = discord.ui.TextInput(label="Raid Name", max_length=100)
-    raid_instance = discord.ui.TextInput(label="Raid Instance", max_length=100, placeholder="e.g. ICC 25")
+    raid_instance = discord.ui.TextInput(
+        label="Raid Instance", max_length=100, placeholder="e.g. ICC 25"
+    )
     raid_date = discord.ui.TextInput(
         label="Date (YYYY-MM-DD HH:MM)",
         placeholder="2024-12-31 20:00",
@@ -124,17 +135,21 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
         loop = asyncio.get_running_loop()
 
         try:
+
             def _create():
                 session = get_session()
                 try:
                     next_num = session.execute(
-                        select(func.coalesce(func.max(Raid.guild_raid_number), 0) + 1)
-                        .where(Raid.guild_id == interaction.guild_id)
+                        select(func.coalesce(func.max(Raid.guild_raid_number), 0) + 1).where(
+                            Raid.guild_id == interaction.guild_id
+                        )
                     ).scalar()
                     raid = Raid(
                         name=self.raid_name.value.strip(),
                         date=raid_dt,
-                        description=self.description.value.strip() if self.description.value else "",
+                        description=self.description.value.strip()
+                        if self.description.value
+                        else "",
                         raid_instance=self.raid_instance.value.strip(),
                         max_size=size,
                         status=RaidStatus.open,
@@ -145,11 +160,20 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                     session.add(raid)
                     session.commit()
                     session.refresh(raid)
-                    return raid.id, raid.name, raid.date, raid.raid_instance, raid.description, raid.max_size
+                    return (
+                        raid.id,
+                        raid.name,
+                        raid.date,
+                        raid.raid_instance,
+                        raid.description,
+                        raid.max_size,
+                    )
                 finally:
                     session.close()
 
-            raid_id, name, date, instance, desc, max_size = await loop.run_in_executor(None, _create)
+            raid_id, name, date, instance, desc, max_size = await loop.run_in_executor(
+                None, _create
+            )
         except Exception:
             logger.exception("Failed to create raid in database")
             await interaction.response.send_message(
@@ -200,7 +224,9 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
                 auto_archive_duration=10080,  # 7 days in minutes
                 type=discord.ChannelType.public_thread,
             )
-            await log_thread.send(f"📋 **Sign-Up Log for {name}**\nPlayer sign-ups will be recorded here.")
+            await log_thread.send(
+                f"📋 **Sign-Up Log for {name}**\nPlayer sign-ups will be recorded here."
+            )
 
             def _store_log_thread():
                 session = get_session()

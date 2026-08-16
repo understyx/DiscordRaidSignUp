@@ -16,7 +16,7 @@ const router = express.Router();
 const DEV_USER_ID = process.env.DEV_USER_ID || '';
 
 // lowercase class names used for spec aliases management
-const WOW_CLASS_NAMES = _WOW_CLASSES.map(c => c.name.toLowerCase());
+const WOW_CLASS_NAMES = _WOW_CLASSES.map((c) => c.name.toLowerCase());
 
 function isDeveloper(req) {
   return !!DEV_USER_ID && !!req.session.user_id && req.session.user_id === DEV_USER_ID;
@@ -141,7 +141,10 @@ router.post('/spec-aliases/delete', express.urlencoded({ extended: false }), asy
     return res.redirect('/admin/spec-aliases');
   }
 
-  const [result] = await pool.query('DELETE FROM spec_aliases WHERE id = ? AND guild_id = ?', [id, guildId]);
+  const [result] = await pool.query('DELETE FROM spec_aliases WHERE id = ? AND guild_id = ?', [
+    id,
+    guildId,
+  ]);
   if (result.affectedRows === 0) {
     req.session.flash = '❌ Alias not found.';
   } else {
@@ -241,7 +244,7 @@ router.get('/all-characters', async (req, res) => {
         userId,
         username: row.discord_username || 'Unknown',
         displayName: row.discord_display_name || 'Unknown',
-        characters: []
+        characters: [],
       };
     }
     byUser[userId].characters.push(row);
@@ -257,7 +260,6 @@ router.get('/all-characters', async (req, res) => {
       : null,
   });
 });
-
 
 // POST /admin/seed-fake-signups/:raid_id
 router.post('/seed-fake-signups/:raid_id', async (req, res) => {

@@ -4,12 +4,14 @@ const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
 const pool = require('../../db');
 const { resolveIsAdmin } = require('../adminCheck');
+const { safeRelativeRedirect, selectAvailableGuilds } = require('../../services/guildAccess');
 
 const router = express.Router();
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || '';
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || '';
-const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://localhost:8000/auth/callback';
+const DISCORD_REDIRECT_URI =
+  process.env.DISCORD_REDIRECT_URI || 'http://localhost:8000/auth/callback';
 const DISCORD_OAUTH_URL = 'https://discord.com/api/oauth2/authorize';
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
@@ -146,7 +148,7 @@ router.get('/callback', async (req, res) => {
       });
       if (guildsRes.ok) {
         const guildsData = await guildsRes.json();
-        userGuildIds = guildsData.map(g => String(g.id));
+        userGuildIds = guildsData.map((g) => String(g.id));
       }
     } catch (_guildsErr) {
       // Non-fatal: fall back to no guild filtering
@@ -177,28 +179,18 @@ router.get('/callback', async (req, res) => {
         let botGuildRows = [];
         if (isDev) {
           // Dev sees ALL guilds the bot is in
-          [botGuildRows] = await pool.query(
-            'SELECT guild_id, guild_name FROM bot_guilds'
-          );
-          botGuildRows = botGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID);
-          // Mark guilds the dev is NOT in as is_dev_only
-          botGuildRows = botGuildRows.map(r => ({
-            guild_id: String(r.guild_id),
-            guild_name: r.guild_name,
-            is_dev_only: !userGuildIds.includes(String(r.guild_id))
-          }));
+          [botGuildRows] = await pool.query('SELECT guild_id, guild_name FROM bot_guilds');
         } else {
           const placeholders = userGuildIds.map(() => '?').join(', ');
           [botGuildRows] = await pool.query(
             `SELECT guild_id, guild_name FROM bot_guilds WHERE guild_id IN (${placeholders})`,
             userGuildIds
           );
-          botGuildRows = botGuildRows.filter(r => String(r.guild_id) !== NOTIFY_GUILD_ID).map(r => ({
-            guild_id: String(r.guild_id),
-            guild_name: r.guild_name,
-            is_dev_only: false
-          }));
         }
+        botGuildRows = selectAvailableGuilds(botGuildRows, userGuildIds, {
+          excludedGuildId: NOTIFY_GUILD_ID,
+          isDev,
+        });
 
         if (botGuildRows.length === 1 && !isDev) {
           activeGuildId = String(botGuildRows[0].guild_id);
@@ -235,17 +227,7 @@ router.get('/callback', async (req, res) => {
     // Only redirect to a safe relative path to prevent open-redirect attacks.
     // Decode the URL first to catch encoded variants (e.g. %2F%2F), then verify
     // it is a relative path with no newline characters.
-    let redirectTo = '/raids';
-    if (nextUrl) {
-      try {
-        const decoded = decodeURIComponent(nextUrl);
-        if (decoded.startsWith('/') && !decoded.startsWith('//') && !/[\r\n]/.test(decoded)) {
-          redirectTo = decoded;
-        }
-      } catch (_) {
-        // decodeURIComponent failed — fall back to /raids
-      }
-    }
+    const redirectTo = safeRelativeRedirect(nextUrl);
 
     // If the login was initiated from a guild subdomain, redirect back there.
     // Only do this when COOKIE_DOMAIN is set so that the session cookie is
