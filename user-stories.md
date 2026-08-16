@@ -101,7 +101,8 @@ The chosen guild is stored in the session for the rest of the visit.
 **Flow:** An officer posts the reusable `/helpnoobs` launcher → any server member chooses
 **Discord** or **Website** → the remaining setup is private and scoped to that server.
 
-- Discord asks for class, spec, name, realm, and gearscore one step at a time in DMs.
+- Discord first offers a guided one-at-a-time wizard or a bulk text list for multiple
+  characters and specs.
 - Website signs the member in, activates the originating guild, and opens the guided form.
 - After saving, the member can add another character or finish.
 

@@ -114,6 +114,55 @@ def _class_embed(guild_name: str) -> discord.Embed:
     return embed
 
 
+def _method_embed(guild_name: str) -> discord.Embed:
+    embed = discord.Embed(
+        title="⚔️ How would you like to add your characters?",
+        description=(
+            f"You're adding characters to **{guild_name}**. Choose whichever method is easier:\n\n"
+            "🧭 **Guided setup** — add characters individually with class and spec menus\n"
+            "📝 **Add all at once** — paste your whole character list in one message"
+        ),
+        color=discord.Color.blurple(),
+    )
+    embed.add_field(
+        name="Have several characters?",
+        value=(
+            "The text method can register multiple characters and multiple specs "
+            "at the same time."
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Only you can use these controls. This guide expires in 10 minutes.")
+    return embed
+
+
+def _bulk_text_embed(guild_name: str) -> discord.Embed:
+    embed = discord.Embed(
+        title="📝 Add all your characters at once",
+        description=(
+            "Send me a **new DM message** with one character per line. Use this order:\n\n"
+            "`Name / Class / Spec / Gearscore`\n\n"
+            "For another spec on the same character, add another `Spec / Gearscore` pair.\n\n"
+            "**Example**\n"
+            "```\n"
+            "Shamilly / Shaman / Enhancement / 6400 / Restoration / 6500\n"
+            "Tethakai / Shaman / Restoration / 6000\n"
+            "Cybelais / Druid / Feral (Cat) / 6000\n"
+            "Ilandia / Paladin / Protection / 5700\n"
+            "```\n"
+            "Send only the character lines—I'll validate and save the whole list automatically."
+        ),
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(
+        text=(
+            f"Characters will be added to {guild_name}. "
+            "If we share multiple servers, I'll ask you to confirm the server."
+        )
+    )
+    return embed
+
+
 def _spec_embed(guild_name: str, char_class: str) -> discord.Embed:
     embed = discord.Embed(
         title="⚔️ Let's add your character",
@@ -176,6 +225,57 @@ class _ClassSelect(discord.ui.Select):
         )
 
 
+class DiscordMethodView(_OwnedView):
+    def __init__(
+        self,
+        *,
+        user_id: int,
+        guild_id: int,
+        guild_name: str,
+        top_role: Optional[str],
+    ):
+        super().__init__(user_id)
+        self.guild_id = guild_id
+        self.guild_name = guild_name
+        self.top_role = top_role
+
+    @discord.ui.button(
+        label="Continue with individual characters",
+        style=discord.ButtonStyle.primary,
+        emoji="🧭",
+    )
+    async def individual(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        next_view = GuidedClassView(
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            guild_name=self.guild_name,
+            top_role=self.top_role,
+        )
+        next_view.message = interaction.message
+        await interaction.response.edit_message(embed=_class_embed(self.guild_name), view=next_view)
+
+    @discord.ui.button(
+        label="Add all characters at once using text",
+        style=discord.ButtonStyle.secondary,
+        emoji="📝",
+    )
+    async def bulk_text(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        next_view = BulkTextHelpView(
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            guild_name=self.guild_name,
+            top_role=self.top_role,
+        )
+        next_view.message = interaction.message
+        await interaction.response.edit_message(
+            embed=_bulk_text_embed(self.guild_name), view=next_view
+        )
+
+
 class GuidedClassView(_OwnedView):
     def __init__(
         self,
@@ -190,6 +290,51 @@ class GuidedClassView(_OwnedView):
         self.guild_name = guild_name
         self.top_role = top_role
         self.add_item(_ClassSelect())
+
+    @discord.ui.button(label="Back to methods", style=discord.ButtonStyle.secondary, emoji="⬅️")
+    async def back_to_methods(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        previous_view = DiscordMethodView(
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            guild_name=self.guild_name,
+            top_role=self.top_role,
+        )
+        previous_view.message = interaction.message
+        await interaction.response.edit_message(
+            embed=_method_embed(self.guild_name), view=previous_view
+        )
+
+
+class BulkTextHelpView(_OwnedView):
+    def __init__(
+        self,
+        *,
+        user_id: int,
+        guild_id: int,
+        guild_name: str,
+        top_role: Optional[str],
+    ):
+        super().__init__(user_id)
+        self.guild_id = guild_id
+        self.guild_name = guild_name
+        self.top_role = top_role
+
+    @discord.ui.button(label="Back to methods", style=discord.ButtonStyle.secondary, emoji="⬅️")
+    async def back_to_methods(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        previous_view = DiscordMethodView(
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            guild_name=self.guild_name,
+            top_role=self.top_role,
+        )
+        previous_view.message = interaction.message
+        await interaction.response.edit_message(
+            embed=_method_embed(self.guild_name), view=previous_view
+        )
 
 
 class _SpecSelect(discord.ui.Select):
@@ -450,14 +595,14 @@ class HelpNoobsChoiceView(discord.ui.View):
             return
         member, guild = context
         await interaction.response.defer(ephemeral=True, thinking=True)
-        guide_view = GuidedClassView(
+        guide_view = DiscordMethodView(
             user_id=member.id,
             guild_id=guild.id,
             guild_name=guild.name,
             top_role=member.top_role.name if member.roles[1:] else None,
         )
         try:
-            dm_message = await member.send(embed=_class_embed(guild.name), view=guide_view)
+            dm_message = await member.send(embed=_method_embed(guild.name), view=guide_view)
         except discord.Forbidden:
             await interaction.followup.send(
                 "❌ I couldn't open a DM with you. Enable direct messages for this server, "
