@@ -72,7 +72,14 @@ function registerFilters(njkEnv) {
   });
 
   // tojson filter: serialize a value to a JSON string safe for inline <script> use
-  njkEnv.addFilter('tojson', (val) => JSON.stringify(val));
+  njkEnv.addFilter('tojson', (val) =>
+    JSON.stringify(val === undefined ? null : val)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029')
+  );
 
   // discordId filter: shows last 6 digits of a Discord snowflake, e.g. "…789012"
   njkEnv.addFilter('discordId', (val) => {

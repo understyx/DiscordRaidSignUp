@@ -10,7 +10,6 @@
 
   {# ── Action bar (never scrolls) ───────────────────────────────────── #}
   <div class="roster-action-bar">
-    {% set current_meta = comp_meta[current_comp] %}
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
       <h3 class="mb-0">🛠️ {{ raid.name }}</h3>
       <div class="roster-primary-actions d-flex align-items-center flex-wrap gap-1">
@@ -509,21 +508,7 @@
 
 {% block scripts %}
 <script id="rosterConfig" type="application/json">
-  {
-    "CAN_EDIT": {{ 'true' if can_edit else 'false' }},
-    "CURRENT_COMP": {{ current_comp }},
-    "RAID_URL": {{ raid_url | tojson | safe }},
-    "COMP_NUMBERS_ALL": {{ comp_numbers | tojson | safe }},
-    "COMP_SUMMARIES": {{ comp_summaries | tojson | safe }},
-    "COMP_LABELS": {{ comp_labels | tojson | safe }},
-    "COMP_META": {{ comp_meta | tojson | safe }},
-    "CURRENT_REVISION": {{ current_meta.revision or 0 }},
-    "PUBLISHED_REVISION": {{ current_meta.published_revision | tojson | safe }},
-    "MAX_SIZE": {{ max_size }},
-    "CHARS_IN_COMPS": {{ chars_in_comps | tojson | safe }},
-    "CHAR_COLLECTORS": {{ char_collectors | tojson | safe }},
-    "WOTLK_RAID_BUFFS": {{ wotlk_buffs | tojson | safe }}, "EMOJIS": {{ emojis | tojson | safe }}, "RAID": {{ raid | tojson | safe }}
-  }
+  {{ roster_config | tojson | safe }}
 </script>
 <script src="/js/raid_manage.js"></script>
 {% endblock %}

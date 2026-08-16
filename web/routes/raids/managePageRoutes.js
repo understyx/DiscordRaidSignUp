@@ -374,6 +374,29 @@ function registerManagePageRoutes(router, dependencies) {
       }
     }
 
+    const currentMeta = compMeta[currentComp] || {
+      revision: 0,
+      published_revision: null,
+      published_at: null,
+    };
+    const rosterConfig = {
+      CAN_EDIT: canEdit,
+      CURRENT_COMP: currentComp,
+      RAID_URL: raidBaseUrl(raid),
+      COMP_NUMBERS_ALL: compNumbers,
+      COMP_SUMMARIES: compSummaries,
+      COMP_LABELS: compLabels,
+      COMP_META: compMeta,
+      CURRENT_REVISION: currentMeta.revision,
+      PUBLISHED_REVISION: currentMeta.published_revision,
+      MAX_SIZE: maxSize,
+      CHARS_IN_COMPS: charsInComps,
+      CHAR_COLLECTORS: charCollectors,
+      WOTLK_RAID_BUFFS: WOTLK_BUFFS,
+      EMOJIS,
+      RAID: raid,
+    };
+
     res.render('raid_manage.html', {
       raid,
       raid_url: raidBaseUrl(raid),
@@ -391,6 +414,7 @@ function registerManagePageRoutes(router, dependencies) {
       comp_numbers: compNumbers,
       comp_labels: compLabels,
       comp_meta: compMeta,
+      current_meta: currentMeta,
       current_comp: currentComp,
       next_comp: nextComp,
       comp_summaries: compSummaries,
@@ -402,6 +426,7 @@ function registerManagePageRoutes(router, dependencies) {
       user: currentUser(req),
       can_edit: canEdit,
       available_player_count: signupsByUser.filter((group) => !group.is_unavailable).length,
+      roster_config: rosterConfig,
     });
   });
 }
