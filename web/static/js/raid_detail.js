@@ -386,10 +386,9 @@ document.addEventListener('DOMContentLoaded', () => {
     handleNoteInput(input.dataset.groupIdx);
   });
 
-  loadPresets();
-
   const select = document.getElementById('presetSelect');
   if (select) {
+    loadPresets();
     select.addEventListener('change', (e) => {
       applyPresets(Array.from(e.target.selectedOptions).map(option => option.value));
     });

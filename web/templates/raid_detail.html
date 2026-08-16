@@ -115,42 +115,8 @@
             <button type="submit" class="btn btn-outline-secondary" id="tentativeBtn" name="signup_mode" value="tentative">
               ❓ {% if my_signup_count > 0 %}Update as Tentative{% else %}Sign Up as Tentative{% endif %}
             </button>
-            <div class="ms-auto d-flex gap-2 align-items-center">
-              <select id="presetSelect" class="form-select form-select-sm bg-dark text-light border-secondary"
-                      multiple size="2" aria-label="Load one or more signup presets" style="max-width: 220px;">
-                <option value="" disabled selected>— Select preset(s) —</option>
-              </select>
-              <button type="button" class="btn btn-sm btn-outline-success" onclick="showSavePresetModal()">💾 Save as Preset</button>
-              <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPresets()">🗑️ Delete</button>
-            </div>
           </div>
         </form>
-
-        {# Preset Modals #}
-        <div class="modal fade" id="savePresetModal" tabindex="-1" aria-labelledby="savePresetModalLabel" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered text-light">
-            <div class="modal-content bg-dark border-secondary">
-              <div class="modal-header border-secondary">
-                <h5 class="modal-title" id="savePresetModalLabel">💾 Save as Preset</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-                <p class="small text-muted mb-3">
-                  This will save your current selections (checked characters, priorities, and notes) as a reusable preset.
-                </p>
-                <div class="mb-3">
-                  <label for="presetNameInput" class="form-label">Preset Name</label>
-                  <input type="text" class="form-control bg-dark text-light border-secondary" id="presetNameInput" placeholder="e.g., Main Group">
-                </div>
-                <div id="savePresetError" class="text-danger small mb-2 d-none"></div>
-              </div>
-              <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-wow" onclick="submitSavePreset()">Save</button>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {% if my_signup_count > 0 %}
         <form method="post" action="{{ raid_url }}/withdraw" class="mt-2">

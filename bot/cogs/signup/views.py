@@ -147,16 +147,6 @@ class SignupPrioritySelectView(discord.ui.View):
         confirm_btn.callback = self.confirm
         self.add_item(confirm_btn)
 
-        if not self.confirm_only:
-            add_note_btn = discord.ui.Button(
-                label="Add Note to Character",
-                style=discord.ButtonStyle.secondary,
-                emoji="📝",
-                row=3,
-            )
-            add_note_btn.callback = self._on_add_note
-            self.add_item(add_note_btn)
-
     def _update_priority_from_page(self, selected_values: list[str]):
         """Replace priority marks for the current page's items based on the select interaction."""
         start = self.page * _SELECT_PAGE_SIZE
@@ -235,16 +225,6 @@ class SignupPrioritySelectView(discord.ui.View):
             if note_lines:
                 text += "\n\n**Notes:**\n" + "\n".join(note_lines)
         return text
-
-    async def _on_add_note(self, interaction: discord.Interaction):
-        if interaction.message is None:
-            await interaction.response.send_message(
-                "❌ Could not open notes editor (message context unavailable).", ephemeral=True
-            )
-            return
-        await interaction.response.send_modal(
-            AllNotesModal(parent_view=self, parent_message=interaction.message)
-        )
 
     async def _on_priority_select(self, interaction: discord.Interaction):
         self._update_priority_from_page(interaction.data.get("values", []))
@@ -676,77 +656,6 @@ class SignupCharacterSelectView(discord.ui.View):
             embed=None,
             view=view,
         )
-
-
-class AllNotesModal(discord.ui.Modal):
-    """
-    Modal that lets the player set notes for all selected characters at once.
-
-    Pre-populated with lines of the form::
-
-        CharName: existing note
-        CharName2:
-
-    On submit, each line that starts with a known character name (case-insensitive)
-    has everything after the first ``:`` treated as that character's note.
-    Lines not starting with a recognised character name are silently ignored.
-    A blank note (nothing after ``:``) clears any existing note for that character.
-    """
-
-    notes_input = discord.ui.TextInput(
-        label="Character: note (one per line)",
-        style=discord.TextStyle.paragraph,
-        placeholder="Character1: your note here\nCharacter2:\nLeave blank after : to clear a note.",
-        required=False,
-        max_length=2000,
-    )
-
-    def __init__(
-        self,
-        parent_view: SignupPrioritySelectView,
-        parent_message: discord.Message,
-    ):
-        super().__init__(title="Add Notes to Characters")
-        self.parent_view = parent_view
-        self.parent_message = parent_message
-        # Collect unique character names in display order
-        seen: set[str] = set()
-        self.unique_char_names: list[str] = []
-        for c in parent_view.selected_chars:
-            key = c["char_name"].lower()
-            if key not in seen:
-                seen.add(key)
-                self.unique_char_names.append(c["char_name"])
-        # Pre-populate with existing notes
-        lines = []
-        for name in self.unique_char_names:
-            existing = parent_view.notes.get(name.lower(), "")
-            lines.append(f"{name}: {existing}" if existing else f"{name}:")
-        self.notes_input.default = "\n".join(lines)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        known = {name.lower(): name for name in self.unique_char_names}
-        for line in self.notes_input.value.splitlines():
-            if ":" not in line:
-                continue
-            name_part, _, note_part = line.partition(":")
-            name_key = name_part.strip().lower()
-            if name_key not in known:
-                continue
-            note = note_part.strip()
-            if note:
-                self.parent_view.notes[name_key] = note
-            else:
-                self.parent_view.notes.pop(name_key, None)
-        self.parent_view._build_components()
-        try:
-            await self.parent_message.edit(
-                content=self.parent_view._step_text(),
-                view=self.parent_view,
-            )
-        except Exception:
-            logger.warning("Failed to edit parent message after notes modal submission")
-        await interaction.response.send_message("✅ Notes updated.", ephemeral=True)
 
 
 class EditNotesModal(discord.ui.Modal):

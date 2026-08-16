@@ -180,6 +180,22 @@ journalctl -u discord-raid-bot -f
 journalctl -u discord-raid-web -f
 ```
 
+### Updating an installed server
+
+Use the update script to stop both services, back up the database, fast-forward
+the Git checkout, restore file ownership, apply database migrations, and restart
+the services:
+
+```bash
+sudo bash /opt/DiscordRaidSignUp/systemd/update.sh \
+  --app-dir /opt/DiscordRaidSignUp \
+  --user raidbot
+```
+
+The application user must have permission to pull from the configured Git
+remote. If any update step fails after the services are stopped, the script
+attempts to start both services again before exiting with an error.
+
 ---
 
 ## Development Checks
@@ -334,7 +350,8 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 ├── systemd/              # systemd service files + install script
 │   ├── discord-raid-bot.service
 │   ├── discord-raid-web.service
-│   └── install.sh
+│   ├── install.sh
+│   └── update.sh
 ├── .env.example          # Environment variable template
 ├── Makefile
 ├── pyproject.toml
