@@ -16,6 +16,12 @@ const guildCharactersRouter = require('../routes/guildCharacters');
 const recruitmentRouter = require('../routes/recruitment');
 const { registerFilters } = require('./filters');
 const { safeRelativeRedirect } = require('../services/guildAccess');
+const {
+  buildLinkEmbed,
+  guildIdFromRaidPath,
+  hasCustomEmbed,
+  isLinkPreviewRequest,
+} = require('../services/linkPreview');
 
 function createApp() {
   const app = express();
@@ -86,48 +92,64 @@ function createApp() {
 
   registerFilters(njkEnv);
 
-  // Subdomain middleware — resolves guild from <slug>.BASE_DOMAIN hostnames.
-  // Runs before routes so every handler can read req.subdomainGuild.
+  // Resolve the guild represented by a subdomain, an old guild-scoped raid URL,
+  // or the active session. This runs before routes so link-preview crawlers can
+  // receive guild metadata without being redirected through Discord OAuth.
   app.use(async (req, res, next) => {
     req.subdomainGuild = null;
+    req.guildContext = null;
 
     const baseDomain = process.env.BASE_DOMAIN;
-    if (!baseDomain) return next();
-
     const host = req.hostname; // e.g. "my-guild.example.com"
-    if (!host) return next();
-    const suffix = '.' + baseDomain; // e.g. ".example.com"
-
-    if (!host.endsWith(suffix)) return next();
-
-    const slug = host.slice(0, host.length - suffix.length);
-    // Reject empty slugs or slugs that look like the root domain itself
-    if (!slug || slug.includes('.')) return next();
+    const suffix = baseDomain ? '.' + baseDomain : null; // e.g. ".example.com"
+    const isGuildSubdomain = Boolean(host && suffix && host.endsWith(suffix));
+    const slug = isGuildSubdomain ? host.slice(0, host.length - suffix.length) : null;
+    const pathGuildId = guildIdFromRaidPath(req.path);
+    const sessionGuildId = req.session.active_guild_id || null;
 
     try {
-      let [[row]] = await pool.query(
-        `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
-         FROM bot_guilds bg
-         LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
-         WHERE bg.subdomain = ?`,
-        [slug]
-      );
-      // Fallback: if no named subdomain matches, treat a purely numeric slug as a guild snowflake ID.
-      if (!row && /^\d+$/.test(slug)) {
+      let row = null;
+      let source = null;
+
+      // Reject empty or nested subdomain slugs. If the hostname is not a guild
+      // subdomain, the guild ID carried by legacy raid links takes precedence.
+      if (slug && !slug.includes('.')) {
+        [[row]] = await pool.query(
+          `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
+           FROM bot_guilds bg
+           LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
+           WHERE bg.subdomain = ?`,
+          [slug]
+        );
+        source = 'subdomain';
+
+        // Fallback: a numeric subdomain is the guild snowflake ID.
+        if (!row && /^\d+$/.test(slug)) {
+          [[row]] = await pool.query(
+            `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
+             FROM bot_guilds bg
+             LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
+             WHERE bg.guild_id = ?`,
+            [slug]
+          );
+        }
+      } else if (pathGuildId || sessionGuildId) {
+        const guildId = pathGuildId || sessionGuildId;
         [[row]] = await pool.query(
           `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
            FROM bot_guilds bg
            LEFT JOIN guild_settings gs ON bg.guild_id = gs.guild_id
            WHERE bg.guild_id = ?`,
-          [slug]
+          [guildId]
         );
+        source = pathGuildId ? 'path' : 'session';
       }
       if (!row) return next();
 
-      req.subdomainGuild = {
+      req.guildContext = {
         guild_id: String(row.guild_id),
         guild_name: row.guild_name,
-        slug,
+        slug: source === 'subdomain' ? slug : null,
         custom_embed: {
           title: row.embed_title,
           description: row.embed_description,
@@ -135,12 +157,12 @@ function createApp() {
           color: row.embed_color,
         },
       };
+      if (source === 'subdomain') req.subdomainGuild = req.guildContext;
 
-      // Override the active guild in the session when the subdomain guild differs
-      // from what the session currently holds (or when the session has none).
-      if (req.session.active_guild_id !== req.subdomainGuild.guild_id) {
-        req.session.active_guild_id = req.subdomainGuild.guild_id;
-        req.session.active_guild_name = req.subdomainGuild.guild_name;
+      // A hostname or guild-scoped raid URL is an explicit guild selection.
+      if (source !== 'session' && req.session.active_guild_id !== req.guildContext.guild_id) {
+        req.session.active_guild_id = req.guildContext.guild_id;
+        req.session.active_guild_name = req.guildContext.guild_name;
 
         // Refresh admin status for the new guild if a user is logged in.
         if (req.session.user_id) {
@@ -148,7 +170,7 @@ function createApp() {
           try {
             req.session.is_admin = await resolveIsAdmin(
               req.session.user_id,
-              req.subdomainGuild.guild_id
+              req.guildContext.guild_id
             );
           } catch (_err) {
             req.session.is_admin = false;
@@ -156,7 +178,7 @@ function createApp() {
         }
       }
     } catch (_err) {
-      // DB error — continue without subdomain guild
+      // DB error — continue without guild-specific metadata.
     }
 
     next();
@@ -169,8 +191,11 @@ function createApp() {
     res.locals.dev_full_admin = isDevFullAdminEnabled();
     res.locals.active_guild_id = req.session.active_guild_id || null;
     res.locals.active_guild_name = req.session.active_guild_name || null;
-    if (req.subdomainGuild && req.subdomainGuild.custom_embed) {
-      res.locals.custom_embed = req.subdomainGuild.custom_embed;
+    if (req.guildContext) {
+      const host = req.get('host');
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+      const absoluteUrl = host ? `${protocol}://${host}${req.originalUrl}` : req.originalUrl;
+      res.locals.custom_embed = buildLinkEmbed(req.guildContext, absoluteUrl);
     } else {
       res.locals.custom_embed = null;
     }
@@ -180,6 +205,23 @@ function createApp() {
     );
     const _availableCount = req.session.available_guilds ? req.session.available_guilds.length : 0;
     res.locals.has_multiple_guilds = _availableCount > 1;
+    next();
+  });
+
+  // Authenticated pages redirect anonymous visitors to OAuth. Link-preview
+  // crawlers cannot authenticate, so give them a small public 200 response with
+  // the configured metadata instead of letting the redirect strip guild context.
+  app.use((req, res, next) => {
+    if (
+      req.guildContext &&
+      hasCustomEmbed(req.guildContext.custom_embed) &&
+      isLinkPreviewRequest(req)
+    ) {
+      return res.render('link_preview.html', {
+        guild_name: req.guildContext.guild_name,
+        custom_embed: res.locals.custom_embed,
+      });
+    }
     next();
   });
 

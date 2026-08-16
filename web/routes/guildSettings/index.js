@@ -250,10 +250,15 @@ router.post('/custom-embed', express.urlencoded({ extended: false }), async (req
     return res.redirect('/guild-settings');
   }
 
-  const title = (req.body.embed_title || '').trim() || null;
-  const description = (req.body.embed_description || '').trim() || null;
-  const imageUrl = (req.body.embed_image_url || '').trim() || null;
-  let color = (req.body.embed_color || '').trim() || null;
+  const title = String(req.body.embed_title || '').trim() || null;
+  const description = String(req.body.embed_description || '').trim() || null;
+  const imageUrl = String(req.body.embed_image_url || '').trim() || null;
+  let color = String(req.body.embed_color || '').trim() || null;
+
+  if ((title && title.length > 255) || (description && description.length > 1024)) {
+    req.session.flash = '❌ Embed title or description is too long.';
+    return res.redirect('/guild-settings');
+  }
 
   // Validate color is hex format if provided
   if (color && !/^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/.test(color)) {
@@ -268,9 +273,12 @@ router.post('/custom-embed', express.urlencoded({ extended: false }), async (req
   // Validate URL format if provided
   if (imageUrl) {
     try {
-      new URL(imageUrl);
+      const parsedImageUrl = new URL(imageUrl);
+      if (!['http:', 'https:'].includes(parsedImageUrl.protocol) || imageUrl.length > 255) {
+        throw new Error('Unsupported image URL');
+      }
     } catch (_) {
-      req.session.flash = '❌ Invalid image URL format.';
+      req.session.flash = '❌ Use a valid HTTP(S) image URL up to 255 characters.';
       return res.redirect('/guild-settings');
     }
   }

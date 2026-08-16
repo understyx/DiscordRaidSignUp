@@ -14,17 +14,40 @@ function registerEditRoutes(router, dependencies) {
     syncRaidSignupMessage,
   } = dependencies;
 
+  function editReturnContext(raid, source, rawComp) {
+    if (source === 'manage') {
+      const comp = Number.parseInt(rawComp, 10);
+      const compQuery = Number.isInteger(comp) && comp > 0 ? `?comp=${comp}` : '';
+      return {
+        returnTo: 'manage',
+        returnComp: compQuery ? String(comp) : '',
+        returnUrl: `${raidBaseUrl(raid)}/manage${compQuery}`,
+      };
+    }
+    return { returnTo: 'list', returnComp: '', returnUrl: '/raids' };
+  }
+
+  function editUrl(raid, returnContext) {
+    const params = new URLSearchParams({ return_to: returnContext.returnTo });
+    if (returnContext.returnComp) params.set('comp', returnContext.returnComp);
+    return `${raidBaseUrl(raid)}/edit?${params.toString()}`;
+  }
+
   router.get('/:raid_number/edit', async (req, res) => {
     if (!(await requireAdmin(req, res))) return;
 
     const raidNumber = Number.parseInt(req.params.raid_number, 10);
     const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
     if (!raid) return res.redirect('/raids');
+    const returnContext = editReturnContext(raid, req.query.return_to, req.query.comp);
 
     return res.render('edit_raid.html', {
       raid,
       raid_url: raidBaseUrl(raid),
       date_value: formatRaidDateInput(raid.date),
+      return_to: returnContext.returnTo,
+      return_comp: returnContext.returnComp,
+      return_url: returnContext.returnUrl,
       flash: popFlash(req),
       user: currentUser(req),
     });
@@ -36,11 +59,12 @@ function registerEditRoutes(router, dependencies) {
     const raidNumber = Number.parseInt(req.params.raid_number, 10);
     const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
     if (!raid) return res.redirect('/raids');
+    const returnContext = editReturnContext(raid, req.body.return_to, req.body.return_comp);
 
     const normalized = normalizeRaidEditInput(req.body || {});
     if (normalized.error) {
       req.session.flash = `❌ ${normalized.error}`;
-      return res.redirect(`${raidBaseUrl(raid)}/edit`);
+      return res.redirect(editUrl(raid, returnContext));
     }
 
     const { name, raidInstance, description, dateSql, maxSize } = normalized.values;
@@ -62,7 +86,7 @@ function registerEditRoutes(router, dependencies) {
     }
 
     req.session.flash = `✅ Raid '${name}' updated.${discordWarning}`;
-    return res.redirect(raidBaseUrl(updatedRaid || raid));
+    return res.redirect(returnContext.returnUrl);
   });
 }
 

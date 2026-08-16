@@ -10,10 +10,12 @@
           <h3 class="mb-1">✏️ Edit Raid</h3>
           <p class="text-muted mb-0">Changes also refresh the original Discord raid post.</p>
         </div>
-        <a href="{{ raid_url }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
+        <a href="{{ return_url }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
       </div>
 
       <form method="post" action="{{ raid_url }}/edit">
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+        <input type="hidden" name="return_comp" value="{{ return_comp }}" />
         <div class="mb-3">
           <label for="raidName" class="form-label">Raid Name</label>
           <input id="raidName" type="text" name="name"
@@ -53,7 +55,7 @@
           <div class="form-text">Up to 500 characters.</div>
         </div>
         <div class="d-flex justify-content-end gap-2">
-          <a href="{{ raid_url }}" class="btn btn-outline-secondary">Cancel</a>
+          <a href="{{ return_url }}" class="btn btn-outline-secondary">Cancel</a>
           <button type="submit" class="btn btn-wow">Save Changes</button>
         </div>
       </form>

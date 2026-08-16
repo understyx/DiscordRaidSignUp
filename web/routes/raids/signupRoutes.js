@@ -27,7 +27,6 @@ function registerSignupRoutes(router, dependencies) {
     raidBaseUrl,
     requireAdmin,
     requireLogin,
-    resolveIsAdmin,
     syncRaidSignupMessage,
   } = dependencies;
 
@@ -42,7 +41,6 @@ function registerSignupRoutes(router, dependencies) {
     if (!raid) return res.redirect('/raids');
 
     const raidId = raid.id;
-    const canManage = await resolveIsAdmin(req.session.user_id, String(raid.guild_id));
 
     const [[counts]] = await pool.query(
       `SELECT
@@ -124,7 +122,6 @@ function registerSignupRoutes(router, dependencies) {
       signup_note_max_length: SIGNUP_NOTE_MAX_LENGTH,
       flash: popFlash(req),
       user: currentUser(req),
-      can_manage: canManage,
     });
   });
 

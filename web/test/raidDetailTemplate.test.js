@@ -62,25 +62,11 @@ test('raid signup renders compact character and spec controls', () => {
   assert.doesNotMatch(html, /Your Sign-ups/);
 });
 
-test('raid officers get state-aware edit and lock actions', () => {
-  const openHtml = renderRaid({ can_manage: true });
-  assert.match(openHtml, /href="\/raids\/50\/edit"/);
-  assert.match(openHtml, /action="\/raids\/50\/lock"/);
-  assert.doesNotMatch(openHtml, /action="\/raids\/50\/unlock"/);
-
-  const lockedHtml = renderRaid({
-    can_manage: true,
-    raid: {
-      name: 'ICC 8/12',
-      raid_instance: 'ICC25',
-      date: new Date('2026-08-18T17:00:00Z'),
-      status: 'locked',
-      signup_coming_count: 7,
-      signup_tentative_count: 1,
-    },
-  });
-  assert.match(lockedHtml, /action="\/raids\/50\/unlock"/);
-  assert.doesNotMatch(lockedHtml, /action="\/raids\/50\/lock"/);
+test('raid signup never renders officer edit or status controls', () => {
+  const html = renderRaid({ can_manage: true });
+  assert.doesNotMatch(html, /href="\/raids\/50\/edit/);
+  assert.doesNotMatch(html, /action="\/raids\/50\/lock"/);
+  assert.doesNotMatch(html, /action="\/raids\/50\/unlock"/);
 });
 
 test('raid signup renders useful empty and closed states', () => {

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 
 import discord
@@ -6,7 +7,7 @@ from discord.ext import commands
 
 from bot.config import BOT_TOKEN
 from bot.db import get_session
-from db.models import BotGuild, Character
+from db.models import BotGuild, Character, DiscordUser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,11 +47,32 @@ def _delete_guild_sync(guild_id: int) -> None:
 
 
 def _update_membership_status_sync(
-    guild_id: int, user_id: int, status: str, discord_role: str = None
+    guild_id: int,
+    user_id: int,
+    status: str,
+    discord_role: str = None,
+    username: str = None,
+    display_name: str = None,
 ) -> None:
-    """Update membership_status for all characters of a user in a guild."""
+    """Cache the last known identity and update guild membership for a user."""
     session = get_session()
     try:
+        if username:
+            cached_user = session.get(DiscordUser, user_id)
+            if cached_user:
+                cached_user.username = username
+                cached_user.display_name = display_name or username
+                cached_user.updated_at = datetime.datetime.now(datetime.timezone.utc)
+            else:
+                session.add(
+                    DiscordUser(
+                        discord_user_id=user_id,
+                        username=username,
+                        display_name=display_name or username,
+                        updated_at=datetime.datetime.now(datetime.timezone.utc),
+                    )
+                )
+
         update_data = {"membership_status": status}
         if discord_role is not None:
             update_data["discord_role"] = discord_role
@@ -136,7 +158,14 @@ class RaidBot(commands.Bot):
         top_role = get_top_role_name(member)
         try:
             await loop.run_in_executor(
-                None, _update_membership_status_sync, member.guild.id, member.id, "active", top_role
+                None,
+                _update_membership_status_sync,
+                member.guild.id,
+                member.id,
+                "active",
+                top_role,
+                member.name,
+                member.display_name,
             )
             logger.info(
                 "Member %s joined guild %s — marked characters as active.",
@@ -151,6 +180,9 @@ class RaidBot(commands.Bot):
     async def on_member_remove(self, member: discord.Member):
         loop = asyncio.get_running_loop()
         status = "left"
+        from bot.discord_utils import get_top_role_name
+
+        top_role = get_top_role_name(member)
 
         # Try to see if they were kicked or banned by checking audit logs
         try:
@@ -171,7 +203,14 @@ class RaidBot(commands.Bot):
 
         try:
             await loop.run_in_executor(
-                None, _update_membership_status_sync, member.guild.id, member.id, status
+                None,
+                _update_membership_status_sync,
+                member.guild.id,
+                member.id,
+                status,
+                top_role,
+                member.name,
+                member.display_name,
             )
             logger.info(
                 "Member %s left guild %s (status: %s) — updated characters.",
@@ -188,9 +227,19 @@ class RaidBot(commands.Bot):
 
     async def on_member_ban(self, guild: discord.Guild, user: discord.User | discord.Member):
         loop = asyncio.get_running_loop()
+        from bot.discord_utils import get_top_role_name
+
+        top_role = get_top_role_name(user) if isinstance(user, discord.Member) else None
         try:
             await loop.run_in_executor(
-                None, _update_membership_status_sync, guild.id, user.id, "banned"
+                None,
+                _update_membership_status_sync,
+                guild.id,
+                user.id,
+                "banned",
+                top_role,
+                user.name,
+                user.display_name,
             )
             logger.info("Member %s banned from guild %s — updated characters.", user.id, guild.id)
         except Exception:

@@ -14,7 +14,7 @@
       <h3 class="mb-0">🛠️ {{ raid.name }}</h3>
       <div>
         {% if can_edit %}
-        <a href="{{ raid_url }}/edit" class="btn btn-outline-info btn-sm me-2">✏️ Edit Raid</a>
+        <a href="{{ raid_url }}/edit?return_to=manage&amp;comp={{ current_comp }}" class="btn btn-outline-info btn-sm me-2">✏️ Edit Raid</a>
         {% if raid.status == "open" %}
         <form method="post" action="{{ raid_url }}/lock" class="d-inline">
           <input type="hidden" name="return_to" value="manage" />

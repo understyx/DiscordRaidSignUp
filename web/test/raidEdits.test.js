@@ -61,11 +61,40 @@ test('officer edit form is prefilled and posts back to the scoped raid URL', () 
     },
     raid_url: '/raids/12',
     date_value: '2026-08-20T18:30',
+    return_to: 'list',
+    return_comp: '',
+    return_url: '/raids',
     user: { id: '1', is_admin: true },
   });
 
   assert.match(html, /action="\/raids\/12\/edit"/);
   assert.match(html, /value="Thursday ICC"/);
   assert.match(html, /value="2026-08-20T18:30"/);
+  assert.match(html, /name="return_to" value="list"/);
+  assert.match(html, /href="\/raids" class="btn btn-sm btn-outline-secondary">Cancel/);
   assert.match(html, /Changes also refresh the original Discord raid post/);
+});
+
+test('officer edit form can return to the originating composition', () => {
+  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
+    autoescape: true,
+  });
+  const html = templates.render('edit_raid.html', {
+    raid: {
+      name: 'Thursday ICC',
+      raid_instance: 'ICC 25',
+      description: '',
+      max_size: 25,
+    },
+    raid_url: '/raids/12',
+    date_value: '2026-08-20T18:30',
+    return_to: 'manage',
+    return_comp: '2',
+    return_url: '/raids/12/manage?comp=2',
+    user: { id: '1', is_admin: true },
+  });
+
+  assert.match(html, /name="return_to" value="manage"/);
+  assert.match(html, /name="return_comp" value="2"/);
+  assert.match(html, /href="\/raids\/12\/manage\?comp=2"/);
 });

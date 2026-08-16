@@ -381,7 +381,7 @@ Each comp tab can have a custom label.
 **I want to** lock a raid when sign-ups are closed,  
 **so that** players know the roster is finalised.
 
-**Flow:** Use the state-aware **Lock** / **Unlock** quick action on the raid list, raid detail page, or manage page. The original Discord post is refreshed and its sign-up controls are removed or restored to match the new state.
+**Flow:** Use the state-aware **Lock** / **Unlock** quick action on the raid list or manage page. The signup page stays focused on player responses. The original Discord post is refreshed and its sign-up controls are removed or restored to match the new state.
 
 ### US-9.5a Edit a Raid
 

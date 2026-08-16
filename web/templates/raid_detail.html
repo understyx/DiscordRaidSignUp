@@ -26,22 +26,6 @@
       <span aria-hidden="true">·</span>
       <strong>{{ raid.signup_tentative_count }}</strong> tentative
     </div>
-    {% if can_manage %}
-    <div class="d-flex flex-wrap justify-content-end gap-2 mt-2" aria-label="Officer raid actions">
-      <a href="{{ raid_url }}/edit" class="btn btn-sm btn-outline-info">✏️ Edit</a>
-      {% if raid.status == "open" %}
-      <form method="post" action="{{ raid_url }}/lock">
-        <input type="hidden" name="return_to" value="detail" />
-        <button type="submit" class="btn btn-sm btn-outline-danger">🔒 Lock</button>
-      </form>
-      {% else %}
-      <form method="post" action="{{ raid_url }}/unlock">
-        <input type="hidden" name="return_to" value="detail" />
-        <button type="submit" class="btn btn-sm btn-outline-success">🟢 Unlock</button>
-      </form>
-      {% endif %}
-    </div>
-    {% endif %}
   </div>
 </section>
 

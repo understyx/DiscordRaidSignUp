@@ -41,7 +41,7 @@ test('raid list exposes ten-at-a-time loading', () => {
   assert.match(route, /LIMIT \? OFFSET \?/);
   assert.match(html, /id="loadMoreRaids"/);
   assert.match(html, /Show 10 more raids/);
-  assert.match(html, /href="\/raids\/12\/edit"/);
+  assert.match(html, /href="\/raids\/12\/edit\?return_to=list"/);
   assert.match(html, /action="\/raids\/12\/lock"/);
 });
 
@@ -80,16 +80,21 @@ test('characters page renders compact records and preset role shortcuts', () => 
 
 test('guild database renders a searchable Discord member sidebar and selected detail', () => {
   const selectedUser = {
-    userId: '123',
+    userId: '123456789012345678',
     username: 'guardian',
     displayName: 'Guardian',
     characterCount: 0,
     charGroups: [],
+    roleName: 'Raid Leader',
+    roleColor: '#ff8800',
+    isFormer: false,
   };
   const html = templates.render('guild_characters.html', {
     guild_name: 'Citadel',
     users: [selectedUser],
     selectedUser,
+    activeMemberCount: 1,
+    formerMemberCount: 0,
     user: { id: '1', is_admin: true },
   });
 
@@ -97,4 +102,35 @@ test('guild database renders a searchable Discord member sidebar and selected de
   assert.match(html, /class="guild-member-link active"/);
   assert.match(html, /No characters registered/);
   assert.match(html, /Add their first character/);
+  assert.match(html, /Raid Leader/);
+  assert.match(html, /color: #ff8800/);
+  assert.match(html, /123456789012345678/);
+  assert.doesNotMatch(html, /…345678/);
+});
+
+test('guild database marks departed character owners and keeps their cached identity', () => {
+  const formerUser = {
+    userId: '987654321098765432',
+    username: 'last-known-user',
+    displayName: 'Last Known Nickname',
+    characterCount: 2,
+    charGroups: [],
+    roleName: 'Veteran',
+    roleColor: '#cc3344',
+    isFormer: true,
+  };
+  const html = templates.render('guild_characters.html', {
+    guild_name: 'Citadel',
+    users: [formerUser],
+    selectedUser: formerUser,
+    activeMemberCount: 0,
+    formerMemberCount: 1,
+    user: { id: '1', is_admin: true },
+  });
+
+  assert.match(html, /guild-member-link former-member active/);
+  assert.match(html, /Last Known Nickname/);
+  assert.match(html, /@last-known-user/);
+  assert.match(html, /Former member/);
+  assert.doesNotMatch(html, /Add their first character/);
 });

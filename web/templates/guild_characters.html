@@ -10,7 +10,10 @@
   <div>
     <p class="section-kicker mb-1">Officer database</p>
     <h2 class="mb-1">Guild Characters</h2>
-    <p class="text-muted mb-0">{{ guild_name or "Active Guild" }} · {{ users | length }} Discord members</p>
+    <p class="text-muted mb-0">
+      {{ guild_name or "Active Guild" }} · {{ activeMemberCount }} Discord members
+      {% if formerMemberCount %}· {{ formerMemberCount }} former{% endif %}
+    </p>
   </div>
   <span class="badge bg-primary">Officer View</span>
 </div>
@@ -28,13 +31,14 @@
     <nav class="guild-member-list" id="guildMemberList">
       {% for member in users %}
       <a href="/guild-characters?user={{ member.userId }}"
-         class="guild-member-link{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
-         data-member-search="{{ (member.displayName ~ ' ' ~ member.username) | lower }}"
+         class="guild-member-link{{ ' former-member' if member.isFormer }}{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
+         data-member-search="{{ (member.displayName ~ ' ' ~ member.username ~ ' ' ~ (member.roleName or '') ~ ' ' ~ member.userId) | lower }}"
          {% if selectedUser and member.userId == selectedUser.userId %}aria-current="page"{% endif %}>
         <span class="member-avatar" aria-hidden="true">{{ member.displayName | first | upper }}</span>
         <span class="member-identity">
-          <strong>{{ member.displayName }}</strong>
+          <strong{% if member.roleColor %} style="color: {{ member.roleColor }}"{% endif %}>{{ member.displayName }}</strong>
           <small>@{{ member.username }}</small>
+          {% if member.roleName %}<small>{{ member.roleName }}</small>{% endif %}
         </span>
         <span class="member-character-count" title="{{ member.characterCount }} characters">
           {{ member.characterCount }}
@@ -52,16 +56,25 @@
         <div class="d-flex align-items-center gap-3">
           <span class="member-avatar member-avatar-large" aria-hidden="true">{{ selectedUser.displayName | first | upper }}</span>
           <div>
-            <h3 class="h4 mb-0">{{ selectedUser.displayName }}</h3>
-            <p class="text-muted small mb-0">@{{ selectedUser.username }} · <code>{{ selectedUser.userId | discordId }}</code></p>
+            <h3 class="h4 mb-1"{% if selectedUser.roleColor %} style="color: {{ selectedUser.roleColor }}"{% endif %}>{{ selectedUser.displayName }}</h3>
+            <p class="selected-member-information text-muted small mb-0">
+              <span>@{{ selectedUser.username }}</span>
+              <span{% if selectedUser.roleColor %} style="color: {{ selectedUser.roleColor }}"{% endif %}>{{ selectedUser.roleName or "No guild rank" }}</span>
+              <code>{{ selectedUser.userId }}</code>
+            </p>
           </div>
         </div>
+        {% if selectedUser.isFormer %}
+        <span class="badge bg-danger">Former member</span>
+        {% else %}
         <button class="btn btn-sm btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">
           ➕ Add character
         </button>
+        {% endif %}
       </div>
     </div>
 
+    {% if not selectedUser.isFormer %}
     <div class="collapse mb-3" id="addCharacterForMember">
       <div class="card card-body">
         <h4 class="h6 mb-3">Add a character for {{ selectedUser.displayName }}</h4>
@@ -96,6 +109,7 @@
         </form>
       </div>
     </div>
+    {% endif %}
 
     {% if selectedUser.charGroups | length %}
     <div class="card guild-character-table-card">
@@ -176,7 +190,9 @@
       <div class="fs-2 mb-2">🗂️</div>
       <h4 class="h6">No characters registered</h4>
       <p class="text-muted small mb-3">This Discord member is in the database index, but has no character records yet.</p>
+      {% if not selectedUser.isFormer %}
       <button class="btn btn-sm btn-wow mx-auto" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">Add their first character</button>
+      {% endif %}
     </div>
     {% endif %}
     {% endif %}

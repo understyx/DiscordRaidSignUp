@@ -52,6 +52,16 @@
   background: rgba(88, 101, 242, 0.16);
   color: #fff;
 }
+.guild-member-link.former-member {
+  border-color: rgba(220, 53, 69, 0.38);
+  background: rgba(220, 53, 69, 0.2);
+}
+.guild-member-link.former-member:hover,
+.guild-member-link.former-member.active {
+  border-color: rgba(255, 91, 105, 0.72);
+  background: rgba(220, 53, 69, 0.32);
+  color: #fff;
+}
 .member-avatar {
   display: inline-flex;
   width: 2rem;
@@ -80,6 +90,11 @@
 }
 .selected-member-heading,
 .guild-character-table-card { border-color: var(--border-dim); }
+.selected-member-information > * { display: block; }
+.selected-member-information code {
+  overflow-wrap: anywhere;
+  color: inherit;
+}
 .guild-build-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .guild-build-list span {
   border-radius: 999px;

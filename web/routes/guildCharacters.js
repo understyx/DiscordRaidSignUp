@@ -11,6 +11,40 @@ function guildCharactersUrl(userId) {
     : '/guild-characters';
 }
 
+function discordRoleDetails(member, rolesById) {
+  const roles = (member.roles || [])
+    .map((roleId) => rolesById.get(String(roleId)))
+    .filter(Boolean)
+    .sort((a, b) => b.position - a.position);
+  const topRole = roles[0] || null;
+  const colorRole = roles.find((role) => role.colorHex) || topRole;
+
+  return {
+    roleName: topRole ? topRole.name : null,
+    roleColor: colorRole ? colorRole.colorHex : null,
+  };
+}
+
+async function cacheDiscordMembers(members) {
+  if (!members.length) return;
+
+  const placeholders = members.map(() => '(?, ?, ?, NOW())').join(', ');
+  const values = members.flatMap((member) => {
+    const username = member.user.username || String(member.user.id);
+    return [String(member.user.id), username, member.nick || member.user.global_name || username];
+  });
+
+  await pool.query(
+    `INSERT INTO discord_users (discord_user_id, username, display_name, updated_at)
+     VALUES ${placeholders}
+     ON DUPLICATE KEY UPDATE
+       username = VALUES(username),
+       display_name = VALUES(display_name),
+       updated_at = NOW()`,
+    values
+  );
+}
+
 /**
  * Helper: Verify that a specific Discord user is a member of the given guild.
  * Uses the bot token to check membership via Discord API.
@@ -46,50 +80,93 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    // 1. Fetch guild members from Discord
-    const resp = await fetch(`${DISCORD_API}/guilds/${guildId}/members?limit=1000`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
+    // 1. Fetch guild members and role hierarchy from Discord.
+    const headers = { Authorization: `Bot ${botToken}` };
+    const [resp, rolesResp] = await Promise.all([
+      fetch(`${DISCORD_API}/guilds/${guildId}/members?limit=1000`, { headers }),
+      fetch(`${DISCORD_API}/guilds/${guildId}/roles`, { headers }),
+    ]);
 
     if (!resp.ok) {
       throw new Error(`Discord API error: ${resp.status} ${resp.statusText}`);
     }
 
     const members = (await resp.json()).filter((member) => member.user && !member.user.bot);
-    const memberIds = members.map((member) => String(member.user.id));
-
-    if (memberIds.length === 0) {
-      return res.render('guild_characters.html', {
-        users: [],
-        selectedUser: null,
-        guild_name: req.session.active_guild_name,
-        flash: popFlash(req),
-        user: currentUser(req),
-      });
+    const discordRoles = rolesResp.ok ? await rolesResp.json() : [];
+    if (!rolesResp.ok) {
+      console.warn(
+        `[guild-characters] Discord API ${rolesResp.status} fetching roles for guild ${guildId}`
+      );
     }
 
-    // 2. Build the user index from Discord itself so members without characters are included.
+    const rolesById = new Map();
+    const rolesByName = new Map();
+    for (const role of discordRoles) {
+      if (String(role.id) === String(guildId)) continue;
+      const details = {
+        id: String(role.id),
+        name: role.name,
+        position: Number(role.position) || 0,
+        colorHex: role.color ? `#${Number(role.color).toString(16).padStart(6, '0')}` : null,
+      };
+      rolesById.set(details.id, details);
+      const existing = rolesByName.get(details.name);
+      if (!existing || details.position > existing.position) rolesByName.set(details.name, details);
+    }
+
+    // Refresh the durable identity cache while Discord still supplies nicknames.
+    await cacheDiscordMembers(members);
+
+    // 2. Include current Discord members plus cached character owners who have left the guild.
     const [countRows] = await pool.query(
-      `SELECT discord_user_id, COUNT(DISTINCT CONCAT(char_name, '|', realm)) AS character_count
-       FROM characters
-       WHERE guild_id = ? AND is_deleted = 0
-       GROUP BY discord_user_id`,
+      `SELECT c.discord_user_id,
+              COUNT(DISTINCT CONCAT(c.char_name, '|', c.realm)) AS character_count,
+              MAX(c.discord_role) AS discord_role,
+              du.username,
+              du.display_name
+       FROM characters c
+       LEFT JOIN discord_users du ON du.discord_user_id = c.discord_user_id
+       WHERE c.guild_id = ? AND c.is_deleted = 0
+       GROUP BY c.discord_user_id, du.username, du.display_name`,
       [guildId]
     );
-    const counts = new Map(
-      countRows.map((row) => [String(row.discord_user_id), Number(row.character_count)])
-    );
-    const users = members
-      .map((member) => ({
-        userId: String(member.user.id),
-        username: member.user.username || 'Unknown',
-        displayName:
-          member.nick || member.user.global_name || member.user.username || 'Unknown member',
-        characterCount: counts.get(String(member.user.id)) || 0,
-      }))
-      .sort((a, b) =>
-        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
-      );
+    const characterOwners = new Map(countRows.map((row) => [String(row.discord_user_id), row]));
+    const currentMemberIds = new Set(members.map((member) => String(member.user.id)));
+    const compareDisplayNames = (a, b) =>
+      a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
+
+    const currentUsers = members
+      .map((member) => {
+        const userId = String(member.user.id);
+        const cachedCharacters = characterOwners.get(userId);
+        return {
+          userId,
+          username: member.user.username || userId,
+          displayName: member.nick || member.user.global_name || member.user.username || userId,
+          characterCount: Number(cachedCharacters?.character_count) || 0,
+          isFormer: false,
+          ...discordRoleDetails(member, rolesById),
+        };
+      })
+      .sort(compareDisplayNames);
+
+    const formerUsers = countRows
+      .filter((row) => !currentMemberIds.has(String(row.discord_user_id)))
+      .map((row) => {
+        const userId = String(row.discord_user_id);
+        const lastRole = row.discord_role ? rolesByName.get(row.discord_role) : null;
+        return {
+          userId,
+          username: row.username || userId,
+          displayName: row.display_name || row.username || userId,
+          characterCount: Number(row.character_count) || 0,
+          roleName: row.discord_role || null,
+          roleColor: lastRole?.colorHex || null,
+          isFormer: true,
+        };
+      })
+      .sort(compareDisplayNames);
+    const users = [...currentUsers, ...formerUsers];
 
     const requestedUserId = String(req.query.user || '');
     const selectedUser =
@@ -129,6 +206,8 @@ router.get('/', async (req, res) => {
     res.render('guild_characters.html', {
       users,
       selectedUser,
+      activeMemberCount: currentUsers.length,
+      formerMemberCount: formerUsers.length,
       guild_name: req.session.active_guild_name,
       flash: popFlash(req),
       user: currentUser(req),
