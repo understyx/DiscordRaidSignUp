@@ -212,55 +212,6 @@ router.post('/seed-fake-players', async (req, res) => {
   res.redirect('/raids');
 });
 
-// GET /admin/all-characters — viewable by developers only
-router.get('/all-characters', async (req, res) => {
-  if (!isDeveloper(req)) {
-    req.session.flash = '❌ Access denied. This page is only available to developers.';
-    return res.redirect('/raids');
-  }
-
-  const guildId = req.session.active_guild_id;
-  if (!guildId) {
-    req.session.flash = '❌ No active guild selected.';
-    return res.redirect('/select-guild');
-  }
-
-  // Fetch all characters for active guild and their owner's info
-  const [rows] = await pool.query(
-    `SELECT c.*, du.username as discord_username, du.display_name as discord_display_name
-     FROM characters c
-     LEFT JOIN discord_users du ON c.discord_user_id = du.discord_user_id
-     WHERE c.is_deleted = 0 AND c.guild_id = ?
-     ORDER BY du.username ASC, c.char_name ASC`,
-    [guildId]
-  );
-
-  // Group by user
-  const byUser = {};
-  for (const row of rows) {
-    const userId = row.discord_user_id;
-    if (!byUser[userId]) {
-      byUser[userId] = {
-        userId,
-        username: row.discord_username || 'Unknown',
-        displayName: row.discord_display_name || 'Unknown',
-        characters: [],
-      };
-    }
-    byUser[userId].characters.push(row);
-  }
-
-  const flash = popFlash(req);
-
-  res.render('admin_all_characters.html', {
-    users: Object.values(byUser),
-    flash,
-    user: req.session.user_id
-      ? { id: req.session.user_id, username: req.session.username, is_admin: req.session.is_admin }
-      : null,
-  });
-});
-
 // POST /admin/seed-fake-signups/:raid_id
 router.post('/seed-fake-signups/:raid_id', async (req, res) => {
   if (!requireAdmin(req, res)) return;
