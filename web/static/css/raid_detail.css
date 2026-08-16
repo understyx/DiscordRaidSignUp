@@ -129,6 +129,74 @@
   color: #dbc28f;
 }
 
+.signup-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.6rem;
+  border-bottom: 1px solid var(--border-dim);
+  padding: 0.7rem 1.5rem;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.quick-actions-label {
+  margin-right: 0.2rem;
+  color: #738097;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.signup-quick-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.15rem;
+  border: 1px solid #39455b;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  background: #1a2130;
+  color: #c9d0dc;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.signup-quick-action:hover,
+.signup-quick-action:focus-visible {
+  border-color: #6f7b92;
+  background: #222b3b;
+  color: #fff;
+}
+
+.signup-quick-action:disabled {
+  border-color: rgba(83, 196, 126, 0.24);
+  background: rgba(37, 125, 75, 0.1);
+  color: #71bd8e;
+  opacity: 1;
+}
+
+.quick-action-feedback {
+  overflow: hidden;
+  color: #7ee2a5;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.withdraw-quick-form {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.quick-withdraw-btn {
+  min-height: 2.15rem;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .signup-toolbar {
   position: sticky;
   z-index: 5;
@@ -418,22 +486,6 @@
   color: #fff;
 }
 
-.withdraw-form {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.25rem;
-  border-top: 1px solid var(--border-dim);
-  padding: 0.65rem 1rem;
-  color: #737f94;
-  font-size: 0.72rem;
-}
-
-.withdraw-form .btn {
-  padding: 0.2rem 0.35rem;
-  font-size: 0.72rem;
-}
-
 .empty-signup-state,
 .closed-signup-state {
   display: flex;
@@ -478,6 +530,114 @@
 
 .closed-signup-state span { margin: 0; }
 
+.signup-preset-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid #3a465d;
+  border-radius: 0.8rem;
+  background: #171d27;
+  color: #d8dce8;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.48);
+}
+
+.signup-preset-modal .modal-header,
+.signup-preset-modal .modal-footer {
+  border-color: var(--border-dim);
+  padding: 1rem 1.15rem;
+}
+
+.signup-preset-modal .modal-title {
+  color: #f4f0e8;
+  font-size: 1.15rem;
+}
+
+.signup-preset-modal .modal-body { padding: 1rem 1.15rem 1.15rem; }
+
+.preset-modal-intro {
+  margin: 0 0 0.9rem;
+  color: #939eb2;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.preset-picker-status {
+  border: 1px dashed #39455a;
+  border-radius: 0.55rem;
+  padding: 1rem;
+  color: #8d98ad;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.preset-picker-status.preset-status-error { color: #f29aa3; }
+
+.preset-picker-status:not(.d-none) + .preset-choice-list { margin-top: 0.65rem; }
+
+.preset-choice-list {
+  display: grid;
+  max-height: min(24rem, 55vh);
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.preset-choice {
+  display: grid;
+  grid-template-columns: 1.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid #323d52;
+  border-radius: 0.55rem;
+  padding: 0.7rem 0.75rem;
+  background: #1b2230;
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.preset-choice:hover {
+  border-color: #53617a;
+  background: #202a3b;
+}
+
+.preset-choice:has(input:checked) {
+  border-color: rgba(201, 170, 113, 0.65);
+  background: rgba(201, 170, 113, 0.08);
+}
+
+.preset-choice input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--wow-gold);
+}
+
+.preset-choice-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.preset-choice-name {
+  overflow: hidden;
+  color: #e2e6ed;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-choice-meta {
+  color: #7f8ba1;
+  font-size: 0.7rem;
+}
+
+.preset-manage-link {
+  margin-right: auto;
+  color: var(--wow-gold);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.preset-manage-link:hover { color: #ead19d; }
+
 @media (max-width: 767.98px) {
   .raid-summary,
   .signup-panel-heading,
@@ -500,6 +660,15 @@
   .signup-actions .btn { flex: 1 1 0; }
 
   .character-grid { grid-template-columns: 1fr; }
+
+  .signup-quick-actions { flex-wrap: wrap; }
+
+  .quick-actions-label {
+    width: 100%;
+    margin-bottom: 0.1rem;
+  }
+
+  .quick-action-feedback { order: 5; }
 }
 
 @media (max-width: 430px) {
@@ -517,9 +686,24 @@
 
   .character-tools { flex-direction: column; }
 
-  .withdraw-form {
-    align-items: flex-end;
-    flex-direction: column;
+  .signup-quick-actions { padding-inline: 1.1rem; }
+
+  .signup-quick-action { flex: 1 1 auto; }
+
+  .withdraw-quick-form {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .quick-withdraw-btn { width: 100%; }
+
+  .signup-preset-modal .modal-footer { align-items: stretch; }
+
+  .signup-preset-modal .modal-footer .btn { flex: 1 1 auto; }
+
+  .preset-manage-link {
+    width: 100%;
+    margin-bottom: 0.25rem;
   }
 }
 

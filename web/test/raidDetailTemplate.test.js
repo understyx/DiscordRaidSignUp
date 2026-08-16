@@ -52,6 +52,11 @@ test('raid signup renders compact character and spec controls', () => {
   assert.match(html, /Save as confirmed/);
   assert.match(html, /Save as tentative/);
   assert.match(html, /Saved as confirmed/);
+  assert.match(html, /Add all specs and characters/);
+  assert.match(html, /id="openSignupPresetsBtn"/);
+  assert.match(html, /id="signupPresetModal"/);
+  assert.match(html, /Apply selected presets/);
+  assert.match(html, /class="btn btn-danger quick-withdraw-btn"/);
   assert.doesNotMatch(html, /<table/);
   assert.doesNotMatch(html, /Your Sign-ups/);
 });
@@ -64,6 +69,7 @@ test('raid signup renders useful empty and closed states', () => {
   });
   assert.match(emptyHtml, /Add a character before signing up/);
   assert.match(emptyHtml, /Go to your profile/);
+  assert.doesNotMatch(emptyHtml, /id="openSignupPresetsBtn"/);
 
   const closedHtml = renderRaid({
     raid: {

@@ -30,12 +30,14 @@ function setRowSelected(row, selected) {
 }
 
 function toggleRow(row) {
+  setQuickActionFeedback('');
   setRowSelected(row, !row.classList.contains('row-selected'));
   updateGroupState(row.dataset.groupIdx);
   buildHiddenInputs();
 }
 
 function toggleGroupRows(groupIdx) {
+  setQuickActionFeedback('');
   const rows = Array.from(signupRows(groupIdx));
   const allSelected = rows.length > 0 && rows.every((row) => row.classList.contains('row-selected'));
   const anySelected = rows.some((row) => row.classList.contains('row-selected'));
@@ -71,6 +73,7 @@ function updateGroupState(groupIdx) {
 }
 
 function togglePrio(star) {
+  setQuickActionFeedback('');
   const row = star.closest('.signup-row');
   if (!row) return;
 
@@ -152,6 +155,34 @@ function buildHiddenInputs() {
   const tentativeButton = document.getElementById('tentativeBtn');
   if (signupButton) signupButton.disabled = disabled;
   if (tentativeButton) tentativeButton.disabled = disabled;
+
+  const selectAllButton = document.getElementById('selectAllSpecsBtn');
+  if (selectAllButton) {
+    const allRows = document.querySelectorAll('#signupForm .signup-row');
+    const allSelected = allRows.length > 0 && selectedRows.length === allRows.length;
+    selectAllButton.disabled = allSelected;
+    selectAllButton.innerHTML = allSelected
+      ? '<span aria-hidden="true">✓</span> All specs and characters added'
+      : '<span aria-hidden="true">＋</span> Add all specs and characters';
+  }
+}
+
+function setQuickActionFeedback(message) {
+  const feedback = document.getElementById('quickActionFeedback');
+  if (!feedback) return;
+  feedback.textContent = message;
+}
+
+function selectAllSpecs() {
+  const rows = Array.from(document.querySelectorAll('#signupForm .signup-row'));
+  const groups = new Set();
+  rows.forEach((row) => {
+    setRowSelected(row, true);
+    groups.add(row.dataset.groupIdx);
+  });
+  groups.forEach((groupIdx) => updateGroupState(groupIdx));
+  buildHiddenInputs();
+  setQuickActionFeedback('All available specs added.');
 }
 
 function toggleNoteEditor(groupIdx) {
@@ -206,26 +237,29 @@ function handleNoteInput(groupIdx) {
 
 let signupPresets = [];
 let savePresetModal = null;
+let signupPresetModal = null;
 
 async function loadPresets() {
   try {
     const response = await fetch('/characters/presets');
     const data = await response.json();
-    if (!data.ok) return;
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not load presets.');
 
     signupPresets = Array.isArray(data.presets) ? data.presets : [];
     const select = document.getElementById('presetSelect');
-    if (!select) return;
-
-    select.innerHTML = '<option value="" disabled>— Select preset(s) —</option>';
-    signupPresets.forEach((preset) => {
-      const option = document.createElement('option');
-      option.value = preset.id;
-      option.textContent = preset.name;
-      select.appendChild(option);
-    });
+    if (select) {
+      select.innerHTML = '<option value="" disabled>— Select preset(s) —</option>';
+      signupPresets.forEach((preset) => {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = preset.name;
+        select.appendChild(option);
+      });
+    }
+    return true;
   } catch (error) {
     console.error('Failed to load presets', error);
+    return false;
   }
 }
 
@@ -243,7 +277,7 @@ function applyPresets(presetIds) {
     .filter(Boolean)
     .map((id) => signupPresets.find((preset) => preset.id == id))
     .filter(Boolean);
-  if (selectedPresets.length === 0) return;
+  if (selectedPresets.length === 0) return 0;
 
   const characterIds = new Set();
   const priorityIds = new Set();
@@ -262,6 +296,11 @@ function applyPresets(presetIds) {
       Object.assign(notes, presetNotes);
     }
   });
+
+  const matchingRows = Array.from(characterIds)
+    .map((id) => document.querySelector(`.signup-row[data-char-id="${CSS.escape(id)}"]`))
+    .filter(Boolean);
+  if (matchingRows.length === 0) return 0;
 
   const groupsToUpdate = new Set();
   document.querySelectorAll('.signup-row').forEach((row) => {
@@ -320,6 +359,113 @@ function applyPresets(presetIds) {
 
   groupsToUpdate.forEach((groupIdx) => updateGroupState(groupIdx));
   buildHiddenInputs();
+  return matchingRows.length;
+}
+
+function updateSignupPresetApplyButton() {
+  const selectedCount = document.querySelectorAll(
+    '#signupPresetList .preset-choice-input:checked'
+  ).length;
+  const applyButton = document.getElementById('applySignupPresetsBtn');
+  if (!applyButton) return;
+  applyButton.disabled = selectedCount === 0;
+  applyButton.textContent =
+    selectedCount > 0
+      ? `Apply ${selectedCount} preset${selectedCount === 1 ? '' : 's'}`
+      : 'Apply selected presets';
+}
+
+function renderSignupPresetChoices() {
+  const status = document.getElementById('signupPresetStatus');
+  const list = document.getElementById('signupPresetList');
+  if (!status || !list) return;
+
+  list.innerHTML = '';
+  status.classList.remove('preset-status-error');
+  if (signupPresets.length === 0) {
+    status.textContent = 'You have no signup presets yet. Create one under My Characters → Signup Presets.';
+    status.classList.remove('d-none');
+    list.classList.add('d-none');
+    updateSignupPresetApplyButton();
+    return;
+  }
+
+  signupPresets.slice(0, 25).forEach((preset) => {
+    const characterIds = parsePresetValue(preset.character_ids);
+    const priorityIds = parsePresetValue(preset.priority_ids);
+    const specCount = Array.isArray(characterIds) ? characterIds.length : 0;
+    const priorityCount = Array.isArray(priorityIds) ? priorityIds.length : 0;
+
+    const choice = document.createElement('label');
+    choice.className = 'preset-choice';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'preset-choice-input';
+    input.value = preset.id;
+    input.addEventListener('change', updateSignupPresetApplyButton);
+
+    const copy = document.createElement('span');
+    copy.className = 'preset-choice-copy';
+    const name = document.createElement('span');
+    name.className = 'preset-choice-name';
+    name.textContent = preset.name || 'Unnamed preset';
+    const meta = document.createElement('span');
+    meta.className = 'preset-choice-meta';
+    meta.textContent = `${specCount} character spec${specCount === 1 ? '' : 's'}${priorityCount > 0 ? ` · ${priorityCount} preferred` : ''}`;
+
+    copy.append(name, meta);
+    choice.append(input, copy);
+    list.appendChild(choice);
+  });
+
+  status.classList.add('d-none');
+  list.classList.remove('d-none');
+  updateSignupPresetApplyButton();
+}
+
+async function openSignupPresetPicker() {
+  const modalElement = document.getElementById('signupPresetModal');
+  const status = document.getElementById('signupPresetStatus');
+  const list = document.getElementById('signupPresetList');
+  if (!modalElement || !status || !list) return;
+
+  if (!signupPresetModal) signupPresetModal = new bootstrap.Modal(modalElement);
+  status.textContent = 'Loading your presets…';
+  status.classList.remove('d-none', 'preset-status-error');
+  list.classList.add('d-none');
+  document.getElementById('applySignupPresetsBtn').disabled = true;
+  signupPresetModal.show();
+
+  if (await loadPresets()) {
+    renderSignupPresetChoices();
+  } else {
+    status.textContent = 'Your presets could not be loaded. Please try again.';
+    status.classList.add('preset-status-error');
+  }
+}
+
+function applySelectedSignupPresets() {
+  const presetIds = Array.from(
+    document.querySelectorAll('#signupPresetList .preset-choice-input:checked'),
+    (input) => input.value
+  );
+  if (presetIds.length === 0) return;
+
+  const appliedCount = applyPresets(presetIds);
+  if (appliedCount === 0) {
+    const status = document.getElementById('signupPresetStatus');
+    status.textContent =
+      'These presets contain no current characters. Update them under My Characters → Signup Presets.';
+    status.classList.remove('d-none');
+    status.classList.add('preset-status-error');
+    return;
+  }
+
+  signupPresetModal?.hide();
+  setQuickActionFeedback(
+    `${presetIds.length} preset${presetIds.length === 1 ? '' : 's'} applied · ${appliedCount} spec${appliedCount === 1 ? '' : 's'} selected.`
+  );
 }
 
 function showSavePresetModal() {
@@ -416,6 +562,20 @@ async function deleteSelectedPresets() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('selectAllSpecsBtn')?.addEventListener('click', selectAllSpecs);
+  document
+    .getElementById('openSignupPresetsBtn')
+    ?.addEventListener('click', openSignupPresetPicker);
+  document
+    .getElementById('applySignupPresetsBtn')
+    ?.addEventListener('click', applySelectedSignupPresets);
+
+  document.getElementById('withdrawForm')?.addEventListener('submit', (event) => {
+    if (!confirm('Withdraw from this raid? Your saved signup will be removed.')) {
+      event.preventDefault();
+    }
+  });
+
   document.querySelectorAll('#signupForm .spec-toggle').forEach((toggle) => {
     toggle.addEventListener('click', () => toggleRow(toggle.closest('.signup-row')));
   });

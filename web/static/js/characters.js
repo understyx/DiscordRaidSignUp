@@ -26,3 +26,8 @@ document.querySelectorAll('.save-cell').forEach(cell => {
     }
   });
 });
+
+if (new URLSearchParams(window.location.search).get('tab') === 'presets') {
+  const presetsTab = document.getElementById('presets-tab');
+  if (presetsTab) bootstrap.Tab.getOrCreateInstance(presetsTab).show();
+}

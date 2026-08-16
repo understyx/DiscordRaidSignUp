@@ -49,6 +49,24 @@
 
   {% if raid.status == "open" %}
     {% if (user_char_groups | length) > 0 %}
+    <div class="signup-quick-actions" aria-label="Signup quick actions">
+      <span class="quick-actions-label">Quick actions</span>
+      <button type="button" class="btn signup-quick-action" id="selectAllSpecsBtn">
+        <span aria-hidden="true">＋</span> Add all specs and characters
+      </button>
+      <button type="button" class="btn signup-quick-action" id="openSignupPresetsBtn">
+        <span aria-hidden="true">▤</span> Presets
+      </button>
+      <span class="quick-action-feedback" id="quickActionFeedback" aria-live="polite"></span>
+      {% if my_signup_count > 0 %}
+      <form method="post" action="{{ raid_url }}/withdraw" class="withdraw-quick-form" id="withdrawForm">
+        <button type="submit" class="btn btn-danger quick-withdraw-btn">
+          Withdraw from this raid
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
     <form method="post" action="{{ raid_url }}/signup" id="signupForm">
       <div class="signup-toolbar">
         <div class="selection-overview" aria-live="polite" aria-atomic="true">
@@ -135,13 +153,6 @@
 
       <div id="hiddenInputs"></div>
     </form>
-
-    {% if my_signup_count > 0 %}
-    <form method="post" action="{{ raid_url }}/withdraw" class="withdraw-form">
-      <span>Can no longer make it?</span>
-      <button type="submit" class="btn btn-link text-danger">Withdraw from this raid</button>
-    </form>
-    {% endif %}
     {% else %}
     <div class="empty-signup-state">
       <div class="empty-state-mark" aria-hidden="true">+</div>
@@ -163,6 +174,35 @@
     </div>
   {% endif %}
 </section>
+
+{% if raid.status == "open" and (user_char_groups | length) > 0 %}
+<div class="modal fade signup-preset-modal" id="signupPresetModal" tabindex="-1"
+     aria-labelledby="signupPresetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <div class="section-kicker">Quick setup</div>
+          <h2 class="modal-title" id="signupPresetModalLabel">Choose signup presets</h2>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="preset-modal-intro">Select one or more presets to combine. You can review every character and spec before saving.</p>
+        <div class="preset-picker-status" id="signupPresetStatus" role="status">Loading your presets…</div>
+        <div class="preset-choice-list d-none" id="signupPresetList" role="group" aria-label="Available signup presets"></div>
+      </div>
+      <div class="modal-footer">
+        <a href="/characters?tab=presets" class="preset-manage-link">Manage presets</a>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-wow" id="applySignupPresetsBtn" disabled>
+          Apply selected presets
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
