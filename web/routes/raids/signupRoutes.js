@@ -108,64 +108,7 @@ function registerSignupRoutes(router, dependencies) {
         charGroupMap[c.char_name].note = mySignupNoteByCharId[String(c.id)];
       }
     }
-    const userCharGroups = Object.values(charGroupMap).map((g) => {
-      const is_signed = g.specs.some((s) => mySignupMap[String(s.id)] !== undefined);
-      const is_prio = g.specs.some(
-        (s) => mySignupMap[String(s.id)]?.signup_type === 'prio_character'
-      );
-      return { ...g, is_signed, is_prio };
-    });
-
-    const [allSignups] = await pool.query(
-      `SELECT s.*, c.id AS c_id, c.char_name, c.realm, c.char_class, c.spec, c.gearscore, c.role
-     FROM signups s JOIN characters c ON s.character_id = c.id
-     WHERE s.raid_id = ?`,
-      [raidId]
-    );
-
-    // Merge signups by (discord_user_id + char_name) within each bucket.
-    // Tentative signups go into their own bucket regardless of signup_type.
-    const grouped = { fill: [], prio_role: [], prio_character: [], tentative: [] };
-    for (const s of allSignups) {
-      let bucket;
-      if (s.status === 'tentative') {
-        bucket = grouped.tentative;
-      } else {
-        const key = s.signup_type || 'fill';
-        bucket = grouped[key] || grouped.fill;
-      }
-      const mergeKey = `${s.discord_user_id}__${s.char_name}`;
-      const existing = bucket.find((e) => e._mergeKey === mergeKey);
-      const is_prio = s.signup_type === 'prio_character' || s.signup_type === 'prio_role';
-      const is_saved = !!s.is_saved;
-      if (existing) {
-        existing.character.specs.push({ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved });
-        if (!existing.character.note && s.note) existing.character.note = s.note;
-      } else {
-        bucket.push({
-          ...s,
-          _mergeKey: mergeKey,
-          discord_user_id: s.discord_user_id,
-          character: {
-            id: s.c_id,
-            char_name: s.char_name,
-            realm: s.realm,
-            char_class: s.char_class,
-            role: s.role,
-            note: s.note || '',
-            specs: [{ spec: s.spec, gearscore: s.gearscore, is_prio, is_saved }],
-          },
-        });
-      }
-    }
-
-    // Only show the current user's own sign-ups in the sign-up view.
-    const myGrouped = {};
-    for (const bucket of ['fill', 'prio_role', 'prio_character', 'tentative']) {
-      myGrouped[bucket] = grouped[bucket].filter(
-        (s) => String(s.discord_user_id) === String(userId)
-      );
-    }
+    const userCharGroups = Object.values(charGroupMap);
 
     res.render('raid_detail.html', {
       raid,
@@ -173,9 +116,9 @@ function registerSignupRoutes(router, dependencies) {
       user_char_groups: userCharGroups,
       my_signup_map: mySignupMap,
       my_signup_count: mySignupRows.length,
-      grouped_signups: myGrouped,
+      my_signup_is_tentative:
+        mySignupRows.length > 0 && mySignupRows.every((row) => row.status === 'tentative'),
       signup_note_max_length: SIGNUP_NOTE_MAX_LENGTH,
-      signup_types: ['fill', 'prio_role', 'prio_character'],
       flash: popFlash(req),
       user: currentUser(req),
     });

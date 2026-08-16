@@ -1,65 +1,573 @@
-.row-group-alt { --bs-table-bg: var(--bg-card-2); }
-
-/* Selected signup row — green tint overrides everything */
-.signup-row.row-selected td {
-  background-color: rgba(25, 135, 84, 0.22) !important;
-}
-.table-hover .signup-row.row-selected:hover td {
-  background-color: rgba(25, 135, 84, 0.35) !important;
-}
-
-/* Group (char/class) cells highlighted when any spec in the group is selected */
-.group-cell.group-cell-selected {
-  background-color: rgba(25, 135, 84, 0.22) !important;
-}
-.table-hover .group-cell.group-cell-selected:hover {
-  background-color: rgba(25, 135, 84, 0.35) !important;
+.raid-summary {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at 92% 15%, rgba(201, 170, 113, 0.1), transparent 28%),
+    var(--bg-card);
 }
 
-/* Priority star — rendered as a borderless button */
-.prio-star {
+.raid-summary-main { min-width: 0; }
+
+.raid-kicker,
+.section-kicker {
+  margin-bottom: 0.35rem;
+  color: var(--wow-gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.raid-summary h1 {
+  margin: 0;
+  color: #f4f0e8;
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
+  line-height: 1.15;
+}
+
+.raid-date {
+  margin: 0.45rem 0 0;
+  color: #aeb7ca;
+  font-size: 0.92rem;
+}
+
+.raid-description {
+  max-width: 52rem;
+  margin: 0.9rem 0 0;
+  color: #d8dce8;
+  line-height: 1.55;
+}
+
+.raid-status-block {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.raid-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border-dim);
+  border-radius: 999px;
+  padding: 0.38rem 0.7rem;
+  color: #cbd2df;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.raid-status-open {
+  border-color: rgba(69, 190, 116, 0.35);
+  background: rgba(32, 128, 74, 0.14);
+  color: #7ee2a5;
+}
+
+.raid-status-open > span {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #4fd484;
+  box-shadow: 0 0 0 3px rgba(79, 212, 132, 0.12);
+}
+
+.raid-attendance {
+  color: #8f99ad;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.raid-attendance strong { color: #d8dce8; }
+
+.signup-panel {
+  overflow: visible;
+  padding: 0;
+}
+
+.signup-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.35rem 1.5rem 1.15rem;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.signup-panel-heading h2 {
+  margin: 0;
+  color: #f4f0e8;
+  font-size: 1.25rem;
+}
+
+.signup-panel-heading p {
+  margin: 0.45rem 0 0;
+  color: #909bb1;
+  font-size: 0.86rem;
+}
+
+.saved-response {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.4rem;
+  border: 1px solid rgba(79, 212, 132, 0.28);
+  border-radius: 999px;
+  padding: 0.38rem 0.7rem;
+  background: rgba(32, 128, 74, 0.12);
+  color: #7ee2a5;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.saved-response-tentative {
+  border-color: rgba(201, 170, 113, 0.3);
+  background: rgba(201, 170, 113, 0.1);
+  color: #dbc28f;
+}
+
+.signup-toolbar {
+  position: sticky;
+  z-index: 5;
+  top: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem;
+  border: 1px solid #39445a;
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  background: rgba(19, 24, 31, 0.96);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.selection-overview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.selection-overview strong {
+  color: #f0eadf;
+  font-size: 0.9rem;
+}
+
+.selection-overview span {
+  overflow: hidden;
+  max-width: 35rem;
+  color: #8995aa;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signup-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
+.signup-actions .btn {
+  min-height: 2.35rem;
+  border-radius: 0.45rem;
+  padding-inline: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.signup-actions .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.signup-character {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.65rem;
+  background: #151b24;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.signup-character:focus-within { border-color: #4b5871; }
+
+.signup-character.character-has-selection {
+  border-color: rgba(201, 170, 113, 0.55);
+  box-shadow: inset 3px 0 0 var(--wow-gold);
+}
+
+.character-header {
+  display: flex;
+  min-height: 3.65rem;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.72rem 0.78rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.character-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.character-identity strong {
+  overflow: hidden;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity > span {
+  color: #7e899f;
+  font-size: 0.72rem;
+}
+
+.character-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+.signup-panel .note-toggle-btn,
+.group-toggle-btn {
+  border: 1px solid #303a4e;
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.48rem;
+  background: transparent;
+  color: #919db1;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.signup-panel .note-toggle-btn:hover,
+.group-toggle-btn:hover {
+  border-color: #667089;
+  color: #e1e5ec;
+}
+
+.signup-panel .note-toggle-btn.note-toggle-active {
+  border-color: rgba(201, 170, 113, 0.45);
+  color: var(--wow-gold);
+}
+
+.group-toggle-btn[aria-pressed="true"] {
+  border-color: rgba(201, 170, 113, 0.55);
+  background: rgba(201, 170, 113, 0.1);
+  color: #e2c98e;
+}
+
+.spec-list {
+  display: grid;
+  gap: 0.38rem;
+  padding: 0 0.55rem 0.55rem;
+}
+
+.signup-panel .signup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1.75rem;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: 2.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.48rem;
+  padding: 0.2rem 0.25rem;
+  background: #1a2130;
+  outline: none;
+  transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.signup-panel .signup-row:hover {
+  border-color: #3d4960;
+  background: #202a3b;
+}
+
+.signup-panel .signup-row:focus-within {
+  border-color: var(--wow-gold);
+  box-shadow: 0 0 0 3px rgba(201, 170, 113, 0.13);
+}
+
+.signup-panel .signup-row.row-selected {
+  border-color: rgba(83, 196, 126, 0.48);
+  background: rgba(37, 125, 75, 0.2);
+}
+
+.spec-toggle {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  min-height: 2.1rem;
+  border: 0;
+  padding: 0.1rem;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
-  opacity: 0.22;
-  font-size: 1.05rem;
-  transition: opacity 0.12s;
-  display: inline-block;
-  background: none;
-  border: none;
-  padding: 0;
-  line-height: 1;
+  text-align: left;
+  user-select: none;
 }
-.prio-star:hover { opacity: 0.65; }
-.prio-star.prio-active { opacity: 1; }
 
-.note-toggle-btn {
-  background: none;
-  border: none;
+.spec-toggle:focus-visible { outline: none; }
+
+.spec-check {
+  display: grid;
+  width: 1.18rem;
+  height: 1.18rem;
+  place-items: center;
+  border: 1px solid #4b566c;
+  border-radius: 0.32rem;
+  color: transparent;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.signup-panel .row-selected .spec-check {
+  border-color: #55c982;
+  background: #48b675;
+  color: #0d1b13;
+}
+
+.spec-name {
+  overflow: hidden;
+  color: #dde1e9;
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-gearscore {
+  color: #7f8ba2;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.signup-panel .prio-star {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
   padding: 0;
+  background: transparent;
+  color: #536078;
+  font-size: 1rem;
+  line-height: 1;
+  transition: color 0.12s, background-color 0.12s, transform 0.12s;
+}
+
+.signup-panel .prio-star:hover {
+  background: rgba(201, 170, 113, 0.1);
+  color: #a99363;
+  transform: scale(1.08);
+}
+
+.signup-panel .prio-star:focus-visible {
+  outline: 2px solid var(--wow-gold);
+  outline-offset: 1px;
+}
+
+.signup-panel .prio-star.prio-active {
+  color: #f2cf4a;
+  text-shadow: 0 0 10px rgba(242, 207, 74, 0.3);
+}
+
+.signup-note-editor {
+  border-top: 1px solid var(--border-dim);
+  padding: 0.7rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.signup-note-editor label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #9aa5b8;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.signup-note-editor textarea {
+  resize: vertical;
+  border-color: #354056;
+  background: #10151d;
+  color: #dfe3eb;
+  font-size: 0.78rem;
+}
+
+.signup-note-editor textarea:focus {
+  border-color: var(--wow-gold);
+  background: #10151d;
+  box-shadow: 0 0 0 3px rgba(201, 170, 113, 0.12);
+  color: #fff;
+}
+
+.withdraw-form {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem;
+  border-top: 1px solid var(--border-dim);
+  padding: 0.65rem 1rem;
+  color: #737f94;
+  font-size: 0.72rem;
+}
+
+.withdraw-form .btn {
+  padding: 0.2rem 0.35rem;
+  font-size: 0.72rem;
+}
+
+.empty-signup-state,
+.closed-signup-state {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem;
+  border: 1px dashed #39445a;
+  border-radius: 0.65rem;
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.empty-state-mark {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(201, 170, 113, 0.12);
+  color: var(--wow-gold);
+  font-size: 1.35rem;
+}
+
+.empty-signup-state h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.empty-signup-state p,
+.closed-signup-state span {
+  margin: 0 0 0.65rem;
+  color: #8995aa;
+  font-size: 0.8rem;
+}
+
+.closed-signup-state {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.closed-signup-state span { margin: 0; }
+
+@media (max-width: 767.98px) {
+  .raid-summary,
+  .signup-panel-heading,
+  .signup-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .raid-summary { gap: 1.25rem; }
+
+  .raid-status-block { align-items: flex-start; }
+
+  .signup-toolbar {
+    top: 0.5rem;
+    gap: 0.65rem;
+  }
+
+  .signup-actions { width: 100%; }
+
+  .signup-actions .btn { flex: 1 1 0; }
+
+  .character-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 430px) {
+  .raid-summary,
+  .signup-panel-heading { padding: 1.1rem; }
+
+  .signup-toolbar,
+  .character-grid { margin-inline: 0.65rem; }
+
+  .character-grid { padding-inline: 0; }
+
+  .signup-actions { flex-direction: column; }
+
+  .character-header { align-items: flex-start; }
+
+  .character-tools { flex-direction: column; }
+
+  .withdraw-form {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-character,
+  .signup-panel .signup-row,
+  .signup-panel .prio-star { transition: none; }
+}
+
+/* The character preset editor shares the signup interaction script and stylesheet. */
+#presets-pane .row-group-alt { --bs-table-bg: var(--bg-card-2); }
+
+#presets-pane .signup-row.row-selected td,
+#presets-pane .group-cell.group-cell-selected {
+  background-color: rgba(25, 135, 84, 0.22) !important;
+}
+
+#presets-pane .table-hover .signup-row.row-selected:hover td,
+#presets-pane .table-hover .group-cell.group-cell-selected:hover {
+  background-color: rgba(25, 135, 84, 0.35) !important;
+}
+
+#presets-pane .prio-star {
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  opacity: 0.22;
+  transition: opacity 0.12s;
+}
+
+#presets-pane .prio-star:hover { opacity: 0.65; }
+#presets-pane .prio-star.prio-active { opacity: 1; }
+
+#presets-pane .note-toggle-btn {
+  border: 0;
   margin-left: 0.35rem;
+  padding: 0;
+  background: none;
   font-size: 0.9rem;
   opacity: 0.5;
 }
-.note-toggle-btn:hover { opacity: 0.8; }
-.note-toggle-btn.note-toggle-active { opacity: 1; }
 
-.signup-note-row td {
+#presets-pane .note-toggle-btn:hover { opacity: 0.8; }
+#presets-pane .note-toggle-btn.note-toggle-active { opacity: 1; }
+
+#presets-pane .signup-note-row td {
   background-color: rgba(255, 255, 255, 0.03) !important;
-}
-
-.my-note-toggle {
-  background: none;
-  border: none;
-  padding: 0;
-  margin-left: 0.35rem;
-  font-size: 0.8rem;
-  line-height: 1;
-  vertical-align: middle;
-}
-
-.my-signup-note {
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid rgba(255, 255, 255, 0.25);
-  border-radius: 0.2rem;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.82rem;
 }

@@ -1,8 +1,25 @@
-function toggleRow(row) {
-  row.classList.toggle('row-selected');
-  const selected = row.classList.contains('row-selected');
-  row.setAttribute('aria-selected', selected ? 'true' : 'false');
-  // Deselecting a row also clears its priority star
+'use strict';
+
+function signupRows(groupIdx) {
+  return document.querySelectorAll(
+    `.signup-row[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+}
+
+function setRowSelected(row, selected) {
+  row.classList.toggle('row-selected', selected);
+  if (row.hasAttribute('aria-selected')) {
+    row.setAttribute('aria-selected', selected ? 'true' : 'false');
+  }
+  const specToggle = row.querySelector('.spec-toggle');
+  if (specToggle) {
+    specToggle.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    specToggle.setAttribute(
+      'aria-label',
+      `${selected ? 'Remove' : 'Select'} ${row.dataset.charName} ${row.dataset.specName}`
+    );
+  }
+
   if (!selected) {
     const star = row.querySelector('.prio-star');
     if (star) {
@@ -10,387 +27,437 @@ function toggleRow(row) {
       star.setAttribute('aria-pressed', 'false');
     }
   }
-  updateGroupHighlight(row.dataset.groupIdx);
+}
+
+function toggleRow(row) {
+  setRowSelected(row, !row.classList.contains('row-selected'));
+  updateGroupState(row.dataset.groupIdx);
   buildHiddenInputs();
 }
 
 function toggleGroupRows(groupIdx) {
-  const rows = document.querySelectorAll(`.signup-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  const anySelected = Array.from(rows).some(r => r.classList.contains('row-selected'));
-  const shouldSelect = !anySelected;
-  rows.forEach(row => {
-    row.classList.toggle('row-selected', shouldSelect);
-    row.setAttribute('aria-selected', shouldSelect ? 'true' : 'false');
-    if (!shouldSelect) {
-      const star = row.querySelector('.prio-star');
-      if (star) {
-        star.classList.remove('prio-active');
-        star.setAttribute('aria-pressed', 'false');
-      }
-    }
-  });
-  updateGroupHighlight(groupIdx);
+  const rows = Array.from(signupRows(groupIdx));
+  const allSelected = rows.length > 0 && rows.every((row) => row.classList.contains('row-selected'));
+  const anySelected = rows.some((row) => row.classList.contains('row-selected'));
+  const shouldSelect = rows[0]?.tagName === 'TR' ? !anySelected : !allSelected;
+
+  rows.forEach((row) => setRowSelected(row, shouldSelect));
+  updateGroupState(groupIdx);
   buildHiddenInputs();
 }
 
-function updateGroupHighlight(groupIdx) {
-  const rows = document.querySelectorAll(`.signup-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  const anySelected = Array.from(rows).some(r => r.classList.contains('row-selected'));
+function updateGroupState(groupIdx) {
+  const rows = Array.from(signupRows(groupIdx));
+  const selectedCount = rows.filter((row) => row.classList.contains('row-selected')).length;
+  const card = document.querySelector(
+    `.signup-character[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  const toggle = document.querySelector(
+    `.group-toggle-btn[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+
+  if (card) card.classList.toggle('character-has-selection', selectedCount > 0);
   const firstRow = rows[0];
   if (firstRow) {
-    firstRow.querySelectorAll('.group-cell').forEach(cell => {
-      cell.classList.toggle('group-cell-selected', anySelected);
+    firstRow.querySelectorAll('.group-cell').forEach((cell) => {
+      cell.classList.toggle('group-cell-selected', selectedCount > 0);
     });
+  }
+  if (toggle) {
+    const allSelected = rows.length > 0 && selectedCount === rows.length;
+    toggle.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+    toggle.textContent = allSelected ? 'Clear all' : 'Select all';
   }
 }
 
 function togglePrio(star) {
-  star.classList.toggle('prio-active');
-  const active = star.classList.contains('prio-active');
-  star.setAttribute('aria-pressed', active ? 'true' : 'false');
-  // Auto-select the row when marking as priority
-  if (active) {
-    const row = star.closest('tr.signup-row');
-    row.classList.add('row-selected');
-    row.setAttribute('aria-selected', 'true');
-    updateGroupHighlight(row.dataset.groupIdx);
-  }
+  const row = star.closest('.signup-row');
+  if (!row) return;
+
+  const willBeActive = !star.classList.contains('prio-active');
+  star.classList.toggle('prio-active', willBeActive);
+  star.setAttribute('aria-pressed', willBeActive ? 'true' : 'false');
+
+  if (willBeActive) setRowSelected(row, true);
+  updateGroupState(row.dataset.groupIdx);
   buildHiddenInputs();
+}
+
+function selectionSummary(selectedRows) {
+  const count = selectedRows.length;
+  const characters = new Set(selectedRows.map((row) => row.dataset.charName));
+  const countEl = document.getElementById('selectionCount');
+  const detailEl = document.getElementById('selectionDetail');
+
+  if (!countEl || !detailEl) return;
+
+  if (count === 0) {
+    countEl.textContent = 'No specs selected';
+    detailEl.textContent = 'Choose at least one spec to continue.';
+    return;
+  }
+
+  countEl.textContent = `${count} spec${count === 1 ? '' : 's'} across ${characters.size} character${characters.size === 1 ? '' : 's'}`;
+  detailEl.textContent = selectedRows
+    .map((row) => `${row.dataset.charName} · ${row.dataset.specName}`)
+    .join(', ');
 }
 
 function buildHiddenInputs() {
   const container = document.getElementById('hiddenInputs');
   if (!container) return;
   container.innerHTML = '';
-  document.querySelectorAll('.signup-row.row-selected').forEach(row => {
+
+  const selectedRows = Array.from(document.querySelectorAll('.signup-row.row-selected'));
+  selectedRows.forEach((row) => {
     const charId = row.dataset.charId;
-    const inp = document.createElement('input');
-    inp.type = 'hidden';
-    inp.name = 'character_ids';
-    inp.value = charId;
-    container.appendChild(inp);
+    const characterInput = document.createElement('input');
+    characterInput.type = 'hidden';
+    characterInput.name = 'character_ids';
+    characterInput.value = charId;
+    container.appendChild(characterInput);
 
     const star = row.querySelector('.prio-star');
     if (star && star.classList.contains('prio-active')) {
-      const prioInp = document.createElement('input');
-      prioInp.type = 'hidden';
-      prioInp.name = 'priority_ids';
-      prioInp.value = charId;
-      container.appendChild(prioInp);
+      const priorityInput = document.createElement('input');
+      priorityInput.type = 'hidden';
+      priorityInput.name = 'priority_ids';
+      priorityInput.value = charId;
+      container.appendChild(priorityInput);
     }
 
     const groupIdx = row.dataset.groupIdx;
-    const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`);
+    const noteInput = document.querySelector(
+      `.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`
+    );
     const note = noteInput ? noteInput.value.trim() : '';
     if (note) {
-      const noteIdInp = document.createElement('input');
-      noteIdInp.type = 'hidden';
-      noteIdInp.name = 'note_ids';
-      noteIdInp.value = charId;
-      container.appendChild(noteIdInp);
+      const noteIdInput = document.createElement('input');
+      noteIdInput.type = 'hidden';
+      noteIdInput.name = 'note_ids';
+      noteIdInput.value = charId;
+      container.appendChild(noteIdInput);
 
-      const noteValInp = document.createElement('input');
-      noteValInp.type = 'hidden';
-      noteValInp.name = 'note_values';
-      noteValInp.value = note;
-      container.appendChild(noteValInp);
+      const noteValueInput = document.createElement('input');
+      noteValueInput.type = 'hidden';
+      noteValueInput.name = 'note_values';
+      noteValueInput.value = note;
+      container.appendChild(noteValueInput);
     }
   });
 
-  const btn = document.getElementById('signupBtn');
-  if (btn) {
-    const count = document.querySelectorAll('.signup-row.row-selected').length;
-    btn.textContent = count > 0 ? 'Update Sign-up' : 'Sign Up';
-  }
-  const tentativeBtn = document.getElementById('tentativeBtn');
-  if (tentativeBtn) {
-    const count = document.querySelectorAll('.signup-row.row-selected').length;
-    tentativeBtn.textContent = count > 0 ? '❓ Update as Tentative' : '❓ Sign Up as Tentative';
-  }
+  selectionSummary(selectedRows);
+  const disabled = selectedRows.length === 0;
+  const signupButton = document.getElementById('signupBtn');
+  const tentativeButton = document.getElementById('tentativeBtn');
+  if (signupButton) signupButton.disabled = disabled;
+  if (tentativeButton) tentativeButton.disabled = disabled;
+}
+
+function toggleNoteEditor(groupIdx) {
+  const editor = document.querySelector(
+    `.signup-note-editor[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  const toggle = document.querySelector(
+    `.note-toggle-btn[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  if (!editor || !toggle) return;
+
+  const isHidden = editor.classList.toggle('d-none');
+  const input = editor.querySelector('.signup-note-input');
+  const hasNote = Boolean(input && input.value.trim());
+  toggle.classList.toggle('note-toggle-active', !isHidden || hasNote);
+  toggle.setAttribute('aria-expanded', (!isHidden).toString());
+  toggle.setAttribute(
+    'aria-label',
+    `${isHidden ? (hasNote ? 'Edit' : 'Add') : 'Hide'} note for ${editor.querySelector('label').textContent.replace('Note for ', '')}`
+  );
+  if (!isHidden && input) input.focus();
 }
 
 function toggleNoteRow(groupIdx) {
-  const noteRow = document.querySelector(`.signup-note-row[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  if (!noteRow || !toggleBtn) return;
+  const noteRow = document.querySelector(
+    `.signup-note-row[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  const toggle = document.querySelector(
+    `.note-toggle-btn[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  if (!noteRow || !toggle) return;
+
   const isHidden = noteRow.classList.toggle('d-none');
-  const noteInput = noteRow.querySelector('.signup-note-input');
-  const hasNoteText = !!(noteInput && noteInput.value.trim());
-  toggleBtn.classList.toggle('note-toggle-active', !isHidden || hasNoteText);
-  toggleBtn.setAttribute('aria-expanded', (!isHidden).toString());
+  const input = noteRow.querySelector('.signup-note-input');
+  const hasNote = Boolean(input && input.value.trim());
+  toggle.classList.toggle('note-toggle-active', !isHidden || hasNote);
+  toggle.setAttribute('aria-expanded', (!isHidden).toString());
 }
 
 function handleNoteInput(groupIdx) {
-  const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`);
-  if (noteInput && toggleBtn) {
-    toggleBtn.classList.toggle('note-toggle-active', !!noteInput.value.trim());
+  const input = document.querySelector(
+    `.signup-note-input[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  const toggle = document.querySelector(
+    `.note-toggle-btn[data-group-idx="${CSS.escape(String(groupIdx))}"]`
+  );
+  if (input && toggle) {
+    toggle.classList.toggle('note-toggle-active', Boolean(input.value.trim()));
   }
   buildHiddenInputs();
 }
 
-function toggleMySignupNote(btn) {
-  const card = btn.closest('.card');
-  if (!card) return;
-  const note = card.querySelector('.my-signup-note');
-  if (!note) return;
-  const isHidden = note.classList.toggle('d-none');
-  btn.setAttribute('aria-expanded', (!isHidden).toString());
-}
-
-let _presets = [];
-let _savePresetModalInstance = null;
+let signupPresets = [];
+let savePresetModal = null;
 
 async function loadPresets() {
   try {
-    const resp = await fetch('/characters/presets');
-    const data = await resp.json();
-    if (data.ok) {
-      _presets = Array.isArray(data.presets) ? data.presets : [];
-      const select = document.getElementById('presetSelect');
-      if (select) {
-        select.innerHTML = '<option value="" disabled>— Select preset(s) —</option>';
-        _presets.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = p.name;
-          select.appendChild(opt);
-        });
-      }
-    }
-  } catch (err) {
-    console.error('Failed to load presets', err);
+    const response = await fetch('/characters/presets');
+    const data = await response.json();
+    if (!data.ok) return;
+
+    signupPresets = Array.isArray(data.presets) ? data.presets : [];
+    const select = document.getElementById('presetSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="" disabled>— Select preset(s) —</option>';
+    signupPresets.forEach((preset) => {
+      const option = document.createElement('option');
+      option.value = preset.id;
+      option.textContent = preset.name;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error('Failed to load presets', error);
   }
 }
 
 function parsePresetValue(value) {
   try {
     return typeof value === 'string' ? JSON.parse(value) : value;
-  } catch (_err) {
+  } catch (_error) {
     return null;
   }
 }
 
 function applyPresets(presetIds) {
-  const selectedIds = Array.isArray(presetIds) ? presetIds : [presetIds];
-  const selectedPresets = selectedIds
+  const requestedIds = Array.isArray(presetIds) ? presetIds : [presetIds];
+  const selectedPresets = requestedIds
     .filter(Boolean)
-    .map(id => _presets.find(p => p.id == id))
+    .map((id) => signupPresets.find((preset) => preset.id == id))
     .filter(Boolean);
   if (selectedPresets.length === 0) return;
 
-  const charIds = new Set();
-  const prioIds = new Set();
-  const notesMap = {};
-  selectedPresets.forEach(preset => {
-    const presetCharIds = parsePresetValue(preset.character_ids);
-    const presetPrioIds = parsePresetValue(preset.priority_ids);
+  const characterIds = new Set();
+  const priorityIds = new Set();
+  const notes = {};
+  selectedPresets.forEach((preset) => {
+    const presetCharacterIds = parsePresetValue(preset.character_ids);
+    const presetPriorityIds = parsePresetValue(preset.priority_ids);
     const presetNotes = parsePresetValue(preset.notes);
-    if (Array.isArray(presetCharIds)) {
-      presetCharIds.forEach(id => charIds.add(String(id)));
+    if (Array.isArray(presetCharacterIds)) {
+      presetCharacterIds.forEach((id) => characterIds.add(String(id)));
     }
-    if (Array.isArray(presetPrioIds)) {
-      presetPrioIds.forEach(id => prioIds.add(String(id)));
+    if (Array.isArray(presetPriorityIds)) {
+      presetPriorityIds.forEach((id) => priorityIds.add(String(id)));
     }
     if (presetNotes && typeof presetNotes === 'object' && !Array.isArray(presetNotes)) {
-      Object.assign(notesMap, presetNotes);
+      Object.assign(notes, presetNotes);
     }
   });
 
-  // Deselect all current
   const groupsToUpdate = new Set();
-  document.querySelectorAll('.signup-row.row-selected').forEach(row => {
+  document.querySelectorAll('.signup-row').forEach((row) => {
     groupsToUpdate.add(row.dataset.groupIdx);
-    row.classList.remove('row-selected');
-    row.setAttribute('aria-selected', 'false');
-    const star = row.querySelector('.prio-star');
-    if (star) {
-      star.classList.remove('prio-active');
-      star.setAttribute('aria-pressed', 'false');
-    }
+    setRowSelected(row, false);
   });
-
-  // Clear notes
-  document.querySelectorAll('.signup-note-input').forEach(input => {
+  document.querySelectorAll('.signup-note-input').forEach((input) => {
     input.value = '';
     handleNoteInput(input.dataset.groupIdx);
   });
 
-  // Apply preset selections
+  characterIds.forEach((id) => {
+    const row = document.querySelector(`.signup-row[data-char-id="${CSS.escape(id)}"]`);
+    if (!row) return;
+    setRowSelected(row, true);
+    groupsToUpdate.add(row.dataset.groupIdx);
+  });
 
-  charIds.forEach(id => {
-    const row = document.querySelector(`.signup-row[data-char-id="${id}"]`);
-    if (row) {
-      row.classList.add('row-selected');
-      row.setAttribute('aria-selected', 'true');
-      groupsToUpdate.add(row.dataset.groupIdx);
+  priorityIds.forEach((id) => {
+    const row = document.querySelector(`.signup-row[data-char-id="${CSS.escape(id)}"]`);
+    const star = row?.querySelector('.prio-star');
+    if (!star) return;
+    star.classList.add('prio-active');
+    star.setAttribute('aria-pressed', 'true');
+  });
+
+  Object.entries(notes).forEach(([id, note]) => {
+    if (!note) return;
+    const row = document.querySelector(`.signup-row[data-char-id="${CSS.escape(id)}"]`);
+    if (!row) return;
+
+    const groupIdx = row.dataset.groupIdx;
+    const input = document.querySelector(
+      `.signup-note-input[data-group-idx="${CSS.escape(groupIdx)}"]`
+    );
+    if (!input) return;
+
+    input.value = note;
+    handleNoteInput(groupIdx);
+    const noteRow = document.querySelector(
+      `.signup-note-row[data-group-idx="${CSS.escape(groupIdx)}"]`
+    );
+    const noteEditor = document.querySelector(
+      `.signup-note-editor[data-group-idx="${CSS.escape(groupIdx)}"]`
+    );
+    const noteContainer = noteRow || noteEditor;
+    const toggle = document.querySelector(
+      `.note-toggle-btn[data-group-idx="${CSS.escape(groupIdx)}"]`
+    );
+    if (noteContainer) noteContainer.classList.remove('d-none');
+    if (toggle) {
+      toggle.classList.add('note-toggle-active');
+      toggle.setAttribute('aria-expanded', 'true');
     }
   });
 
-  prioIds.forEach(id => {
-    const row = document.querySelector(`.signup-row[data-char-id="${id}"]`);
-    if (row) {
-      const star = row.querySelector('.prio-star');
-      if (star) {
-        star.classList.add('prio-active');
-        star.setAttribute('aria-pressed', 'true');
-      }
-    }
-  });
-
-  // Handle notes (notesMap is { charIdStr: note })
-  for (const [idStr, note] of Object.entries(notesMap)) {
-    const row = document.querySelector(`.signup-row[data-char-id="${idStr}"]`);
-    if (row && note) {
-      const gIdx = row.dataset.groupIdx;
-      const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(gIdx)}"]`);
-      if (noteInput) {
-        noteInput.value = note;
-        handleNoteInput(gIdx);
-        // Show note row if not already visible
-        const noteRow = document.querySelector(`.signup-note-row[data-group-idx="${CSS.escape(gIdx)}"]`);
-        const toggleBtn = document.querySelector(`.note-toggle-btn[data-group-idx="${CSS.escape(gIdx)}"]`);
-        if (noteRow && noteRow.classList.contains('d-none')) {
-          noteRow.classList.remove('d-none');
-          if (toggleBtn) {
-            toggleBtn.classList.add('note-toggle-active');
-            toggleBtn.setAttribute('aria-expanded', 'true');
-          }
-        }
-      }
-    }
-  }
-
-  groupsToUpdate.forEach(gIdx => updateGroupHighlight(gIdx));
+  groupsToUpdate.forEach((groupIdx) => updateGroupState(groupIdx));
   buildHiddenInputs();
-
 }
 
 function showSavePresetModal() {
-  const selectedRows = document.querySelectorAll('.signup-row.row-selected');
-  if (selectedRows.length === 0) {
-    alert("Please select at least one character to save as a preset.");
+  if (document.querySelectorAll('.signup-row.row-selected').length === 0) {
+    alert('Please select at least one character to save as a preset.');
     return;
   }
 
-  const errEl = document.getElementById('savePresetError');
-  if (errEl) {
-    errEl.textContent = '';
-    errEl.classList.add('d-none');
+  const error = document.getElementById('savePresetError');
+  if (error) {
+    error.textContent = '';
+    error.classList.add('d-none');
   }
-
   const nameInput = document.getElementById('presetNameInput');
   if (nameInput) nameInput.value = '';
 
-  if (!_savePresetModalInstance) {
-    _savePresetModalInstance = new bootstrap.Modal(document.getElementById('savePresetModal'));
+  if (!savePresetModal) {
+    savePresetModal = new bootstrap.Modal(document.getElementById('savePresetModal'));
   }
-  _savePresetModalInstance.show();
+  savePresetModal.show();
 }
 
 async function submitSavePreset() {
-  const name = document.getElementById('presetNameInput').value.trim();
-  const errEl = document.getElementById('savePresetError');
-
+  const nameInput = document.getElementById('presetNameInput');
+  const error = document.getElementById('savePresetError');
+  const name = nameInput ? nameInput.value.trim() : '';
   if (!name) {
-    errEl.textContent = 'Preset name is required.';
-    errEl.classList.remove('d-none');
+    error.textContent = 'Preset name is required.';
+    error.classList.remove('d-none');
     return;
   }
 
-  const charIds = [];
-  const prioIds = [];
+  const characterIds = [];
+  const priorityIds = [];
   const notes = {};
+  document.querySelectorAll('.signup-row.row-selected').forEach((row) => {
+    const id = Number.parseInt(row.dataset.charId, 10);
+    characterIds.push(id);
+    if (row.querySelector('.prio-star.prio-active')) priorityIds.push(id);
 
-  document.querySelectorAll('.signup-row.row-selected').forEach(row => {
-    const id = parseInt(row.dataset.charId);
-    charIds.push(id);
-
-    const star = row.querySelector('.prio-star');
-    if (star && star.classList.contains('prio-active')) {
-      prioIds.push(id);
-    }
-
-    const gIdx = row.dataset.groupIdx;
-    const noteInput = document.querySelector(`.signup-note-input[data-group-idx="${CSS.escape(gIdx)}"]`);
-    if (noteInput && noteInput.value.trim()) {
-      notes[id] = noteInput.value.trim();
-    }
+    const noteInput = document.querySelector(
+      `.signup-note-input[data-group-idx="${CSS.escape(row.dataset.groupIdx)}"]`
+    );
+    if (noteInput?.value.trim()) notes[id] = noteInput.value.trim();
   });
 
-  if (charIds.length === 0) {
-    errEl.textContent = 'No characters selected.';
-    errEl.classList.remove('d-none');
-    return;
-  }
-
   try {
-    const resp = await fetch('/characters/presets', {
+    const response = await fetch('/characters/presets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: name,
-        character_ids: charIds,
-        priority_ids: prioIds,
-        notes: notes
-      })
+        name,
+        character_ids: characterIds,
+        priority_ids: priorityIds,
+        notes,
+      }),
     });
-
-    const data = await resp.json();
-    if (data.ok) {
-      if (_savePresetModalInstance) _savePresetModalInstance.hide();
-      await loadPresets();
-    } else {
-      errEl.textContent = data.error || 'Failed to save preset.';
-      errEl.classList.remove('d-none');
-    }
-  } catch (err) {
-    errEl.textContent = 'An error occurred while saving.';
-    errEl.classList.remove('d-none');
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to save preset.');
+    savePresetModal?.hide();
+    await loadPresets();
+  } catch (requestError) {
+    error.textContent = requestError.message || 'An error occurred while saving.';
+    error.classList.remove('d-none');
   }
 }
 
 async function deleteSelectedPresets() {
   const select = document.getElementById('presetSelect');
   const presetIds = select
-    ? Array.from(select.selectedOptions).map(option => option.value).filter(Boolean)
+    ? Array.from(select.selectedOptions, (option) => option.value).filter(Boolean)
     : [];
   if (presetIds.length === 0) {
     alert('Select one or more presets to delete.');
     return;
   }
-  if (!confirm(`Delete ${presetIds.length} selected preset${presetIds.length === 1 ? '' : 's'}?`)) return;
+  if (!confirm(`Delete ${presetIds.length} selected preset${presetIds.length === 1 ? '' : 's'}?`)) {
+    return;
+  }
 
   try {
     for (const presetId of presetIds) {
-      const resp = await fetch(`/characters/presets/${encodeURIComponent(presetId)}`, { method: 'DELETE' });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) throw new Error(data.error || 'Delete failed');
+      const response = await fetch(`/characters/presets/${encodeURIComponent(presetId)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Delete failed');
     }
     await loadPresets();
-  } catch (err) {
-    console.error('Failed to delete presets', err);
+  } catch (error) {
+    console.error('Failed to delete presets', error);
     alert('Could not delete the selected preset(s).');
   }
 }
 
-// Populate hidden inputs and group highlights on page load
 document.addEventListener('DOMContentLoaded', () => {
-  buildHiddenInputs();
-  const groups = new Set();
-  document.querySelectorAll('.signup-row[data-group-idx]').forEach(row => {
-    groups.add(row.dataset.groupIdx);
-  });
-  groups.forEach(gIdx => updateGroupHighlight(gIdx));
-  document.querySelectorAll('.signup-note-input[data-group-idx]').forEach(input => {
-    handleNoteInput(input.dataset.groupIdx);
+  document.querySelectorAll('#signupForm .spec-toggle').forEach((toggle) => {
+    toggle.addEventListener('click', () => toggleRow(toggle.closest('.signup-row')));
   });
 
-  const select = document.getElementById('presetSelect');
-  if (select) {
+  document.querySelectorAll('#signupForm .prio-star').forEach((star) => {
+    star.addEventListener('click', (event) => {
+      event.stopPropagation();
+      togglePrio(star);
+    });
+  });
+
+  document.querySelectorAll('#signupForm .group-toggle-btn').forEach((toggle) => {
+    toggle.addEventListener('click', () => toggleGroupRows(toggle.dataset.groupIdx));
+  });
+
+  document.querySelectorAll('#signupForm .note-toggle-btn').forEach((toggle) => {
+    toggle.addEventListener('click', () => toggleNoteEditor(toggle.dataset.groupIdx));
+  });
+
+  document.querySelectorAll('#signupForm .signup-note-input').forEach((input) => {
+    input.addEventListener('input', () => {
+      const toggle = document.querySelector(
+        `.note-toggle-btn[data-group-idx="${CSS.escape(input.dataset.groupIdx)}"]`
+      );
+      if (toggle) toggle.classList.toggle('note-toggle-active', Boolean(input.value.trim()));
+      buildHiddenInputs();
+    });
+  });
+
+  const groups = new Set(
+    Array.from(document.querySelectorAll('.signup-row[data-group-idx]')).map(
+      (row) => row.dataset.groupIdx
+    )
+  );
+  groups.forEach((groupIdx) => updateGroupState(groupIdx));
+  buildHiddenInputs();
+
+  const presetSelect = document.getElementById('presetSelect');
+  if (presetSelect) {
     loadPresets();
-    select.addEventListener('change', (e) => {
-      applyPresets(Array.from(e.target.selectedOptions).map(option => option.value));
+    presetSelect.addEventListener('change', () => {
+      applyPresets(Array.from(presetSelect.selectedOptions, (option) => option.value));
     });
   }
 });

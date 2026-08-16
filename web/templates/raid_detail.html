@@ -6,229 +6,163 @@
 {% block content %}
 
 {# ── Raid Header ──────────────────────────────────────────────────────── #}
-<div class="card mb-4 p-4">
-  <div class="d-flex justify-content-between align-items-start">
+<section class="card raid-summary mb-4" aria-labelledby="raid-title">
+  <div class="raid-summary-main">
+    <div class="raid-kicker">{{ raid.raid_instance }}</div>
+    <h1 id="raid-title">{{ raid.name }}</h1>
+    <p class="raid-date">{{ raid.date | dateformat("%A, %d %B %Y · %H:%M UTC") }}</p>
+    {% if raid.description %}
+    <p class="raid-description">{{ raid.description }}</p>
+    {% endif %}
+  </div>
+  <div class="raid-status-block">
+    {% if raid.status == "open" %}
+      <span class="raid-status raid-status-open"><span aria-hidden="true"></span>Open for sign-ups</span>
+    {% else %}
+      <span class="raid-status raid-status-locked">Locked</span>
+    {% endif %}
+    <div class="raid-attendance">
+      <strong>{{ raid.signup_coming_count }}</strong> confirmed
+      <span aria-hidden="true">·</span>
+      <strong>{{ raid.signup_tentative_count }}</strong> tentative
+    </div>
+  </div>
+</section>
+
+{# ── Sign-Up Form ────────────────────────────────────────────────────── #}
+<section class="card signup-panel" aria-labelledby="signup-title">
+  <div class="signup-panel-heading">
     <div>
-      <h2>⚔️ {{ raid.name }}</h2>
-      <p class="text-muted mb-1">{{ raid.raid_instance }} &nbsp;|&nbsp; {{ raid.date | dateformat("%A, %d %B %Y %H:%M UTC") }}</p>
-      {% if raid.description %}
-      <p>{{ raid.description }}</p>
+      <div class="section-kicker">Your response</div>
+      <h2 id="signup-title">Choose what you can bring</h2>
+      {% if raid.status == "open" and (user_char_groups | length) > 0 %}
+      <p>Select one or more specs. Use the star to mark the spec you would most like to play.</p>
       {% endif %}
     </div>
-    <div class="text-end">
-      {% if raid.status == "open" %}
-        <span class="badge badge-open fs-6">🟢 Open</span>
-      {% else %}
-        <span class="badge badge-locked fs-6">🔒 Locked</span>
-      {% endif %}
-      <div class="mt-2 text-muted small">{{ raid.signup_coming_count }} + {{ raid.signup_tentative_count }} signed up</div>
-    </div>
+    {% if my_signup_count > 0 %}
+    <span class="saved-response{% if my_signup_is_tentative %} saved-response-tentative{% endif %}">
+      <span aria-hidden="true">{{ '◷' if my_signup_is_tentative else '✓' }}</span>
+      Saved as {{ 'tentative' if my_signup_is_tentative else 'confirmed' }}
+    </span>
+    {% endif %}
   </div>
-</div>
 
-<div class="row">
-  {# ── Sign-Up Form ─────────────────────────────────────────────────── #}
-  <div class="col-12 mb-4">
-    <div class="card p-3">
-      <h5>📝 Sign Up</h5>
-      {% if raid.status == "open" %}
-        {% if user_char_groups %}
-        <p class="text-muted small mb-2">Click a spec row to sign up with that spec (green = selected). Click the character or class name to toggle all specs at once. Click ⭐ to mark a spec as priority.</p>
-        <form method="post" action="{{ raid_url }}/signup" id="signupForm">
-          <div class="table-responsive mb-3">
-            <table class="table table-hover align-middle"
-                   aria-label="Your characters and specs. Click a row to sign up with that spec; click the star button to mark it as priority.">
-              <thead class="table-dark">
-                <tr>
-                  <th>Character</th>
-                  <th>Class</th>
-                  <th>Spec</th>
-                  <th>GS</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for group in user_char_groups %}
-                {% set group_idx = loop.index0 %}
-                {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
-                {% set alt = "row-group-alt" if loop.index is even else "" %}
-                {% for s in group.specs %}
-                {% set is_signed = my_signup_map[s.id] %}
-                {% set is_prio = my_signup_map[s.id] and my_signup_map[s.id].signup_type == 'prio_character' %}
-                <tr class="signup-row {{ alt }}{% if is_signed %} row-selected{% endif %}"
-                    data-char-id="{{ s.id }}"
-                    data-group-idx="{{ group_idx }}"
-                    tabindex="0"
-                    role="row"
-                    aria-selected="{{ 'true' if is_signed else 'false' }}"
-                    onclick="toggleRow(this)"
-                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRow(this);}"
-                    style="cursor:pointer; user-select:none">
-                  {% if loop.index == 1 %}
-                  <td class="fw-bold cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
-                      onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
-                      style="cursor:pointer">
-                    <span>{{ group.char_name }}</span>
-                    <button type="button"
-                            class="note-toggle-btn{% if group.note %} note-toggle-active{% endif %}"
-                            data-group-idx="{{ group_idx }}"
-                            aria-expanded="{{ 'true' if group.note else 'false' }}"
-                            aria-label="Toggle note for {{ group.char_name }}"
-                            onclick="event.stopPropagation(); toggleNoteRow('{{ group_idx }}')">📝</button>
-                  </td>
-                  <td class="cls-{{ cls_key }} group-cell" rowspan="{{ group.specs | length }}"
-                      onclick="event.stopPropagation(); toggleGroupRows('{{ group_idx }}')"
-                      style="cursor:pointer">{{ group.char_class or "—" }}</td>
-                  {% endif %}
-                  <td>{{ s.spec or "?" }}</td>
-                  <td class="text-muted">{{ s.gearscore | gsformat if s.gearscore else "—" }}</td>
-                  <td class="text-center" style="width:40px">
-                    <button type="button"
-                            class="prio-star{% if is_prio %} prio-active{% endif %}"
-                            onclick="event.stopPropagation(); togglePrio(this)"
-                            aria-pressed="{{ 'true' if is_prio else 'false' }}"
-                            aria-label="Mark {{ s.spec or group.char_name }} as priority">⭐</button>
-                  </td>
-                </tr>
-                {% if loop.last %}
-                <tr class="signup-note-row{% if not group.note %} d-none{% endif %}" data-group-idx="{{ group_idx }}">
-                  <td colspan="5">
-                    <textarea class="form-control form-control-sm signup-note-input"
-                              data-group-idx="{{ group_idx }}"
-                              rows="2"
-                              maxlength="{{ signup_note_max_length }}"
-                              placeholder="Optional note for {{ group.char_name }} (applies to selected specs for this character)."
-                              oninput="handleNoteInput('{{ group_idx }}')">{{ group.note or '' }}</textarea>
-                  </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div id="hiddenInputs"></div>
-          <div class="d-flex gap-2 align-items-center mb-3">
-            <button type="submit" class="btn btn-wow" id="signupBtn" name="signup_mode" value="signed">
-              {% if my_signup_count > 0 %}Update Sign-up{% else %}Sign Up{% endif %}
-            </button>
-            <button type="submit" class="btn btn-outline-secondary" id="tentativeBtn" name="signup_mode" value="tentative">
-              ❓ {% if my_signup_count > 0 %}Update as Tentative{% else %}Sign Up as Tentative{% endif %}
-            </button>
-          </div>
-        </form>
-
-        {% if my_signup_count > 0 %}
-        <form method="post" action="{{ raid_url }}/withdraw" class="mt-2">
-          <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw</button>
-        </form>
-        {% endif %}
-        {% else %}
-        <p class="text-muted small">
-          You have no registered characters.
-          <a href="/profile">Register one on your profile.</a>
-        </p>
-        {% endif %}
-      {% else %}
-        <p class="text-muted">This raid is no longer accepting sign-ups.</p>
-        {% if my_signup_count > 0 %}
-        <div class="alert alert-secondary p-2 small">
-          You are signed up with {{ my_signup_count }} character{{ 's' if my_signup_count != 1 else '' }}.
+  {% if raid.status == "open" %}
+    {% if (user_char_groups | length) > 0 %}
+    <form method="post" action="{{ raid_url }}/signup" id="signupForm">
+      <div class="signup-toolbar">
+        <div class="selection-overview" aria-live="polite" aria-atomic="true">
+          <strong id="selectionCount">No specs selected</strong>
+          <span id="selectionDetail">Choose at least one spec to continue.</span>
         </div>
-        {% endif %}
-      {% endif %}
-    </div>
-  </div>
+        <div class="signup-actions">
+          <button type="submit" class="btn btn-wow" id="signupBtn" name="signup_mode" value="signed">
+            Save as confirmed
+          </button>
+          <button type="submit" class="btn btn-outline-secondary" id="tentativeBtn" name="signup_mode" value="tentative">
+            Save as tentative
+          </button>
+        </div>
+      </div>
 
-  {# ── Current Sign-ups ─────────────────────────────────────────────── #}
-  <div class="col-12">
-    <div class="card p-3">
-      <h5 class="mb-2">📋 Your Sign-ups</h5>
-      {% set all_sups = (grouped_signups.fill or []) | list + (grouped_signups.prio_role or []) | list + (grouped_signups.prio_character or []) | list + (grouped_signups.tentative or []) | list %}
-      {% if all_sups | length > 0 %}
-        {# Preferred and Fill signups #}
-        {% set signupTypeLabels = [{"key": "prio_character", "label": "⭐ Preferred Character"}, {"key": "prio_role", "label": "⭐ Preferred Role"}, {"key": "fill", "label": "Fill"}] %}
-        {% for item in signupTypeLabels %}
-          {% set sups = grouped_signups[item.key] or [] %}
-          {% if sups | length > 0 %}
-          <div class="signup-section" data-section="{{ item.key }}">
-            <h6 class="text-muted mt-2">{{ item.label }}</h6>
-            <div class="row g-2 mb-3">
-              {% for s in sups %}
-              {% set c = s.character %}
-              {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-              {% set first_spec = c.specs[0].spec if c.specs else "" %}
-              <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
-                <div class="card p-2 h-100 border-secondary">
-                  <div class="d-flex justify-content-between align-items-center">
-                    <span class="fw-bold cls-{{ cls_key }}">
-                      {{ c.char_name }}
-                      {% if c.note %}
-                      <button type="button"
-                              class="my-note-toggle"
-                              aria-expanded="false"
-                              aria-label="Toggle note for {{ c.char_name }}"
-                              onclick="toggleMySignupNote(this)">📝</button>
-                      {% endif %}
-                    </span>
-                    <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
-                  </div>
-                  {% if c.note %}
-                  <div class="my-signup-note d-none mt-1">{{ c.note }}</div>
-                  {% endif %}
-                  <small class="text-muted">
-                    {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
-                  </small>
-                </div>
-              </div>
-              {% endfor %}
+      <div class="character-grid" aria-label="Your characters and specializations">
+        {% for group in user_char_groups %}
+        {% set group_idx = loop.index0 %}
+        {% set cls_key = (group.char_class or "") | lower | replace(" ", "-") %}
+        <article class="signup-character" data-group-idx="{{ group_idx }}">
+          <header class="character-header group-cell">
+            <div class="character-identity">
+              <strong class="cls-{{ cls_key }}">{{ group.char_name }}</strong>
+              <span>{{ group.char_class or "Unknown class" }}</span>
             </div>
-          </div>
-          {% endif %}
-        {% endfor %}
-        {# ── Tentative ── #}
-        {% set tentative_sups = grouped_signups.tentative or [] %}
-        {% if tentative_sups | length > 0 %}
-        <div class="signup-section" data-section="tentative">
-          <h6 class="text-muted mt-2">❓ Tentative</h6>
-          <div class="row g-2 mb-3">
-            {% for s in tentative_sups %}
-            {% set c = s.character %}
-            {% set cls_key = (c.char_class or "") | lower | replace(" ", "-") %}
-            {% set first_spec = c.specs[0].spec if c.specs else "" %}
-            <div class="col-sm-6 signup-card-col" data-spec="{{ first_spec }}" data-class="{{ c.char_class or '' }}">
-              <div class="card p-2 h-100 border-secondary">
-                <div class="d-flex justify-content-between align-items-center">
-                  <span class="fw-bold cls-{{ cls_key }} tentative-name">
-                    {{ c.char_name }}
-                    {% if c.note %}
-                    <button type="button"
-                            class="my-note-toggle"
-                            aria-expanded="false"
-                            aria-label="Toggle note for {{ c.char_name }}"
-                            onclick="toggleMySignupNote(this)">📝</button>
-                    {% endif %}
-                  </span>
-                  <span class="badge bg-secondary">{{ c.char_class or "?" }}</span>
-                </div>
-                {% if c.note %}
-                <div class="my-signup-note d-none mt-1">{{ c.note }}</div>
-                {% endif %}
-                <small class="text-muted">
-                  {% for sp in c.specs %}{% if sp.is_prio %}⭐ {% endif %}{% if sp.is_saved %}❌ {% endif %}{{ sp.spec or "?" }} GS {{ sp.gearscore | gsformat }}{% if not loop.last %} / {% endif %}{% endfor %}
-                </small>
-              </div>
+            <div class="character-tools">
+              <button type="button"
+                      class="note-toggle-btn{% if group.note %} note-toggle-active{% endif %}"
+                      data-group-idx="{{ group_idx }}"
+                      aria-expanded="{{ 'true' if group.note else 'false' }}"
+                      aria-label="{{ 'Edit' if group.note else 'Add' }} note for {{ group.char_name }}">
+                <span aria-hidden="true">✎</span> Note
+              </button>
+              <button type="button"
+                      class="group-toggle-btn"
+                      data-group-idx="{{ group_idx }}"
+                      aria-pressed="false">
+                Select all
+              </button>
+            </div>
+          </header>
+
+          <div class="spec-list">
+            {% for s in group.specs %}
+            {% set is_signed = my_signup_map[s.id] %}
+            {% set is_prio = my_signup_map[s.id] and my_signup_map[s.id].signup_type == 'prio_character' %}
+            <div class="signup-row{% if is_signed %} row-selected{% endif %}"
+                 data-char-id="{{ s.id }}"
+                 data-char-name="{{ group.char_name }}"
+                 data-spec-name="{{ s.spec or '?' }}"
+                 data-group-idx="{{ group_idx }}">
+              <button type="button"
+                      class="spec-toggle"
+                      aria-pressed="{{ 'true' if is_signed else 'false' }}"
+                      aria-label="{{ 'Remove' if is_signed else 'Select' }} {{ group.char_name }} {{ s.spec or 'spec' }}">
+                <span class="spec-check" aria-hidden="true">✓</span>
+                <span class="spec-name">{{ s.spec or "Unknown spec" }}</span>
+                <span class="spec-gearscore">{{ s.gearscore | gsformat if s.gearscore else "No GS" }}</span>
+              </button>
+              <button type="button"
+                      class="prio-star{% if is_prio %} prio-active{% endif %}"
+                      aria-pressed="{{ 'true' if is_prio else 'false' }}"
+                      aria-label="Mark {{ group.char_name }} {{ s.spec or 'spec' }} as preferred"
+                      title="Mark as preferred">
+                <span aria-hidden="true">★</span>
+              </button>
             </div>
             {% endfor %}
           </div>
-        </div>
-        {% endif %}
+
+          <div class="signup-note-editor{% if not group.note %} d-none{% endif %}" data-group-idx="{{ group_idx }}">
+            <label for="signup-note-{{ group_idx }}">Note for {{ group.char_name }}</label>
+            <textarea id="signup-note-{{ group_idx }}"
+                      class="form-control form-control-sm signup-note-input"
+                      data-group-idx="{{ group_idx }}"
+                      rows="2"
+                      maxlength="{{ signup_note_max_length }}"
+                      placeholder="Anything the raid lead should know?">{{ group.note or '' }}</textarea>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+
+      <div id="hiddenInputs"></div>
+    </form>
+
+    {% if my_signup_count > 0 %}
+    <form method="post" action="{{ raid_url }}/withdraw" class="withdraw-form">
+      <span>Can no longer make it?</span>
+      <button type="submit" class="btn btn-link text-danger">Withdraw from this raid</button>
+    </form>
+    {% endif %}
+    {% else %}
+    <div class="empty-signup-state">
+      <div class="empty-state-mark" aria-hidden="true">+</div>
+      <div>
+        <h3>Add a character before signing up</h3>
+        <p>Your characters and specs will appear here once they are registered.</p>
+        <a href="/profile" class="btn btn-wow">Go to your profile</a>
+      </div>
+    </div>
+    {% endif %}
+  {% else %}
+    <div class="closed-signup-state">
+      <strong>Sign-ups are closed</strong>
+      {% if my_signup_count > 0 %}
+      <span>Your saved response includes {{ my_signup_count }} spec{{ 's' if my_signup_count != 1 else '' }}.</span>
       {% else %}
-        <p class="text-muted">You haven't signed up for this raid yet.</p>
+      <span>This raid is no longer accepting responses.</span>
       {% endif %}
     </div>
-  </div>
-</div>
+  {% endif %}
+</section>
 {% endblock %}
 
 {% block scripts %}
