@@ -108,6 +108,20 @@ The chosen guild is stored in the session for the rest of the visit.
 
 ---
 
+### US-2.5 Edit a Character in Discord
+**As a** player,
+**I want to** choose one of my characters and edit it in a pre-filled Discord form,
+**so that** I can correct or refresh its details without remembering command parameters.
+
+**Flow:** Run `/my_characters` or open the Discord character guide → choose a character and
+specialization → edit its name, realm, class, specialization, or gearscore → save.
+
+- Name, realm, and class changes apply to every specialization for that character.
+- Specialization and gearscore changes apply only to the selected entry.
+- The editor is private, guild-scoped, and verifies that the selected character belongs to the user.
+
+---
+
 ## 3. Character Management (Web App)
 
 ### US-3.1 View My Characters

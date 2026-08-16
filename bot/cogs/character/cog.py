@@ -18,6 +18,7 @@ from bot.discord_utils import get_top_role_name
 from bot.role_utils import get_role_from_spec
 from db.models import Character, CharacterSuggestion, SuggestionStatus
 
+from .edit_flow import CharacterEditView, fetch_editable_characters
 from .helpnoobs import HelpNoobsChoiceView
 
 logger = logging.getLogger(__name__)
@@ -286,7 +287,38 @@ class AddCharactersModal(discord.ui.Modal, title="Add Characters"):
             return
 
         embed = _build_success_embed(char_spec_info)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        try:
+            editable_characters = await loop.run_in_executor(
+                None,
+                fetch_editable_characters,
+                guild_id,
+                discord_user_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to load character editor for user %s in guild %s",
+                discord_user_id,
+                guild_id,
+            )
+            editable_characters = []
+
+        view = None
+        if editable_characters:
+            view = CharacterEditView(
+                user_id=discord_user_id,
+                guild_id=guild_id,
+                characters=editable_characters,
+            )
+            embed.set_footer(text="Choose a character below to edit it.")
+
+        message = await interaction.followup.send(
+            embed=embed,
+            view=view,
+            ephemeral=True,
+            wait=True,
+        )
+        if view is not None:
+            view.message = message
 
 
 class CharacterCog(commands.Cog):
@@ -296,18 +328,17 @@ class CharacterCog(commands.Cog):
     # ── /helpnoobs ────────────────────────────────────────────────────────
     @app_commands.command(
         name="helpnoobs",
-        description="Post the guided character setup launcher (Officer only).",
+        description="Post the guided character management launcher (Officer only).",
     )
     @app_commands.guild_only()
     @is_officer()
     async def helpnoobs(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="👋 Need help adding your characters?",
+            title="👋 Need help managing your characters?",
             description=(
-                "Choose where you'd like to set them up. I'll guide you one step at a time, "
-                "and your answers will stay private.\n\n"
-                "💬 **Discord** — continue in a DM with me\n"
-                "🌐 **Website** — use a guided form in your browser"
+                "Choose where you'd like to add or edit them. Your answers will stay private.\n\n"
+                "💬 **Discord** — use a guided flow in a DM with me\n"
+                "🌐 **Website** — manage them in your browser"
             ),
             color=discord.Color.blurple(),
         )
@@ -931,7 +962,9 @@ class CharacterCog(commands.Cog):
             title=f"Characters for {interaction.user.display_name}",
             color=discord.Color.blurple(),
         )
-        for char in chars:
+        if len(chars) > 25:
+            embed.description = f"Showing the first 25 of {len(chars)} character entries."
+        for char in chars[:25]:
             role_str = char.role.value.capitalize() if char.role else "Not set"
             field_name = f"{char.char_name} ({char.realm})"
             if char.spec:
@@ -947,7 +980,38 @@ class CharacterCog(commands.Cog):
                 inline=True,
             )
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        try:
+            editable_characters = await loop.run_in_executor(
+                None,
+                fetch_editable_characters,
+                guild_id,
+                discord_user_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to load character editor for user %s in guild %s",
+                discord_user_id,
+                guild_id,
+            )
+            editable_characters = []
+
+        view = None
+        if editable_characters:
+            view = CharacterEditView(
+                user_id=discord_user_id,
+                guild_id=guild_id,
+                characters=editable_characters,
+            )
+            embed.set_footer(text="Choose a character below to edit it.")
+
+        message = await interaction.followup.send(
+            embed=embed,
+            view=view,
+            ephemeral=True,
+            wait=True,
+        )
+        if view is not None:
+            view.message = message
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):

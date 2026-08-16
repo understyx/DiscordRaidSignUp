@@ -16,6 +16,8 @@ from bot.role_utils import get_role_from_spec
 from bot.wow import REALMS, WOW_CLASSES
 from db.models import Character
 
+from .edit_flow import CharacterEditView, build_edit_picker_embed, fetch_editable_characters
+
 logger = logging.getLogger(__name__)
 
 _CHARACTER_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
@@ -36,9 +38,7 @@ def validate_character_details(name: str, realm: str, gearscore: str) -> tuple[s
     try:
         normalized_gearscore = parse_gs(gearscore)
     except ValueError as exc:
-        raise ValueError(
-            "Gearscore must look like `6200`, `6.2k`, `6.2`, or `BiS`."
-        ) from exc
+        raise ValueError("Gearscore must look like `6200`, `6.2k`, `6.2`, or `BiS`.") from exc
 
     return normalized_name, normalized_realm, normalized_gearscore
 
@@ -116,19 +116,19 @@ def _class_embed(guild_name: str) -> discord.Embed:
 
 def _method_embed(guild_name: str) -> discord.Embed:
     embed = discord.Embed(
-        title="⚔️ How would you like to add your characters?",
+        title="⚔️ How would you like to manage your characters?",
         description=(
-            f"You're adding characters to **{guild_name}**. Choose whichever method is easier:\n\n"
+            f"You're managing characters for **{guild_name}**. Choose what you want to do:\n\n"
             "🧭 **Guided setup** — add characters individually with class and spec menus\n"
-            "📝 **Add all at once** — paste your whole character list in one message"
+            "📝 **Add all at once** — paste your whole character list in one message\n"
+            "✏️ **Edit existing** — choose a saved character and update its details"
         ),
         color=discord.Color.blurple(),
     )
     embed.add_field(
         name="Have several characters?",
         value=(
-            "The text method can register multiple characters and multiple specs "
-            "at the same time."
+            "The text method can register multiple characters and multiple specs at the same time."
         ),
         inline=False,
     )
@@ -203,9 +203,7 @@ class _OwnedView(discord.ui.View):
 
 class _ClassSelect(discord.ui.Select):
     def __init__(self):
-        options = [
-            discord.SelectOption(label=class_name, emoji="⚔️") for class_name in WOW_CLASSES
-        ]
+        options = [discord.SelectOption(label=class_name, emoji="⚔️") for class_name in WOW_CLASSES]
         super().__init__(placeholder="Choose a class…", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -261,9 +259,7 @@ class DiscordMethodView(_OwnedView):
         style=discord.ButtonStyle.secondary,
         emoji="📝",
     )
-    async def bulk_text(
-        self, interaction: discord.Interaction, _button: discord.ui.Button
-    ) -> None:
+    async def bulk_text(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         next_view = BulkTextHelpView(
             user_id=self.user_id,
             guild_id=self.guild_id,
@@ -273,6 +269,50 @@ class DiscordMethodView(_OwnedView):
         next_view.message = interaction.message
         await interaction.response.edit_message(
             embed=_bulk_text_embed(self.guild_name), view=next_view
+        )
+
+    @discord.ui.button(
+        label="Edit existing characters",
+        style=discord.ButtonStyle.secondary,
+        emoji="✏️",
+    )
+    async def edit_existing(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        await interaction.response.defer()
+        try:
+            characters = await asyncio.get_running_loop().run_in_executor(
+                None,
+                fetch_editable_characters,
+                self.guild_id,
+                self.user_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to load editable characters for user %s in guild %s",
+                self.user_id,
+                self.guild_id,
+            )
+            await interaction.followup.send(
+                "❌ I couldn't load your characters. Please try again later."
+            )
+            return
+
+        if not characters:
+            await interaction.followup.send(
+                "You don't have any characters to edit yet. Add one first."
+            )
+            return
+
+        next_view = CharacterEditView(
+            user_id=self.user_id,
+            guild_id=self.guild_id,
+            characters=characters,
+        )
+        next_view.message = interaction.message
+        await interaction.edit_original_response(
+            embed=build_edit_picker_embed(self.guild_name, len(characters)),
+            view=next_view,
         )
 
 

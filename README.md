@@ -273,7 +273,8 @@ configuration file rather than command-line arguments.
 |---------|-------------|
 | `/addcharacter` | Register a character with class, spec(s), and gearscore(s) (up to 6 specs) |
 | `/remove_character` | Remove a registered character (optionally by spec) |
-| `/my_characters` | List all your registered characters |
+| `/my_characters` | List your registered characters and open the guided character editor |
+| `/edit_character` | Quickly update a character with slash-command options |
 | `/saves view` | Show all raid-save (lockout) states for your characters |
 | `/saves set` | Mark a character as saved or not saved for a raid instance |
 | `/saves toggle` | Toggle the save state for a character on a raid instance |
@@ -284,7 +285,7 @@ configuration file rather than command-line arguments.
 | Command | Description |
 |---------|-------------|
 | `/create_raid` | Create a new raid via a modal dialog (Officer only) |
-| `/helpnoobs` | Post a reusable character-setup embed that guides members through Discord or the website (Officer only) |
+| `/helpnoobs` | Post a reusable character-management embed for guided Discord or website flows (Officer only) |
 | `/saves clear_all` | Clear all raid saves — equivalent to a weekly Warmane reset (Officer only) |
 
 ### Server Manager Commands
