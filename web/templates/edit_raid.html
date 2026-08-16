@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ raid.name }} – RaidBot{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card p-4">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+        <div>
+          <div class="text-uppercase text-muted small fw-semibold mb-1">Officer tools</div>
+          <h3 class="mb-1">✏️ Edit Raid</h3>
+          <p class="text-muted mb-0">Changes also refresh the original Discord raid post.</p>
+        </div>
+        <a href="{{ raid_url }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
+      </div>
+
+      <form method="post" action="{{ raid_url }}/edit">
+        <div class="mb-3">
+          <label for="raidName" class="form-label">Raid Name</label>
+          <input id="raidName" type="text" name="name"
+                 value="{{ raid.name }}"
+                 class="form-control bg-dark text-light border-secondary"
+                 required maxlength="100" />
+        </div>
+        <div class="mb-3">
+          <label for="raidInstance" class="form-label">Raid Instance</label>
+          <input id="raidInstance" type="text" name="raid_instance"
+                 value="{{ raid.raid_instance }}"
+                 class="form-control bg-dark text-light border-secondary"
+                 required maxlength="100" />
+        </div>
+        <div class="row">
+          <div class="col-md-8 mb-3">
+            <label for="raidDate" class="form-label">Date &amp; Time (UTC)</label>
+            <input id="raidDate" type="datetime-local" name="date"
+                   value="{{ date_value }}"
+                   class="form-control bg-dark text-light border-secondary"
+                   required />
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="raidSize" class="form-label">Raid Size</label>
+            <input id="raidSize" type="number" name="max_size"
+                   value="{{ raid.max_size or 25 }}" min="1" max="100"
+                   class="form-control bg-dark text-light border-secondary"
+                   required />
+          </div>
+        </div>
+        <div class="mb-4">
+          <label for="raidDescription" class="form-label">Description</label>
+          <textarea id="raidDescription" name="description"
+                    class="form-control bg-dark text-light border-secondary"
+                    rows="4" maxlength="500"
+                    placeholder="Optional notes...">{{ raid.description or '' }}</textarea>
+          <div class="form-text">Up to 500 characters.</div>
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <a href="{{ raid_url }}" class="btn btn-outline-secondary">Cancel</a>
+          <button type="submit" class="btn btn-wow">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

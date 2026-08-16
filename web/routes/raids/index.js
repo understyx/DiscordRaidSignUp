@@ -5,6 +5,7 @@ const fs = require('fs');
 const pool = require('../../db');
 const { createRaidRepository } = require('../../repositories/raids');
 const { raidBaseUrl } = require('../../services/raids');
+const { normalizeRaidEditInput, formatRaidDateInput } = require('../../services/raidEdits');
 const { parseSignupSelection } = require('../../services/signup');
 const { resolveIsAdmin } = require('../adminCheck');
 const { requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
@@ -15,6 +16,7 @@ const {
   compTabLabel,
   fetchUserGuildRoles,
   buildCompEmbed,
+  syncRaidSignupMessage,
 } = require('./embeds');
 
 const WOTLK_BUFFS = JSON.parse(
@@ -90,6 +92,7 @@ const routeDependencies = {
   fetchCompLabels,
   fetchSpecAliases,
   fetchUserGuildRoles,
+  formatRaidDateInput,
   fs,
   getRaidByUrlParams,
   getRoleFromSpec,
@@ -100,15 +103,18 @@ const routeDependencies = {
   postToDiscordChannel,
   postToRaidLogThread,
   raidBaseUrl,
+  normalizeRaidEditInput,
   requireAdmin,
   requireLogin,
   resolveIsAdmin,
+  syncRaidSignupMessage,
 };
 
 require('./listRoutes')(router, routeDependencies);
 require('./legacyRoutes')(router, routeDependencies);
 require('./presetRoutes')(router, routeDependencies);
 require('./signupRoutes')(router, routeDependencies);
+require('./editRoutes')(router, routeDependencies);
 require('./managePageRoutes')(router, routeDependencies);
 require('./manageMutationRoutes')(router, routeDependencies);
 require('./compositionRoutes')(router, routeDependencies);

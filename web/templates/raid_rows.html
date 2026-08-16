@@ -17,6 +17,18 @@
     <a href="/raids/{{ r.guild_raid_number }}" class="btn btn-sm btn-outline-light">Sign Up</a>
     {% if item.can_manage %}
     <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-warning">View &amp; Manage comp</a>
+    <a href="/raids/{{ r.guild_raid_number }}/edit" class="btn btn-sm btn-outline-info">✏️ Edit</a>
+    {% if r.status == "open" %}
+    <form method="post" action="/raids/{{ r.guild_raid_number }}/lock" class="d-inline">
+      <input type="hidden" name="return_to" value="list" />
+      <button type="submit" class="btn btn-sm btn-outline-danger">🔒 Lock</button>
+    </form>
+    {% else %}
+    <form method="post" action="/raids/{{ r.guild_raid_number }}/unlock" class="d-inline">
+      <input type="hidden" name="return_to" value="list" />
+      <button type="submit" class="btn btn-sm btn-outline-success">🟢 Unlock</button>
+    </form>
+    {% endif %}
     {% else %}
     <a href="/raids/{{ r.guild_raid_number }}/manage" class="btn btn-sm btn-outline-secondary">View comp</a>
     {% endif %}

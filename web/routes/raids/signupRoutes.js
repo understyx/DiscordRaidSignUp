@@ -27,6 +27,8 @@ function registerSignupRoutes(router, dependencies) {
     raidBaseUrl,
     requireAdmin,
     requireLogin,
+    resolveIsAdmin,
+    syncRaidSignupMessage,
   } = dependencies;
 
   // GET /raids/:raid_number
@@ -40,6 +42,7 @@ function registerSignupRoutes(router, dependencies) {
     if (!raid) return res.redirect('/raids');
 
     const raidId = raid.id;
+    const canManage = await resolveIsAdmin(req.session.user_id, String(raid.guild_id));
 
     const [[counts]] = await pool.query(
       `SELECT
@@ -121,6 +124,7 @@ function registerSignupRoutes(router, dependencies) {
       signup_note_max_length: SIGNUP_NOTE_MAX_LENGTH,
       flash: popFlash(req),
       user: currentUser(req),
+      can_manage: canManage,
     });
   });
 
@@ -294,6 +298,11 @@ function registerSignupRoutes(router, dependencies) {
     } catch (err) {
       console.warn('[log-thread] Failed to post signup log:', err.message || err);
     }
+    try {
+      await syncRaidSignupMessage(raid);
+    } catch (err) {
+      console.warn('[signup] Failed to refresh Discord raid post:', err.message || err);
+    }
 
     req.session.flash = isTentative ? '❓ Signed up as tentative!' : '✅ Signed up!';
     res.redirect(raidUrl);
@@ -342,6 +351,11 @@ function registerSignupRoutes(router, dependencies) {
         await postToRaidLogThread(raid.id, `❌ <@${userId}> withdrew from the raid.`, userId);
       } catch (err) {
         console.warn('[log-thread] Failed to post withdraw log:', err.message || err);
+      }
+      try {
+        await syncRaidSignupMessage(raid);
+      } catch (err) {
+        console.warn('[withdraw] Failed to refresh Discord raid post:', err.message || err);
       }
     } else {
       req.session.flash = 'You were not signed up.';

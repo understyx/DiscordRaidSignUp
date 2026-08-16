@@ -7,6 +7,9 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'raidbot',
   password: process.env.DB_PASSWORD || 'changeme',
   database: process.env.DB_NAME || 'raidbot',
+  // Raid DATETIME values are stored as UTC by the bot. Decode and encode them
+  // as UTC regardless of the web server's local timezone.
+  timezone: 'Z',
   waitForConnections: true,
   connectionLimit: 10,
   supportBigNumbers: true,

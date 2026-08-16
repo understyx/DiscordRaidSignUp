@@ -284,6 +284,7 @@ configuration file rather than command-line arguments.
 | Command | Description |
 |---------|-------------|
 | `/create_raid` | Create a new raid via a modal dialog (Officer only) |
+| `/edit_raid` | Edit a posted raid and refresh its original Discord message (Officer only) |
 | `/helpnoobs` | Post a reusable launcher for guided setup and useful bot commands (Officer only) |
 | `/saves clear_all` | Clear all raid saves — equivalent to a weekly Warmane reset (Officer only) |
 

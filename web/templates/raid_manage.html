@@ -14,12 +14,18 @@
       <h3 class="mb-0">🛠️ {{ raid.name }}</h3>
       <div>
         {% if can_edit %}
+        <a href="{{ raid_url }}/edit" class="btn btn-outline-info btn-sm me-2">✏️ Edit Raid</a>
+        {% if raid.status == "open" %}
         <form method="post" action="{{ raid_url }}/lock" class="d-inline">
+          <input type="hidden" name="return_to" value="manage" />
           <button class="btn btn-outline-danger btn-sm me-2">🔒 Lock Raid</button>
         </form>
+        {% else %}
         <form method="post" action="{{ raid_url }}/unlock" class="d-inline">
+          <input type="hidden" name="return_to" value="manage" />
           <button class="btn btn-outline-success btn-sm me-2">🟢 Unlock Raid</button>
         </form>
+        {% endif %}
         <span id="saveStatus" class="text-muted me-2" style="font-size:0.78rem;"></span>
         <button id="saveBtn" class="btn btn-success btn-sm me-2" onclick="saveComp()">💾 Save &amp; Reload</button>
         <form method="post" action="{{ raid_url }}/post_comp?comp={{ current_comp }}" class="d-inline" id="postForm">

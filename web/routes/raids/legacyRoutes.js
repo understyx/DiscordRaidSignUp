@@ -73,6 +73,18 @@ function registerLegacyRoutes(router, dependencies) {
     const qs = req.query.comp ? `?comp=${req.query.comp}` : '';
     res.redirect(308, `/raids/${raidNumber}/manage${qs}`);
   });
+  router.get('/:guild_id/:raid_number/edit', (req, res, next) => {
+    if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+    const raidNumber = parseInt(req.params.raid_number);
+    if (isNaN(raidNumber)) return next();
+    res.redirect(301, `/raids/${raidNumber}/edit`);
+  });
+  router.post('/:guild_id/:raid_number/edit', (req, res, next) => {
+    if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
+    const raidNumber = parseInt(req.params.raid_number);
+    if (isNaN(raidNumber)) return next();
+    res.redirect(308, `/raids/${raidNumber}/edit`);
+  });
   router.get('/:guild_id/:raid_number/manage/json', (req, res, next) => {
     if (!GUILD_ID_RE.test(req.params.guild_id)) return next();
     const raidNumber = parseInt(req.params.raid_number);

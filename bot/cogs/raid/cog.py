@@ -17,6 +17,13 @@ from db.models import GuildAdminRole, Raid, RaidStatus
 logger = logging.getLogger(__name__)
 
 
+def _parse_raid_datetime(value: str) -> datetime.datetime:
+    """Parse the UTC date format shared by the create and edit modals."""
+    return datetime.datetime.strptime(value.strip(), "%Y-%m-%d %H:%M").replace(
+        tzinfo=datetime.timezone.utc
+    )
+
+
 @dataclass
 class _RaidEmbed:
     """Lightweight dataclass used to build a signup embed before the DB object is available."""
@@ -34,10 +41,12 @@ def is_officer():
     """App-command check: user must have OFFICER_ROLE_NAME, manage_guild permission, or be a Raid Admin."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if interaction.user.guild_permissions.manage_guild:
+        guild_permissions = getattr(interaction.user, "guild_permissions", None)
+        if guild_permissions and guild_permissions.manage_guild:
             return True
 
-        if any(r.name == OFFICER_ROLE_NAME for r in interaction.user.roles):
+        user_roles = getattr(interaction.user, "roles", [])
+        if any(r.name == OFFICER_ROLE_NAME for r in user_roles):
             return True
 
         if interaction.guild_id:
@@ -62,7 +71,7 @@ def is_officer():
 
             admin_role_ids = await loop.run_in_executor(None, _get_admin_roles)
             if admin_role_ids:
-                user_role_ids = {r.id for r in interaction.user.roles}
+                user_role_ids = {r.id for r in user_roles}
                 if any(rid in user_role_ids for rid in admin_role_ids):
                     return True
 
@@ -120,9 +129,7 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            raid_dt = datetime.datetime.strptime(
-                self.raid_date.value.strip(), "%Y-%m-%d %H:%M"
-            ).replace(tzinfo=datetime.timezone.utc)
+            raid_dt = _parse_raid_datetime(self.raid_date.value)
         except ValueError:
             await interaction.response.send_message(
                 "❌ Invalid date format. Use `YYYY-MM-DD HH:MM`.", ephemeral=True
@@ -265,6 +272,109 @@ class CreateRaidModal(discord.ui.Modal, title="Create Raid"):
             pass
 
 
+class EditRaidModal(discord.ui.Modal):
+    def __init__(self, raid: dict):
+        super().__init__(title=f"Edit Raid #{raid['guild_raid_number']}")
+        self.raid_id = raid["id"]
+        self.raid_name = discord.ui.TextInput(
+            label="Raid Name", default=raid["name"], max_length=100
+        )
+        self.raid_instance = discord.ui.TextInput(
+            label="Raid Instance", default=raid["raid_instance"], max_length=100
+        )
+        self.raid_date = discord.ui.TextInput(
+            label="Date (YYYY-MM-DD HH:MM UTC)",
+            default=raid["date"].strftime("%Y-%m-%d %H:%M"),
+            max_length=16,
+        )
+        self.description = discord.ui.TextInput(
+            label="Description",
+            style=discord.TextStyle.paragraph,
+            default=raid["description"] or "",
+            required=False,
+            max_length=500,
+        )
+        self.max_size = discord.ui.TextInput(
+            label="Raid Size (1-100)", default=str(raid["max_size"] or 25), max_length=3
+        )
+        self.add_item(self.raid_name)
+        self.add_item(self.raid_instance)
+        self.add_item(self.raid_date)
+        self.add_item(self.description)
+        self.add_item(self.max_size)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            raid_dt = _parse_raid_datetime(self.raid_date.value)
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Invalid date format. Use `YYYY-MM-DD HH:MM` in UTC.", ephemeral=True
+            )
+            return
+
+        try:
+            max_size = int(self.max_size.value.strip())
+            if not 1 <= max_size <= 100:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Raid size must be a whole number from 1 to 100.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        loop = asyncio.get_running_loop()
+
+        def _update():
+            session = get_session()
+            try:
+                raid = session.get(Raid, self.raid_id)
+                if raid is None or raid.guild_id != interaction.guild_id:
+                    return None
+                raid.name = self.raid_name.value.strip()
+                raid.raid_instance = self.raid_instance.value.strip()
+                raid.date = raid_dt
+                raid.description = self.description.value.strip() if self.description.value else ""
+                raid.max_size = max_size
+                session.commit()
+                return raid.name
+            finally:
+                session.close()
+
+        try:
+            raid_name = await loop.run_in_executor(None, _update)
+        except Exception:
+            logger.exception("Failed to edit raid %s", self.raid_id)
+            await interaction.followup.send(
+                "❌ Failed to update the raid. Please try again later.", ephemeral=True
+            )
+            return
+
+        if raid_name is None:
+            await interaction.followup.send(
+                "❌ This raid no longer exists in this server.", ephemeral=True
+            )
+            return
+
+        from bot.cogs.signup.embed import update_raid_embed
+
+        post_updated = await update_raid_embed(interaction.client, self.raid_id)
+        message = f"✅ Raid **{raid_name}** updated."
+        if post_updated:
+            message += " Its original post was refreshed."
+        else:
+            message += " ⚠️ Its original Discord post could not be refreshed."
+        await interaction.followup.send(message, ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        logger.exception("Unhandled error in EditRaidModal", exc_info=error)
+        message = "❌ An unexpected error occurred. Please try again later."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+
+
 class RaidCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -274,3 +384,53 @@ class RaidCog(commands.Cog):
     @is_officer()
     async def create_raid(self, interaction: discord.Interaction):
         await interaction.response.send_modal(CreateRaidModal())
+
+    # ── /edit_raid ──────────────────────────────────────────────
+    @app_commands.command(name="edit_raid", description="Edit a posted raid (Officer only).")
+    @app_commands.describe(raid_id="The Raid ID shown at the bottom of the Discord post")
+    @app_commands.guild_only()
+    @is_officer()
+    async def edit_raid(
+        self, interaction: discord.Interaction, raid_id: app_commands.Range[int, 1]
+    ):
+        loop = asyncio.get_running_loop()
+
+        def _fetch():
+            session = get_session()
+            try:
+                raid = session.execute(
+                    select(Raid).where(
+                        Raid.guild_id == interaction.guild_id,
+                        Raid.id == raid_id,
+                    )
+                ).scalar_one_or_none()
+                if raid is None:
+                    return None
+                return {
+                    "id": raid.id,
+                    "guild_raid_number": raid.guild_raid_number,
+                    "name": raid.name,
+                    "date": raid.date,
+                    "raid_instance": raid.raid_instance,
+                    "description": raid.description,
+                    "max_size": raid.max_size,
+                }
+            finally:
+                session.close()
+
+        try:
+            raid = await loop.run_in_executor(None, _fetch)
+        except Exception:
+            logger.exception("Failed to load raid %s for editing", raid_id)
+            await interaction.response.send_message(
+                "❌ Failed to load that raid. Please try again later.", ephemeral=True
+            )
+            return
+
+        if raid is None:
+            await interaction.response.send_message(
+                f"❌ Raid ID {raid_id} was not found in this server.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(EditRaidModal(raid))

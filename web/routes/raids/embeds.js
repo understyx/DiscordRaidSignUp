@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
 const pool = require('../../db');
-const { DISCORD_API } = require('./discord');
+const { DISCORD_API, editDiscordMessage } = require('./discord');
 
 const EMOJIS = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', '..', '..', 'emojis.json'), 'utf8')
@@ -68,6 +68,197 @@ async function fetchCompLabels(raidId) {
 
 function compTabLabel(compNumber, compLabels) {
   return (compLabels && compLabels[compNumber]) || `Raid ${compNumber}`;
+}
+
+function signupMessageComponents(isOpen) {
+  if (!isOpen) return [];
+
+  const button = (label, style, customId, emoji) => ({
+    type: 2,
+    style,
+    label,
+    custom_id: customId,
+    emoji: { name: emoji },
+  });
+
+  return [
+    {
+      type: 1,
+      components: [
+        button('Sign up', 3, 'signup:multi', '✅'),
+        button('Presets', 2, 'signup:presets', '📋'),
+        button('Sign up (raid helper)', 2, 'signup:testing2', '🧪'),
+        button('Sign up (Text)', 2, 'signup:show_characters', '📋'),
+        button('Sign up (Website)', 2, 'signup:website', '🌐'),
+      ],
+    },
+    {
+      type: 1,
+      components: [
+        button("I'm coming", 3, 'signup:coming', '✅'),
+        button("I'm tentative", 1, 'signup:status_tentative', '❓'),
+        button('Not coming', 2, 'signup:withdraw', '❌'),
+      ],
+    },
+    {
+      type: 1,
+      components: [button('Edit notes', 2, 'signup:edit_notes', '📝')],
+    },
+  ];
+}
+
+function buildSignupEmbed(raid, signups, specAliasesMap = {}) {
+  const statusesByUser = new Map();
+  const charsByUser = new Map();
+  const orderedUserIds = [];
+
+  for (const signup of signups) {
+    if (!signup.discord_user_id) continue;
+    const userId = String(signup.discord_user_id);
+    if (!statusesByUser.has(userId)) {
+      statusesByUser.set(userId, new Set());
+      charsByUser.set(userId, new Set());
+      orderedUserIds.push(userId);
+    }
+    statusesByUser.get(userId).add(signup.status || 'signed');
+    charsByUser.get(userId).add(
+      String(signup.char_name || '')
+        .trim()
+        .toLowerCase()
+    );
+  }
+
+  let comingCount = 0;
+  let tentativeCount = 0;
+  for (const statuses of statusesByUser.values()) {
+    if (statuses.size === 1 && statuses.has('tentative')) tentativeCount += 1;
+    else comingCount += 1;
+  }
+
+  const isOpen = raid.status === 'open';
+  const fields = [
+    { name: '📍 Instance', value: raid.raid_instance, inline: true },
+    {
+      name: '📅 Date',
+      value: `<t:${Math.floor(new Date(raid.date).getTime() / 1000)}:F>`,
+      inline: true,
+    },
+    {
+      name: 'Status',
+      value: `${isOpen ? '🟢' : '🔒'} ${isOpen ? 'Open' : 'Locked'}`,
+      inline: true,
+    },
+    {
+      name: '👥 Players Signed Up',
+      value: `${comingCount} + ${tentativeCount} tentative`,
+      inline: false,
+    },
+  ];
+
+  const playerLines = orderedUserIds.map((userId) => {
+    const statuses = statusesByUser.get(userId);
+    const tentative = statuses.size === 1 && statuses.has('tentative');
+    const signup = signups.find((row) => String(row.discord_user_id) === userId) || {};
+    const displayName = signup.display_name || signup.username || `<@${userId}>`;
+    const charCount = charsByUser.get(userId).size;
+    return `${tentative ? '❓' : '✅'} ${displayName} (${charCount} char${charCount === 1 ? '' : 's'})`;
+  });
+  addChunkedFields(fields, '🧑‍🤝‍🧑 Players', playerLines);
+
+  const classGroups = new Map();
+  for (const signup of signups) {
+    const charClass = signup.char_class || 'Unknown';
+    const spec = getCanonicalSpec(charClass, signup.spec || 'Unknown', specAliasesMap);
+    if (!classGroups.has(charClass)) classGroups.set(charClass, new Map());
+    const specs = classGroups.get(charClass);
+    specs.set(spec, (specs.get(spec) || 0) + 1);
+  }
+
+  const canonicalOrder = Object.keys(EMOJIS);
+  const classNames = [...classGroups.keys()].sort((left, right) => {
+    const leftIndex = canonicalOrder.indexOf(left);
+    const rightIndex = canonicalOrder.indexOf(right);
+    if (leftIndex === -1 && rightIndex === -1) return 0;
+    if (leftIndex === -1) return 1;
+    if (rightIndex === -1) return -1;
+    return leftIndex - rightIndex;
+  });
+
+  for (const className of classNames) {
+    const specs = classGroups.get(className);
+    const classData = EMOJIS[className] || {};
+    let total = 0;
+    const lines = [];
+    for (const [spec, count] of specs.entries()) {
+      total += count;
+      const baseSpec = String(spec).includes('(') ? String(spec).split('(')[0].trim() : spec;
+      const specEmoji =
+        (classData.specs && (classData.specs[spec] || classData.specs[baseSpec])) || '';
+      lines.push(`${specEmoji ? `${specEmoji} ` : ''}${spec} (${count})`);
+    }
+    fields.push({
+      name: `${classData.emoji ? `${classData.emoji} ` : ''}${className} (${total})`,
+      value: lines.join('\n').slice(0, 1024) || '—',
+      inline: true,
+    });
+  }
+
+  return {
+    title: `⚔️ ${raid.name}`,
+    description: raid.description || '',
+    color: isOpen ? 0xf1c40f : 0xe74c3c,
+    fields,
+    footer: { text: `Raid ID: ${raid.id}` },
+  };
+}
+
+function addChunkedFields(fields, firstName, lines) {
+  let chunk = [];
+  let chunkLength = 0;
+  let chunkIndex = 0;
+  for (const line of lines) {
+    if (chunk.length && chunkLength + line.length + 1 > 1024) {
+      fields.push({
+        name: chunkIndex === 0 ? firstName : '\u200b',
+        value: chunk.join('\n'),
+        inline: false,
+      });
+      chunk = [];
+      chunkLength = 0;
+      chunkIndex += 1;
+    }
+    chunk.push(line);
+    chunkLength += line.length + 1;
+  }
+  if (chunk.length) {
+    fields.push({
+      name: chunkIndex === 0 ? firstName : '\u200b',
+      value: chunk.join('\n'),
+      inline: false,
+    });
+  }
+}
+
+async function syncRaidSignupMessage(raid) {
+  if (!raid || !raid.discord_channel_id || !raid.discord_message_id) {
+    return { ok: true, skipped: true };
+  }
+
+  const [signups] = await pool.query(
+    `SELECT s.discord_user_id, s.status, c.char_name, c.char_class, c.spec,
+            du.username, du.display_name
+     FROM signups s
+     LEFT JOIN characters c ON c.id = s.character_id
+     LEFT JOIN discord_users du ON du.discord_user_id = s.discord_user_id
+     WHERE s.raid_id = ?
+     ORDER BY s.id`,
+    [raid.id]
+  );
+  const aliases = await fetchSpecAliases(raid.guild_id);
+  return editDiscordMessage(String(raid.discord_channel_id), String(raid.discord_message_id), {
+    embeds: [buildSignupEmbed(raid, signups, aliases)],
+    components: signupMessageComponents(raid.status === 'open'),
+  });
 }
 
 /**
@@ -281,5 +472,8 @@ module.exports = {
   compTabLabel,
   fetchUserGuildRoles,
   collectUniqueUserIds,
+  signupMessageComponents,
+  buildSignupEmbed,
+  syncRaidSignupMessage,
   buildCompEmbed,
 };

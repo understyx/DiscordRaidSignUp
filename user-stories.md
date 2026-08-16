@@ -329,6 +329,14 @@ After submission:
 - A **📖 How to Sign Up** thread is created on the embed message with sign-up instructions.
 - A **📋 Sign-Up Log** thread is created in the channel for recording sign-ups.
 
+### US-8.2 Edit a Posted Raid
+
+**As an** officer,
+**I want to** edit a raid that has already been posted,
+**so that** its name, instance, date, description, and raid size stay accurate.
+
+**Command:** `/edit_raid raid_id:<id>` – opens a pre-filled officer-only modal and refreshes the original Discord raid post after saving.
+
 ---
 
 ## 9. Raid Management (Web App – Officer/Admin)
@@ -373,7 +381,15 @@ Each comp tab can have a custom label.
 **I want to** lock a raid when sign-ups are closed,  
 **so that** players know the roster is finalised.
 
-**Flow:** Toggle the raid status between **Open** (🟢) and **Locked** (🔒) on the manage page.
+**Flow:** Use the state-aware **Lock** / **Unlock** quick action on the raid list, raid detail page, or manage page. The original Discord post is refreshed and its sign-up controls are removed or restored to match the new state.
+
+### US-9.5a Edit a Raid
+
+**As an** officer,
+**I want to** edit an existing raid from the website,
+**so that** I can correct its schedule and details without reposting it.
+
+**Page:** `/raids/<raid-number>/edit` – a pre-filled officer-only form that updates the database and original Discord raid post.
 
 ---
 

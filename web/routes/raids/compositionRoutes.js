@@ -27,7 +27,26 @@ function registerCompositionRoutes(router, dependencies) {
     raidBaseUrl,
     requireAdmin,
     requireLogin,
+    syncRaidSignupMessage,
   } = dependencies;
+
+  function actionRedirect(req, raid) {
+    if (!raid) return '/raids';
+    if (req.body && req.body.return_to === 'list') return '/raids';
+    if (req.body && req.body.return_to === 'detail') return raidBaseUrl(raid);
+    return `${raidBaseUrl(raid)}/manage`;
+  }
+
+  async function refreshDiscordPost(raid) {
+    try {
+      const updatedRaid = await getRaidByUrlParams(raid.guild_id, raid.guild_raid_number);
+      const result = await syncRaidSignupMessage(updatedRaid);
+      return result.ok;
+    } catch (error) {
+      console.warn('[raid-status] Failed to refresh Discord post:', error.message || error);
+      return false;
+    }
+  }
 
   // GET /raids/:raid_number/comp
   router.get('/:raid_number/comp', async (req, res) => {
@@ -118,18 +137,23 @@ function registerCompositionRoutes(router, dependencies) {
   });
 
   // POST /raids/:raid_number/lock
-  router.post('/:raid_number/lock', async (req, res) => {
+  router.post('/:raid_number/lock', express.urlencoded({ extended: false }), async (req, res) => {
     if (!(await requireAdmin(req, res))) return;
 
     const raidNumber = parseInt(req.params.raid_number);
     const raid = await getRaidByUrlParams(req.session.active_guild_id || null, raidNumber);
 
-    if (raid) {
+    if (raid && raid.status !== 'locked') {
       await pool.query("UPDATE raids SET status = 'locked' WHERE id = ?", [raid.id]);
       req.session.flash = `🔒 Raid '${raid.name}' locked.`;
+      if (!(await refreshDiscordPost(raid))) {
+        req.session.flash += ' The Discord post could not be refreshed.';
+      }
+    } else if (raid) {
+      req.session.flash = `ℹ️ Raid '${raid.name}' is already locked.`;
     }
 
-    res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
+    res.redirect(actionRedirect(req, raid));
   });
 
   // POST /raids/:raid_number/post_comp
@@ -247,7 +271,7 @@ function registerCompositionRoutes(router, dependencies) {
   });
 
   // POST /raids/:raid_number/unlock
-  router.post('/:raid_number/unlock', async (req, res) => {
+  router.post('/:raid_number/unlock', express.urlencoded({ extended: false }), async (req, res) => {
     if (!(await requireAdmin(req, res))) return;
 
     const raidNumber = parseInt(req.params.raid_number);
@@ -256,11 +280,14 @@ function registerCompositionRoutes(router, dependencies) {
     if (raid && raid.status === 'locked') {
       await pool.query("UPDATE raids SET status = 'open' WHERE id = ?", [raid.id]);
       req.session.flash = `🟢 Raid '${raid.name}' unlocked and open for sign-ups.`;
+      if (!(await refreshDiscordPost(raid))) {
+        req.session.flash += ' The Discord post could not be refreshed.';
+      }
     } else if (raid) {
       req.session.flash = `ℹ️ Raid '${raid.name}' is already open.`;
     }
 
-    res.redirect(raid ? `${raidBaseUrl(raid)}/manage` : '/raids');
+    res.redirect(actionRedirect(req, raid));
   });
 
   // POST /raids/player-note — save/update officer note for a player in a guild

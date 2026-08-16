@@ -29,6 +29,7 @@ test('raid list exposes ten-at-a-time loading', () => {
         },
         signup_coming_count: 8,
         signup_tentative_count: 2,
+        can_manage: true,
       },
     ],
     has_more: true,
@@ -40,6 +41,8 @@ test('raid list exposes ten-at-a-time loading', () => {
   assert.match(route, /LIMIT \? OFFSET \?/);
   assert.match(html, /id="loadMoreRaids"/);
   assert.match(html, /Show 10 more raids/);
+  assert.match(html, /href="\/raids\/12\/edit"/);
+  assert.match(html, /action="\/raids\/12\/lock"/);
 });
 
 test('characters page renders compact records and preset role shortcuts', () => {

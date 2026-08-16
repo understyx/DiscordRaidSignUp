@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -14,6 +15,14 @@ from db.models import Raid, Signup
 logger = logging.getLogger(__name__)
 DEFAULT_SIGNUP_STATUS = "signed"
 VALID_SIGNUP_STATUSES = frozenset({DEFAULT_SIGNUP_STATUS, "tentative"})
+
+
+def _utc_timestamp(value: datetime.datetime) -> int:
+    """Treat naive MariaDB DATETIME values as UTC, matching raid creation."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=datetime.timezone.utc)
+    return int(value.timestamp())
+
 
 # ---------------------------------------------------------------------------
 # Emoji data loaded once at import time from emojis.json at the repo root.
@@ -131,7 +140,7 @@ def _build_signup_embed(
     embed.add_field(name="📍 Instance", value=raid["raid_instance"], inline=True)
     embed.add_field(
         name="📅 Date",
-        value=f"<t:{int(raid['date'].timestamp())}:F>",
+        value=f"<t:{_utc_timestamp(raid['date'])}:F>",
         inline=True,
     )
     embed.add_field(
@@ -227,7 +236,7 @@ def _build_signup_embed(
     return embed
 
 
-async def update_raid_embed(bot: discord.Client, raid_id: int):
+async def update_raid_embed(bot: discord.Client, raid_id: int) -> bool:
     """Fetch raid + signups and edit the original Discord message."""
     # Lazy import to avoid circular dependency with main_view.
     from .main_view import SignupView
@@ -304,7 +313,7 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
     )
 
     if not raid_data or not raid_data.get("discord_message_id"):
-        return
+        return False
 
     try:
         channel = bot.get_channel(raid_data["discord_channel_id"])
@@ -317,7 +326,9 @@ async def update_raid_embed(bot: discord.Client, raid_id: int):
         is_locked = raid_data["status"] != "open"
         view = None if is_locked else SignupView()
         await msg.edit(embed=embed, view=view)
+        return True
     except discord.Forbidden as e:
         logger.info(f"Missing access to update raid embed for raid {raid_id}: {e}")
     except Exception as e:
         logger.warning(f"Failed to update raid embed for raid {raid_id}: {e}")
+    return False
