@@ -148,7 +148,6 @@ def _useful_commands_embed() -> discord.Embed:
             "`/addcharacters` — add one or more characters from a text form\n"
             "`/addcharacter` — add one character with slash-command options\n"
             "`/my_characters` — list and edit your saved characters\n"
-            "`/edit_characters` — quickly update a saved character\n"
             "`/remove_character` — remove a character or one of its specs"
         ),
         inline=False,

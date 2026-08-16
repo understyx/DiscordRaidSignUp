@@ -18,6 +18,7 @@ from db.models import Character
 logger = logging.getLogger(__name__)
 
 _CHARACTER_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
+_MAX_SPECS = 6
 
 
 class CharacterEditError(ValueError):
@@ -25,28 +26,49 @@ class CharacterEditError(ValueError):
 
 
 @dataclass(frozen=True)
+class EditableSpec:
+    name: str
+    gearscore: float
+
+
+@dataclass(frozen=True)
 class EditableCharacter:
+    """One character, including all of its active specialization rows."""
+
     id: int
     char_name: str
     realm: str
     char_class: str
-    spec: str
-    gearscore: float
+    specs: tuple[EditableSpec, ...]
 
 
-def _to_editable(character: Character) -> EditableCharacter:
+def _to_editable(characters: list[Character]) -> EditableCharacter:
+    anchor = characters[0]
     return EditableCharacter(
-        id=character.id,
-        char_name=character.char_name,
-        realm=character.realm or "Icecrown",
-        char_class=character.char_class or "",
-        spec=character.spec or "",
-        gearscore=float(character.gearscore or 0),
+        id=anchor.id,
+        char_name=anchor.char_name,
+        realm=anchor.realm or "Icecrown",
+        char_class=anchor.char_class or "",
+        specs=tuple(
+            EditableSpec(
+                name=character.spec or "",
+                gearscore=float(character.gearscore or 0),
+            )
+            for character in characters
+        ),
     )
 
 
+def _group_characters(characters: list[Character]) -> list[EditableCharacter]:
+    grouped: dict[tuple[str, str], list[Character]] = {}
+    for character in characters:
+        key = (character.char_name.casefold(), (character.realm or "Icecrown").casefold())
+        grouped.setdefault(key, []).append(character)
+    return [_to_editable(group) for group in grouped.values()]
+
+
 def fetch_editable_characters(guild_id: int, discord_user_id: int) -> list[EditableCharacter]:
-    """Return the active character rows a user may edit in a guild."""
+    """Return active characters grouped by name and realm for the picker."""
     session = get_session()
     try:
         characters = (
@@ -59,7 +81,7 @@ def fetch_editable_characters(guild_id: int, discord_user_id: int) -> list[Edita
             .order_by(Character.char_name, Character.realm, Character.spec, Character.id)
             .all()
         )
-        return [_to_editable(character) for character in characters]
+        return _group_characters(characters)
     finally:
         session.close()
 
@@ -69,10 +91,10 @@ def fetch_editable_character(
     guild_id: int,
     discord_user_id: int,
 ) -> EditableCharacter | None:
-    """Return one currently editable row after enforcing guild and user ownership."""
+    """Return the whole character group containing an owned anchor row."""
     session = get_session()
     try:
-        character = (
+        anchor = (
             session.query(Character)
             .filter_by(
                 id=character_id,
@@ -82,7 +104,21 @@ def fetch_editable_character(
             )
             .first()
         )
-        return _to_editable(character) if character is not None else None
+        if anchor is None:
+            return None
+        characters = (
+            session.query(Character)
+            .filter_by(
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
+                char_name=anchor.char_name,
+                realm=anchor.realm,
+                is_deleted=False,
+            )
+            .order_by(Character.spec, Character.id)
+            .all()
+        )
+        return _to_editable(characters)
     finally:
         session.close()
 
@@ -90,49 +126,57 @@ def fetch_editable_character(
 def _normalize_edit_fields(
     *,
     name: str,
-    realm: str,
     char_class: str,
-    spec: str,
-    gearscore: str,
-) -> tuple[str, str, str, str, float]:
+    spec_gearscores: str,
+) -> tuple[str, str, list[EditableSpec]]:
     normalized_name = name.strip().capitalize()
     if not _CHARACTER_NAME_RE.fullmatch(normalized_name):
         raise CharacterEditError("Character names must contain 1–12 letters only.")
-
-    normalized_realm = realm.strip().title()
-    if not normalized_realm:
-        raise CharacterEditError("Realm cannot be empty.")
 
     normalized_class = normalize_class(char_class)
     if normalized_class not in WOW_CLASSES:
         raise CharacterEditError("Choose a valid WoW class.")
 
-    requested_spec = spec.strip()
-    normalized_spec = next(
-        (
-            known_spec
-            for known_spec in WOW_CLASSES[normalized_class]["specs"]
-            if known_spec.casefold() == requested_spec.casefold()
-        ),
-        None,
-    )
-    if normalized_spec is None:
-        raise CharacterEditError(f"Choose a valid {normalized_class} specialization.")
+    known_specs = {
+        known_spec.casefold(): known_spec for known_spec in WOW_CLASSES[normalized_class]["specs"]
+    }
+    normalized_specs: list[EditableSpec] = []
+    seen_specs: set[str] = set()
 
-    try:
-        normalized_gearscore = parse_gs(gearscore)
-    except ValueError as exc:
-        raise CharacterEditError(
-            "Gearscore must look like `6200`, `6.2k`, `6.2`, or `BiS`."
-        ) from exc
+    for line_number, raw_line in enumerate(spec_gearscores.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split("/")]
+        if len(parts) != 2 or not all(parts):
+            raise CharacterEditError(f"Line {line_number} must use `Specialization / Gearscore`.")
 
-    return (
-        normalized_name,
-        normalized_realm,
-        normalized_class,
-        normalized_spec,
-        normalized_gearscore,
-    )
+        requested_spec, requested_gearscore = parts
+        normalized_spec = known_specs.get(requested_spec.casefold())
+        if normalized_spec is None:
+            raise CharacterEditError(
+                f"Line {line_number}: choose a valid {normalized_class} specialization."
+            )
+        spec_key = normalized_spec.casefold()
+        if spec_key in seen_specs:
+            raise CharacterEditError(f"{normalized_spec} is listed more than once.")
+
+        try:
+            normalized_gearscore = parse_gs(requested_gearscore)
+        except ValueError as exc:
+            raise CharacterEditError(
+                f"Line {line_number}: gearscore must look like `6200`, `6.2k`, `6.2`, or `BiS`."
+            ) from exc
+
+        seen_specs.add(spec_key)
+        normalized_specs.append(EditableSpec(normalized_spec, normalized_gearscore))
+
+    if not normalized_specs:
+        raise CharacterEditError("Add at least one `Specialization / Gearscore` line.")
+    if len(normalized_specs) > _MAX_SPECS:
+        raise CharacterEditError(f"A character can have at most {_MAX_SPECS} specializations.")
+
+    return normalized_name, normalized_class, normalized_specs
 
 
 def update_character_from_flow(
@@ -141,29 +185,19 @@ def update_character_from_flow(
     guild_id: int,
     discord_user_id: int,
     name: str,
-    realm: str,
     char_class: str,
-    spec: str,
-    gearscore: str,
+    spec_gearscores: str,
 ) -> EditableCharacter:
-    """Update one spec row while propagating shared character details to its other specs."""
-    (
-        normalized_name,
-        normalized_realm,
-        normalized_class,
-        normalized_spec,
-        normalized_gearscore,
-    ) = _normalize_edit_fields(
+    """Update one character and reconcile all of its specialization rows."""
+    normalized_name, normalized_class, requested_specs = _normalize_edit_fields(
         name=name,
-        realm=realm,
         char_class=char_class,
-        spec=spec,
-        gearscore=gearscore,
+        spec_gearscores=spec_gearscores,
     )
 
     session = get_session()
     try:
-        character = (
+        anchor = (
             session.query(Character)
             .filter_by(
                 id=character_id,
@@ -173,20 +207,19 @@ def update_character_from_flow(
             )
             .first()
         )
-        if character is None:
+        if anchor is None:
             raise CharacterEditError("That character no longer exists or is not yours.")
 
-        old_name = character.char_name
-        old_realm = character.realm
         character_rows = (
             session.query(Character)
             .filter_by(
                 guild_id=guild_id,
                 discord_user_id=discord_user_id,
-                char_name=old_name,
-                realm=old_realm,
+                char_name=anchor.char_name,
+                realm=anchor.realm,
                 is_deleted=False,
             )
+            .order_by(Character.id)
             .all()
         )
         row_ids = [row.id for row in character_rows]
@@ -196,8 +229,8 @@ def update_character_from_flow(
             .filter(
                 Character.guild_id == guild_id,
                 Character.discord_user_id == discord_user_id,
-                Character.char_name == normalized_name,
-                Character.realm == normalized_realm,
+                Character.char_name.ilike(normalized_name),
+                Character.realm == anchor.realm,
                 Character.is_deleted == False,  # noqa: E712
                 Character.id.notin_(row_ids),
             )
@@ -205,48 +238,47 @@ def update_character_from_flow(
         )
         if conflicting_group is not None:
             raise CharacterEditError(
-                f"You already have another character named {normalized_name} on {normalized_realm}."
+                f"You already have another character named {normalized_name} on {anchor.realm}."
             )
 
-        duplicate_spec = next(
-            (
-                row
-                for row in character_rows
-                if row.id != character.id
-                and (row.spec or "").casefold() == normalized_spec.casefold()
-            ),
-            None,
-        )
-        if duplicate_spec is not None:
-            raise CharacterEditError(f"{normalized_name} already has a {normalized_spec} entry.")
-
-        valid_specs = {
-            known_spec.casefold() for known_spec in WOW_CLASSES[normalized_class]["specs"]
-        }
-        incompatible_specs = [
-            row.spec
-            for row in character_rows
-            if row.id != character.id and (row.spec or "").casefold() not in valid_specs
-        ]
-        if incompatible_specs:
-            formatted_specs = ", ".join(str(existing_spec) for existing_spec in incompatible_specs)
-            raise CharacterEditError(
-                f"The new class does not support your other spec(s): {formatted_specs}. "
-                "Edit or remove those entries first."
-            )
-
-        character.spec = normalized_spec
-        character.gearscore = normalized_gearscore
+        rows_by_spec = {(row.spec or "").casefold(): row for row in character_rows}
+        requested_keys = {spec.name.casefold() for spec in requested_specs}
         now = datetime.datetime.now(datetime.timezone.utc)
-        for row in character_rows:
-            row.char_name = normalized_name
-            row.realm = normalized_realm
-            row.char_class = normalized_class
-            row.role = get_role_from_spec(normalized_class, row.spec)
-            row.last_updated = now
+        updated_rows: list[Character] = []
 
+        for requested in requested_specs:
+            row = rows_by_spec.get(requested.name.casefold())
+            if row is None:
+                row = Character(
+                    guild_id=guild_id,
+                    discord_user_id=discord_user_id,
+                    realm=anchor.realm,
+                    prof_1=anchor.prof_1,
+                    prof_2=anchor.prof_2,
+                    sfs_count=anchor.sfs_count,
+                    val_count=anchor.val_count,
+                    membership_status=anchor.membership_status,
+                    discord_role=anchor.discord_role,
+                )
+                session.add(row)
+            row.char_name = normalized_name
+            row.char_class = normalized_class
+            row.spec = requested.name
+            row.gearscore = requested.gearscore
+            row.role = get_role_from_spec(normalized_class, requested.name)
+            row.is_deleted = False
+            row.last_updated = now
+            updated_rows.append(row)
+
+        for row in character_rows:
+            if (row.spec or "").casefold() not in requested_keys:
+                row.is_deleted = True
+                row.last_updated = now
+
+        session.flush()
+        result = _to_editable(updated_rows)
         session.commit()
-        return _to_editable(character)
+        return result
     except CharacterEditError:
         session.rollback()
         raise
@@ -261,22 +293,20 @@ class _CharacterSelect(discord.ui.Select):
     def __init__(self, characters: list[EditableCharacter]):
         options = []
         for character in characters[:25]:
-            spec = character.spec or "No spec"
-            label = f"{character.char_name} · {spec}"[:100]
-            description = (
-                f"{character.char_class or 'Unknown class'} · "
-                f"{character.realm} · GS {format_gs(character.gearscore)}"
-            )[:100]
+            spec_summary = ", ".join(spec.name for spec in character.specs) or "No specs"
             options.append(
                 discord.SelectOption(
-                    label=label,
+                    label=character.char_name[:100],
                     value=str(character.id),
-                    description=description,
+                    description=(
+                        f"{character.char_class or 'Unknown class'} · "
+                        f"{character.realm} · {spec_summary}"
+                    )[:100],
                     emoji="✏️",
                 )
             )
         super().__init__(
-            placeholder="Choose a character and spec to edit…",
+            placeholder="Choose a character to edit…",
             min_values=1,
             max_values=1,
             options=options,
@@ -377,35 +407,25 @@ class EditCharacterModal(discord.ui.Modal):
             min_length=1,
             max_length=12,
         )
-        self.realm = discord.ui.TextInput(
-            label="Realm",
-            default=character.realm,
-            min_length=1,
-            max_length=50,
-        )
         self.char_class = discord.ui.TextInput(
             label="Class",
             default=character.char_class,
             min_length=1,
             max_length=50,
         )
-        self.spec = discord.ui.TextInput(
-            label="Specialization",
-            default=character.spec,
+        self.spec_gearscores = discord.ui.TextInput(
+            label="Specializations and gearscores",
+            style=discord.TextStyle.paragraph,
+            default="\n".join(
+                f"{spec.name} / {format_gs(spec.gearscore)}" for spec in character.specs
+            ),
+            placeholder="Holy / 6200\nProtection / 6100",
             min_length=1,
-            max_length=100,
-        )
-        self.gearscore = discord.ui.TextInput(
-            label="Gearscore",
-            default=format_gs(character.gearscore),
-            min_length=1,
-            max_length=10,
+            max_length=1000,
         )
         self.add_item(self.character_name)
-        self.add_item(self.realm)
         self.add_item(self.char_class)
-        self.add_item(self.spec)
-        self.add_item(self.gearscore)
+        self.add_item(self.spec_gearscores)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.user_id:
@@ -423,10 +443,8 @@ class EditCharacterModal(discord.ui.Modal):
                     guild_id=self.guild_id,
                     discord_user_id=self.user_id,
                     name=self.character_name.value,
-                    realm=self.realm.value,
                     char_class=self.char_class.value,
-                    spec=self.spec.value,
-                    gearscore=self.gearscore.value,
+                    spec_gearscores=self.spec_gearscores.value,
                 ),
             )
         except CharacterEditError as exc:
@@ -445,27 +463,27 @@ class EditCharacterModal(discord.ui.Modal):
             )
             return
 
+        spec_lines = "\n".join(
+            f"**{spec.name}:** {format_gs(spec.gearscore)}" for spec in updated.specs
+        )
         embed = discord.Embed(
             title=f"✅ {updated.char_name} updated!",
             description=(
-                f"**Realm:** {updated.realm}\n"
-                f"**Class:** {updated.char_class}\n"
-                f"**Spec:** {updated.spec}\n"
-                f"**Gearscore:** {format_gs(updated.gearscore)}"
+                f"**Class:** {updated.char_class}\n**Realm:** {updated.realm}\n{spec_lines}"
             ),
             color=discord.Color.green(),
         )
-        embed.set_footer(text="Use /my_characters to review or edit another entry.")
+        embed.set_footer(text="Use /my_characters to review or edit another character.")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 def build_edit_picker_embed(guild_name: str, character_count: int) -> discord.Embed:
     description = (
-        f"Choose the character and specialization you want to update for **{guild_name}**. "
-        "The form will be filled with the current details."
+        f"Choose the character you want to update for **{guild_name}**. "
+        "The form will be filled with its current name, class, specializations, and gearscores."
     )
     if character_count > 25:
-        description += "\n\nOnly the first 25 entries are shown."
+        description += "\n\nOnly the first 25 characters are shown."
     embed = discord.Embed(
         title="✏️ Edit a character",
         description=description,
