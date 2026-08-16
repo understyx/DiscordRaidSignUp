@@ -340,7 +340,7 @@
 }
 .assign-any-btn:hover { border-color: var(--wow-gold); color: var(--wow-gold); }
 .select-char-btn {
-  margin-left: 4px;
+  flex: 0 0 auto;
   border: 1px solid var(--border-dim);
   border-radius: 4px;
   background: var(--bg-card);
@@ -350,13 +350,19 @@
 }
 .select-char-btn:hover { border-color: var(--wow-gold); color: var(--wow-gold); }
 /* Reserve space on the right for the badges so the char name doesn't overlap */
-.char-card > span.fw-bold {
-  display: inline-block;
-  max-width: calc(100% - var(--badge-reserved-width, 56px));
+.char-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: var(--badge-reserved-width, 56px);
+  min-width: 0;
+}
+.char-card-heading > span.fw-bold {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
 }
 .char-in-comp-badges {
   position: absolute;

@@ -168,7 +168,10 @@
                    data-search-text="{{ (userGroup.display_label ~ ' ' ~ charGroup.char_name ~ ' ' ~ (charGroup.specs | map('spec') | select | join(' '))) | lower }}"
                  {% if can_edit and not charGroup.is_unavailable %}ondragstart="onDragStart(event)"{% endif %}
                  style="position:relative;">
-                <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>{% if can_edit and not charGroup.is_unavailable %}<button type="button" class="select-char-btn" onclick="event.stopPropagation(); selectCharacterSource(null, this.closest('.char-card'))" aria-label="Select {{ charGroup.char_name }} for assignment" title="Select for assignment">＋</button>{% endif %}{% if charGroup.saved_instances | length %}<span class="saves-icon"
+                <div class="char-card-heading">
+                  <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+                  {% if can_edit and not charGroup.is_unavailable %}<button type="button" class="select-char-btn" onclick="event.stopPropagation(); selectCharacterSource(null, this.closest('.char-card'))" aria-label="Select {{ charGroup.char_name }} for assignment" title="Select for assignment">＋</button>{% endif %}
+                </div>{% if charGroup.saved_instances | length %}<span class="saves-icon"
                       data-bs-toggle="tooltip"
                       data-bs-placement="top"
                       data-bs-title="Saved: {{ charGroup.saved_instances | join(', ') }}"
