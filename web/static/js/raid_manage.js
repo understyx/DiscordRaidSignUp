@@ -225,6 +225,10 @@ function getAssignedCharIdsFromDom() {
 
 function updateCharInCompStatus() {
   const currentCompIds = getAssignedCharIdsFromDom();
+  const currentCompUserIds = new Set();
+  document.querySelectorAll('.assigned-char[data-discord-user-id]').forEach((element) => {
+    currentCompUserIds.add(element.dataset.discordUserId);
+  });
 
   // Track which user-groups have any assigned character (for player-level indicator).
   const assignedGroupIds = new Set();
@@ -324,6 +328,9 @@ function updateCharInCompStatus() {
     const headerId = ugDiv.id + '-header';
     const header = document.getElementById(headerId);
     if (!header) return;
+    if (currentCompUserIds.has(header.dataset.discordUserId)) {
+      assignedGroupIds.add(ugDiv.id);
+    }
     let playerBadge = header.querySelector('.user-group-assigned-badge');
     if (assignedGroupIds.has(ugDiv.id)) {
       if (!playerBadge) {
@@ -500,6 +507,7 @@ function applyPoolFilters() {
   let visibleGroups = 0;
   document.querySelectorAll('.user-group').forEach(group => {
     let anyVisible = false;
+    const playerAssignedCurrent = group.dataset.assignedCurrent === 'true';
     group.querySelectorAll('.char-card').forEach(card => {
       const charClass = card.dataset.charClass || '';
       const allSpecs = (card.dataset.allSpecs || card.dataset.spec || '').split(',').filter(Boolean);
@@ -508,16 +516,13 @@ function applyPoolFilters() {
         if (poolRoleFilter === 'dps') return r === 'dps' || r === 'mdps' || r === 'rdps';
         return r === poolRoleFilter;
       });
-      const unavailable = card.dataset.unavailable === 'true';
-      const current = card.dataset.assignedCurrent === 'true';
       const elsewhere = card.dataset.assignedElsewhere === 'true';
       const tentative = group.dataset.tentative === 'true';
       const statusMatches =
         poolStatusFilter === 'all' ||
-        (poolStatusFilter === 'unassigned' && !current && !elsewhere && !unavailable) ||
+        (poolStatusFilter === 'unassigned' && !playerAssignedCurrent) ||
         (poolStatusFilter === 'elsewhere' && elsewhere) ||
-        (poolStatusFilter === 'tentative' && tentative) ||
-        (poolStatusFilter === 'unavailable' && unavailable);
+        (poolStatusFilter === 'tentative' && tentative);
       const searchText = `${group.dataset.searchText || ''} ${card.dataset.searchText || ''}`;
       const searchMatches = !poolSearchQuery || searchText.includes(poolSearchQuery);
       const show = roleMatches && statusMatches && searchMatches;

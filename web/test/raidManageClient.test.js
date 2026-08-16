@@ -27,3 +27,7 @@ test('manage client flushes before guarded navigation and publishing', () => {
 test('collaboration applies an empty remote player-placeholder slot', () => {
   assert.match(source, /localCharId \|\| localPh \|\| localUserId/);
 });
+
+test('unassigned filtering uses the player-level current-comp state', () => {
+  assert.match(source, /poolStatusFilter === 'unassigned' && !playerAssignedCurrent/);
+});
