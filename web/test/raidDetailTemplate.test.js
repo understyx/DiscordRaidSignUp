@@ -9,6 +9,7 @@ const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
   autoescape: true,
 });
 templates.addFilter('dateformat', () => 'Tuesday, 18 August 2026 · 17:00 UTC');
+templates.addFilter('dateiso', (value) => new Date(value).toISOString());
 templates.addFilter('gsformat', (value) => String(value));
 
 function renderRaid(overrides = {}) {
@@ -56,6 +57,8 @@ test('raid signup renders compact character and spec controls', () => {
   assert.match(html, /Add all specs and characters/);
   assert.match(html, /id="openSignupPresetsBtn"/);
   assert.match(html, /id="signupPresetModal"/);
+  assert.match(html, /Time until raid:/);
+  assert.match(html, /datetime="2026-08-18T17:00:00\.000Z" data-raid-relative-time/);
   assert.match(html, /Apply selected presets/);
   assert.match(html, /class="btn btn-danger quick-withdraw-btn"/);
   assert.doesNotMatch(html, /<table/);

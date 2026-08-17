@@ -30,6 +30,14 @@ test('raid signup embed reflects edited raid details and current signups', () =>
   assert.equal(embed.title, '⚔️ Edited ICC');
   assert.equal(embed.description, 'Updated instructions');
   assert.equal(embed.footer.text, 'Raid ID: 9');
+  assert.deepEqual(
+    embed.fields.find((field) => field.name === '⏳ Time until raid'),
+    {
+      name: '⏳ Time until raid',
+      value: '<t:1787250600:R>',
+      inline: true,
+    }
+  );
   assert.ok(embed.fields.some((field) => field.value === '🔒 Locked'));
   assert.ok(embed.fields.some((field) => /Guardian/.test(field.value)));
 });

@@ -18,6 +18,7 @@ document.getElementById('loadMoreRaids')?.addEventListener('click', async (event
     if (!response.ok || !data.ok) throw new Error(data.error || 'Could not load raids.');
 
     rows.insertAdjacentHTML('beforeend', data.html);
+    refreshRaidRelativeTimes(rows);
     button.dataset.offset = String(offset + data.count);
     if (data.has_more) {
       button.disabled = false;

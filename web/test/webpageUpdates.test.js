@@ -9,6 +9,7 @@ const nunjucks = require('nunjucks');
 const templateDir = path.join(__dirname, '..', 'templates');
 const templates = nunjucks.configure(templateDir, { autoescape: true });
 templates.addFilter('dateformat', () => '2026-08-18 20:00');
+templates.addFilter('dateiso', (value) => new Date(value).toISOString());
 templates.addFilter('gsformat', (value) => String(value));
 templates.addFilter('discordId', (value) => String(value));
 
@@ -41,6 +42,8 @@ test('raid list exposes ten-at-a-time loading', () => {
   assert.match(route, /LIMIT \? OFFSET \?/);
   assert.match(html, /id="loadMoreRaids"/);
   assert.match(html, /Show 10 more raids/);
+  assert.match(html, /<th>Time until raid<\/th>/);
+  assert.match(html, /data-raid-relative-time/);
   assert.match(html, /href="\/raids\/12\/edit\?return_to=list"/);
   assert.match(html, /action="\/raids\/12\/lock"/);
 });

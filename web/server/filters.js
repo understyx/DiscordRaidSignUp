@@ -53,6 +53,13 @@ function registerFilters(njkEnv) {
     return d.toISOString();
   });
 
+  // dateiso filter: machine-readable UTC value for browser-localized <time> elements.
+  njkEnv.addFilter('dateiso', (value) => {
+    if (!value) return '';
+    const d = value instanceof Date ? value : new Date(value);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  });
+
   // int filter
   njkEnv.addFilter('int', (val) => Math.floor(Number(val)) || 0);
 

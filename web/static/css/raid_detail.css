@@ -34,6 +34,20 @@
   font-size: 0.92rem;
 }
 
+.raid-time-until {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  color: #aeb7ca;
+  font-size: 0.88rem;
+}
+
+.raid-time-until strong,
+.raid-time-until time {
+  color: var(--wow-gold);
+}
+
 .raid-description {
   max-width: 52rem;
   margin: 0.9rem 0 0;

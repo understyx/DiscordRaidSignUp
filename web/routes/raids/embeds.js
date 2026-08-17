@@ -136,11 +136,17 @@ function buildSignupEmbed(raid, signups, specAliasesMap = {}) {
   }
 
   const isOpen = raid.status === 'open';
+  const raidTimestamp = Math.floor(new Date(raid.date).getTime() / 1000);
   const fields = [
     { name: '📍 Instance', value: raid.raid_instance, inline: true },
     {
       name: '📅 Date',
-      value: `<t:${Math.floor(new Date(raid.date).getTime() / 1000)}:F>`,
+      value: `<t:${raidTimestamp}:F>`,
+      inline: true,
+    },
+    {
+      name: '⏳ Time until raid',
+      value: `<t:${raidTimestamp}:R>`,
       inline: true,
     },
     {

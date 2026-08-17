@@ -6,6 +6,9 @@
   <td>{{ r.raid_instance }}</td>
   <td>{{ r.date | dateformat("%Y-%m-%d %H:%M") }}</td>
   <td>
+    <time datetime="{{ r.date | dateiso }}" data-raid-relative-time>Calculating…</time>
+  </td>
+  <td>
     {% if r.status == "open" %}
       <span class="badge badge-open">🟢 Open</span>
     {% else %}

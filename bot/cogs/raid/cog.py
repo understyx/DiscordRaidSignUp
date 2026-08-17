@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from bot.config import OFFICER_ROLE_NAME
 from bot.db import get_session
+from bot.discord_utils import utc_timestamp
 from db.models import GuildAdminRole, Raid, RaidStatus
 
 logger = logging.getLogger(__name__)
@@ -92,10 +93,16 @@ def _build_signup_embed(raid: Raid, signups: list) -> discord.Embed:
         description=raid.description or "",
         color=discord.Color.gold() if raid.status == RaidStatus.open else discord.Color.red(),
     )
+    raid_timestamp = utc_timestamp(raid.date)
     embed.add_field(name="📍 Instance", value=raid.raid_instance, inline=True)
     embed.add_field(
         name="📅 Date",
-        value=f"<t:{int(raid.date.timestamp())}:F>",
+        value=f"<t:{raid_timestamp}:F>",
+        inline=True,
+    )
+    embed.add_field(
+        name="⏳ Time until raid",
+        value=f"<t:{raid_timestamp}:R>",
         inline=True,
     )
     embed.add_field(

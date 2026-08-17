@@ -11,6 +11,11 @@
     <div class="raid-kicker">{{ raid.raid_instance }}</div>
     <h1 id="raid-title">{{ raid.name }}</h1>
     <p class="raid-date">{{ raid.date | dateformat("%A, %d %B %Y · %H:%M UTC") }}</p>
+    <p class="raid-time-until">
+      <span aria-hidden="true">⏳</span>
+      <strong>Time until raid:</strong>
+      <time datetime="{{ raid.date | dateiso }}" data-raid-relative-time>Calculating…</time>
+    </p>
     {% if raid.description %}
     <p class="raid-description">{{ raid.description }}</p>
     {% endif %}

@@ -4,8 +4,10 @@ import unittest
 
 os.environ.setdefault("DISCORD_BOT_TOKEN", "test-token")
 
-from bot.cogs.raid.cog import EditRaidModal, _parse_raid_datetime
+from bot.cogs.raid.cog import EditRaidModal, _build_signup_embed, _parse_raid_datetime
+from bot.cogs.signup.embed import _build_signup_embed as _build_refreshed_signup_embed
 from bot.cogs.signup.embed import _utc_timestamp
+from db.models import RaidStatus
 
 
 class RaidEditTests(unittest.TestCase):
@@ -21,6 +23,41 @@ class RaidEditTests(unittest.TestCase):
             _utc_timestamp(datetime.datetime(2026, 8, 20, 18, 30)),
             1787250600,
         )
+
+    def test_initial_embed_shows_relative_time_until_raid(self):
+        raid = type(
+            "RaidData",
+            (),
+            {
+                "id": 9,
+                "name": "Thursday ICC",
+                "raid_instance": "ICC 25",
+                "date": datetime.datetime(2026, 8, 20, 18, 30),
+                "description": "Bring flasks",
+                "status": RaidStatus.open,
+            },
+        )()
+
+        embed = _build_signup_embed(raid, [])
+        relative_field = next(field for field in embed.fields if field.name == "⏳ Time until raid")
+
+        self.assertEqual(relative_field.value, "<t:1787250600:R>")
+
+    def test_refreshed_embed_shows_relative_time_until_raid(self):
+        embed = _build_refreshed_signup_embed(
+            {
+                "id": 9,
+                "name": "Thursday ICC",
+                "raid_instance": "ICC 25",
+                "date": datetime.datetime(2026, 8, 20, 18, 30),
+                "description": "Bring flasks",
+                "status": "open",
+            },
+            [],
+        )
+        relative_field = next(field for field in embed.fields if field.name == "⏳ Time until raid")
+
+        self.assertEqual(relative_field.value, "<t:1787250600:R>")
 
     def test_edit_modal_prefills_all_editable_raid_fields(self):
         modal = EditRaidModal(

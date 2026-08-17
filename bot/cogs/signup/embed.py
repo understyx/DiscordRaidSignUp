@@ -10,6 +10,7 @@ import discord
 from sqlalchemy import text
 
 from bot.db import get_session
+from bot.discord_utils import utc_timestamp
 from db.models import Raid, Signup
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,7 @@ VALID_SIGNUP_STATUSES = frozenset({DEFAULT_SIGNUP_STATUS, "tentative"})
 
 def _utc_timestamp(value: datetime.datetime) -> int:
     """Treat naive MariaDB DATETIME values as UTC, matching raid creation."""
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=datetime.timezone.utc)
-    return int(value.timestamp())
+    return utc_timestamp(value)
 
 
 # ---------------------------------------------------------------------------
@@ -137,10 +136,16 @@ def _build_signup_embed(
         description=raid.get("description") or "",
         color=discord.Color.gold() if is_open else discord.Color.red(),
     )
+    raid_timestamp = _utc_timestamp(raid["date"])
     embed.add_field(name="📍 Instance", value=raid["raid_instance"], inline=True)
     embed.add_field(
         name="📅 Date",
-        value=f"<t:{_utc_timestamp(raid['date'])}:F>",
+        value=f"<t:{raid_timestamp}:F>",
+        inline=True,
+    )
+    embed.add_field(
+        name="⏳ Time until raid",
+        value=f"<t:{raid_timestamp}:R>",
         inline=True,
     )
     embed.add_field(
