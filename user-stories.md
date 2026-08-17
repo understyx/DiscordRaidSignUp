@@ -99,7 +99,7 @@ grouped by name and paginated 25 at a time; each card shows only name, class, sp
 **I want to** choose a guided Discord or website flow,
 **so that** I can register characters without learning command syntax first.
 
-**Flow:** An officer posts the reusable `/helpnoobs` launcher → any server member chooses
+**Flow:** A member opens the private `/helpraidbot` launcher, or an officer posts it for others → the member chooses
 **Discord**, **Website**, or **Show useful bot commands** → the response is private and scoped
 to that server.
 

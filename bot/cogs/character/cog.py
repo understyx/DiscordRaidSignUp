@@ -9,8 +9,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot import config
 from bot.class_utils import normalize_class
-from bot.cogs.raid import is_officer
+from bot.cogs.raid import has_officer_access
 from bot.cogs.signup import format_gs, parse_gs
 from bot.cogs.signup.parser import _parse_character_lines
 from bot.db import get_session
@@ -329,14 +330,22 @@ class CharacterCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ── /helpnoobs ────────────────────────────────────────────────────────
+    # ── /helpraidbot ──────────────────────────────────────────────────────
     @app_commands.command(
-        name="helpnoobs",
-        description="Post the guided character management launcher (Officer only).",
+        name="helpraidbot",
+        description="Open the RaidBot help and character setup guide.",
+    )
+    @app_commands.describe(
+        user="Send the guide to this user in a DM (officers and developers only).",
+        embed_channel="Post the guide in this channel (officers only).",
     )
     @app_commands.guild_only()
-    @is_officer()
-    async def helpnoobs(self, interaction: discord.Interaction):
+    async def helpraidbot(
+        self,
+        interaction: discord.Interaction,
+        user: Optional[discord.User] = None,
+        embed_channel: Optional[discord.TextChannel] = None,
+    ):
         embed = discord.Embed(
             title="👋 Need help managing your characters?",
             description=(
@@ -347,19 +356,83 @@ class CharacterCog(commands.Cog):
             color=discord.Color.blurple(),
         )
         embed.set_footer(text="Anyone in this server can use these buttons.")
-        await interaction.response.send_message(embed=embed, view=HelpNoobsChoiceView())
 
-    @helpnoobs.error
-    async def helpnoobs_error(
-        self, interaction: discord.Interaction, error: app_commands.AppCommandError
-    ) -> None:
-        if isinstance(error, app_commands.CheckFailure):
+        # A user destination always takes precedence over a channel destination.
+        if user is not None:
+            is_officer = await has_officer_access(interaction)
+            is_developer = bool(config.DEV_USER_ID) and str(interaction.user.id) == str(
+                config.DEV_USER_ID
+            )
+            if not (is_officer or is_developer):
+                await interaction.response.send_message(
+                    "❌ Only officers and developers can send the guide to another user.",
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                await user.send(
+                    embed=embed,
+                    view=HelpNoobsChoiceView(
+                        guild_id=interaction.guild_id,
+                        intended_user_id=user.id,
+                    ),
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    f"❌ I couldn't DM {user.mention}. They may have direct messages disabled.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException:
+                logger.exception("Failed to send RaidBot help guide to user %s", user.id)
+                await interaction.response.send_message(
+                    "❌ I couldn't send the guide. Please try again.", ephemeral=True
+                )
+                return
+
             await interaction.response.send_message(
-                "❌ You do not have permission to post the character setup guide.",
+                f"✅ I sent the RaidBot guide to {user.mention} in a DM.",
                 ephemeral=True,
             )
             return
-        raise error
+
+        if embed_channel is not None:
+            if not await has_officer_access(interaction):
+                await interaction.response.send_message(
+                    "❌ Only officers can post the guide in a channel.",
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                await embed_channel.send(embed=embed, view=HelpNoobsChoiceView())
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    f"❌ I don't have permission to post in {embed_channel.mention}.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to post RaidBot help guide in channel %s", embed_channel.id
+                )
+                await interaction.response.send_message(
+                    "❌ I couldn't post the guide. Please try again.", ephemeral=True
+                )
+                return
+
+            await interaction.response.send_message(
+                f"✅ I posted the RaidBot guide in {embed_channel.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=HelpNoobsChoiceView(),
+            ephemeral=True,
+        )
 
     # ── /addcharacters ─────────────────────────────────────────────────────
     @app_commands.command(

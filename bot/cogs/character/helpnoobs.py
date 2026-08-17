@@ -641,20 +641,42 @@ class WebsiteLinkView(discord.ui.View):
 class HelpNoobsChoiceView(discord.ui.View):
     """Reusable public launcher; each click starts a private flow for that member."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        guild_id: int | None = None,
+        intended_user_id: int | None = None,
+    ):
         super().__init__(timeout=None)
+        self.guild_id = guild_id
+        self.intended_user_id = intended_user_id
 
-    @staticmethod
     async def _member_context(
+        self,
         interaction: discord.Interaction,
     ) -> tuple[discord.Member, discord.Guild] | None:
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        if self.intended_user_id is not None and interaction.user.id != self.intended_user_id:
             await interaction.response.send_message(
-                "❌ This character guide must be opened from its server message.",
+                "❌ This character guide was sent to someone else.",
                 ephemeral=True,
             )
             return None
-        return interaction.user, interaction.guild
+
+        if interaction.guild is not None and isinstance(interaction.user, discord.Member):
+            return interaction.user, interaction.guild
+
+        if self.guild_id is not None:
+            guild = interaction.client.get_guild(self.guild_id)
+            member = guild.get_member(interaction.user.id) if guild is not None else None
+            if guild is not None and member is not None:
+                return member, guild
+
+        await interaction.response.send_message(
+            "❌ I can no longer identify the server for this character guide. "
+            "Please ask for a new one.",
+            ephemeral=True,
+        )
+        return None
 
     @discord.ui.button(
         label="Guide me in Discord",

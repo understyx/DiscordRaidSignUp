@@ -38,45 +38,48 @@ class _RaidEmbed:
     status: RaidStatus = field(default=RaidStatus.open)
 
 
+async def has_officer_access(interaction: discord.Interaction) -> bool:
+    """Return whether the invoking member has raid-officer privileges."""
+    guild_permissions = getattr(interaction.user, "guild_permissions", None)
+    if guild_permissions and guild_permissions.manage_guild:
+        return True
+
+    user_roles = getattr(interaction.user, "roles", [])
+    if any(r.name == OFFICER_ROLE_NAME for r in user_roles):
+        return True
+
+    if interaction.guild_id:
+        loop = asyncio.get_running_loop()
+
+        def _get_admin_roles():
+            session = get_session()
+            try:
+                return (
+                    session.execute(
+                        select(GuildAdminRole.role_id).where(
+                            GuildAdminRole.guild_id == interaction.guild_id
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+            finally:
+                session.close()
+
+        admin_role_ids = await loop.run_in_executor(None, _get_admin_roles)
+        if admin_role_ids:
+            user_role_ids = {r.id for r in user_roles}
+            if any(rid in user_role_ids for rid in admin_role_ids):
+                return True
+
+    return False
+
+
 def is_officer():
-    """App-command check: user must have OFFICER_ROLE_NAME, manage_guild permission, or be a Raid Admin."""
+    """App-command check for members with raid-officer privileges."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        guild_permissions = getattr(interaction.user, "guild_permissions", None)
-        if guild_permissions and guild_permissions.manage_guild:
-            return True
-
-        user_roles = getattr(interaction.user, "roles", [])
-        if any(r.name == OFFICER_ROLE_NAME for r in user_roles):
-            return True
-
-        if interaction.guild_id:
-            import asyncio
-
-            loop = asyncio.get_running_loop()
-
-            def _get_admin_roles():
-                session = get_session()
-                try:
-                    return (
-                        session.execute(
-                            select(GuildAdminRole.role_id).where(
-                                GuildAdminRole.guild_id == interaction.guild_id
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    )
-                finally:
-                    session.close()
-
-            admin_role_ids = await loop.run_in_executor(None, _get_admin_roles)
-            if admin_role_ids:
-                user_role_ids = {r.id for r in user_roles}
-                if any(rid in user_role_ids for rid in admin_role_ids):
-                    return True
-
-        return False
+        return await has_officer_access(interaction)
 
     return app_commands.check(predicate)
 
