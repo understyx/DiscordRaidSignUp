@@ -1,4 +1,6 @@
 import contextlib
+import gzip
+import io
 import os
 import tempfile
 import unittest
@@ -9,6 +11,8 @@ from scripts import database_backup
 
 
 class DatabaseBackupTests(unittest.TestCase):
+    COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
     def test_loads_database_configuration_from_dotenv(self):
         with tempfile.TemporaryDirectory() as directory:
             env_file = Path(directory) / ".env"
@@ -48,6 +52,70 @@ class DatabaseBackupTests(unittest.TestCase):
             self.assertIn('password="secret"', contents)
         self.assertFalse(defaults_file.exists())
 
+    def test_get_git_commit_returns_exact_revision(self):
+        completed = mock.Mock(stdout=f"{self.COMMIT}\n")
+        with mock.patch.object(database_backup.subprocess, "run", return_value=completed) as run:
+            commit = database_backup.get_git_commit()
+
+        self.assertEqual(commit, self.COMMIT)
+        run.assert_called_once_with(
+            [
+                "git",
+                "-C",
+                str(database_backup.PROJECT_ROOT),
+                "rev-parse",
+                "--verify",
+                "HEAD",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_default_backup_name_includes_short_git_commit(self):
+        config = database_backup.DatabaseConfig("localhost", 3306, "user", "secret", "raidbot")
+
+        path = database_backup.default_backup_path(
+            config,
+            Path("/backups"),
+            git_commit=self.COMMIT,
+        )
+
+        self.assertRegex(
+            path.name,
+            rf"^backup-raidbot-\d{{8}}T\d{{6}}Z-{self.COMMIT[:12]}\.sql\.gz$",
+        )
+
+    def test_backup_embeds_full_git_commit_in_sql(self):
+        config = database_backup.DatabaseConfig("localhost", 3306, "user", "secret", "raidbot")
+        process = mock.Mock(stdout=io.BytesIO(b"CREATE TABLE example (id INT);\n"))
+        process.wait.return_value = 0
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "custom-name.sql.gz"
+            with (
+                mock.patch.object(database_backup, "find_program", return_value="mariadb-dump"),
+                mock.patch.object(
+                    database_backup,
+                    "mysql_defaults_file",
+                    return_value=contextlib.nullcontext(root / "client.cnf"),
+                ),
+                mock.patch.object(database_backup.subprocess, "Popen", return_value=process),
+            ):
+                database_backup.backup_database(
+                    config,
+                    output,
+                    git_commit=self.COMMIT,
+                )
+
+            with gzip.open(output, "rt", encoding="utf-8") as backup:
+                contents = backup.read()
+
+        self.assertTrue(contents.startswith("-- DiscordRaidSignUp database backup\n"))
+        self.assertIn(f"-- Git commit: {self.COMMIT}\n", contents)
+        self.assertIn("CREATE TABLE example", contents)
+
     def test_restore_creates_safety_backup_before_replacing_database(self):
         config = database_backup.DatabaseConfig("localhost", 3306, "user", "secret", "raidbot")
         events = []
@@ -59,6 +127,7 @@ class DatabaseBackupTests(unittest.TestCase):
 
             with (
                 mock.patch.object(database_backup, "database_exists", return_value=True),
+                mock.patch.object(database_backup, "get_git_commit", return_value=self.COMMIT),
                 mock.patch.object(
                     database_backup,
                     "backup_database",

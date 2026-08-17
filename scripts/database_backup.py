@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_FILE = PROJECT_ROOT / ".env"
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "backups"
 SAFE_DATABASE_NAME = re.compile(r"^[A-Za-z0-9_]+$")
+GIT_COMMIT = re.compile(r"^[0-9a-fA-F]{40,64}$")
 
 
 class BackupError(RuntimeError):
@@ -138,14 +139,46 @@ def timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def default_backup_path(config: DatabaseConfig, directory: Path, prefix: str = "backup") -> Path:
-    return directory / f"{prefix}-{config.database}-{timestamp()}.sql.gz"
+def get_git_commit() -> str:
+    """Return the exact application revision associated with a database backup."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "--verify", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise BackupError("Unable to determine the current Git commit") from error
+
+    commit = result.stdout.strip()
+    if not GIT_COMMIT.fullmatch(commit):
+        raise BackupError("Git returned an invalid commit identifier")
+    return commit.lower()
 
 
-def backup_database(config: DatabaseConfig, output: Path, *, overwrite: bool = False) -> Path:
+def default_backup_path(
+    config: DatabaseConfig,
+    directory: Path,
+    prefix: str = "backup",
+    *,
+    git_commit: str | None = None,
+) -> Path:
+    commit = git_commit or get_git_commit()
+    return directory / f"{prefix}-{config.database}-{timestamp()}-{commit[:12]}.sql.gz"
+
+
+def backup_database(
+    config: DatabaseConfig,
+    output: Path,
+    *,
+    overwrite: bool = False,
+    git_commit: str | None = None,
+) -> Path:
     if output.exists() and not overwrite:
         raise BackupError(f"Backup already exists: {output} (use --force to replace it)")
 
+    commit = git_commit or get_git_commit()
     dump_program = find_program("mariadb-dump", "mysqldump")
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary_output = output.with_name(f".{output.name}.{os.getpid()}.tmp")
@@ -164,6 +197,11 @@ def backup_database(config: DatabaseConfig, output: Path, *, overwrite: bool = F
         ]
         try:
             with gzip.open(temporary_output, "wb", compresslevel=6) as compressed:
+                compressed.write(
+                    (f"-- DiscordRaidSignUp database backup\n-- Git commit: {commit}\n\n").encode(
+                        "utf-8"
+                    )
+                )
                 process = subprocess.Popen(command, stdout=subprocess.PIPE)
                 assert process.stdout is not None
                 shutil.copyfileobj(process.stdout, compressed)
@@ -236,8 +274,14 @@ def restore_database(
     safety_backup: Path | None = None
     exists = database_exists(config)
     if exists:
-        safety_backup = default_backup_path(config, backup_directory, prefix="pre-restore")
-        backup_database(config, safety_backup)
+        commit = get_git_commit()
+        safety_backup = default_backup_path(
+            config,
+            backup_directory,
+            prefix="pre-restore",
+            git_commit=commit,
+        )
+        backup_database(config, safety_backup, git_commit=commit)
         print(f"Safety backup created before restore: {safety_backup}")
 
     create_sql = (
@@ -300,12 +344,13 @@ def main(argv: list[str] | None = None) -> int:
         config = load_database_config(args.env_file.resolve())
         backup_directory = args.backup_dir.resolve()
         if args.command == "backup":
+            commit = get_git_commit()
             output = (
                 args.output.resolve()
                 if args.output
-                else default_backup_path(config, backup_directory)
+                else default_backup_path(config, backup_directory, git_commit=commit)
             )
-            backup_database(config, output, overwrite=args.force)
+            backup_database(config, output, overwrite=args.force, git_commit=commit)
         else:
             restore_database(
                 config,

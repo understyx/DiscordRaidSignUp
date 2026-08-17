@@ -233,6 +233,12 @@ Create a timestamped, compressed backup in the git-ignored `backups/` directory:
 python scripts/database_backup.py backup
 ```
 
+Generated filenames include the short Git commit (for example,
+`backup-raidbot-20260817T120000Z-0123456789ab.sql.gz`). The full commit is also
+stored as a SQL comment inside every backup, including backups written to an
+explicit output path, so the compatible application version remains identifiable
+if a backup is renamed.
+
 An explicit output path can be supplied when backups belong on separate storage:
 
 ```bash
@@ -242,7 +248,7 @@ python scripts/database_backup.py backup /secure/backups/raidbot.sql.gz
 Restore a compressed or plain SQL backup:
 
 ```bash
-python scripts/database_backup.py restore backups/backup-raidbot-TIMESTAMP.sql.gz
+python scripts/database_backup.py restore backups/backup-raidbot-TIMESTAMP-COMMIT.sql.gz
 ```
 
 Restore replaces the database configured by `DB_NAME`. The command requires you
