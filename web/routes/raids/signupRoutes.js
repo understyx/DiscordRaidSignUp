@@ -28,6 +28,7 @@ function registerSignupRoutes(router, dependencies) {
     requireAdmin,
     requireLogin,
     syncRaidSignupMessage,
+    hasAnyRequiredRole,
   } = dependencies;
 
   // GET /raids/:raid_number
@@ -145,7 +146,7 @@ function registerSignupRoutes(router, dependencies) {
     // Enforce per-guild signup restrictions
     if (guildId) {
       const [[guildSettings]] = await pool.query(
-        'SELECT signup_restriction, signup_role_id FROM guild_settings WHERE guild_id = ?',
+        'SELECT signup_restriction FROM guild_settings WHERE guild_id = ?',
         [guildId]
       );
       const restriction = guildSettings ? guildSettings.signup_restriction : 'all';
@@ -172,7 +173,7 @@ function registerSignupRoutes(router, dependencies) {
         if (!member) {
           if (restriction === 'role') {
             req.session.flash =
-              '❌ You must be a member of the guild with the required role to sign up for raids.';
+              '❌ You must be a member of the guild with one of the required roles to sign up for raids.';
           } else {
             req.session.flash = '❌ You must be a member of the guild to sign up for raids.';
           }
@@ -180,12 +181,14 @@ function registerSignupRoutes(router, dependencies) {
         }
 
         if (restriction === 'role') {
-          const requiredRoleId = guildSettings.signup_role_id
-            ? String(guildSettings.signup_role_id)
-            : null;
-          const memberRoles = (member.roles || []).map(String);
-          if (!requiredRoleId || !memberRoles.includes(requiredRoleId)) {
-            req.session.flash = '❌ You do not have the required role to sign up for raids.';
+          const [requiredRoleRows] = await pool.query(
+            'SELECT role_id FROM guild_signup_roles WHERE guild_id = ?',
+            [guildId]
+          );
+          const requiredRoleIds = requiredRoleRows.map((row) => String(row.role_id));
+          if (!hasAnyRequiredRole(member.roles, requiredRoleIds)) {
+            req.session.flash =
+              '❌ You do not have one of the required roles to sign up for raids.';
             return res.redirect(raidUrl);
           }
         }

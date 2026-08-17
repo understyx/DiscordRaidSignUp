@@ -163,8 +163,8 @@
                  value="role" {% if settings.signup_restriction == 'role' %}checked{% endif %}
                  onchange="toggleRolePicker()">
           <label class="form-check-label" for="srRole">
-            <strong>Specific role</strong>
-            <span class="text-muted small ms-1">— user must hold a particular Discord role</span>
+            <strong>Specific roles</strong>
+            <span class="text-muted small ms-1">— user must hold at least one selected Discord role</span>
           </label>
         </div>
       </div>
@@ -172,22 +172,28 @@
       {# Role picker — shown only when "role" is selected #}
       <div id="rolePickerGroup"
            class="mb-3{% if settings.signup_restriction != 'role' %} d-none{% endif %}">
-        <label for="signupRoleSelect" class="form-label">Required role</label>
+        <label class="form-label">Required roles</label>
         {% if guild_roles | length > 0 %}
-        <select class="form-select" id="signupRoleSelect" name="signup_role_id">
-          <option value="" disabled {% if not settings.signup_role_id %}selected{% endif %}>— choose a role —</option>
+        <div class="signup-role-list rounded border p-2">
           {% for gr in guild_roles %}
-          <option value="{{ gr.id }}"
-            {% if settings.signup_role_id == gr.id %}selected{% endif %}>
-            @{{ gr.name }}
-          </option>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="signupRole{{ loop.index }}"
+                   name="signup_role_ids" value="{{ gr.id }}"
+                   {% if gr.id in settings.signup_role_ids %}checked{% endif %}>
+            <label class="form-check-label" for="signupRole{{ loop.index }}"
+                   {% if gr.color_hex %}style="color: #{{ gr.color_hex }};"{% endif %}>
+              @{{ gr.name }}
+            </label>
+          </div>
           {% endfor %}
-        </select>
+        </div>
+        <div class="form-text">A member only needs one of the selected roles.</div>
         {% else %}
-        <input type="text" class="form-control" id="signupRoleSelect" name="signup_role_id"
-               placeholder="Role ID (e.g. 123456789012345678)" pattern="\d+"
-               value="{{ settings.signup_role_id or '' }}">
-        <div class="form-text">Could not load roles from Discord — enter the role ID manually.</div>
+        <textarea class="form-control" id="signupRoleIds" name="signup_role_ids" rows="3"
+                  placeholder="One role ID per line">{{ settings.signup_role_ids | join('\n') }}</textarea>
+        <div class="form-text">
+          Could not load roles from Discord — enter role IDs separated by spaces, commas, or new lines.
+        </div>
         {% endif %}
       </div>
 

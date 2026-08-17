@@ -14,6 +14,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../../db');
+const { parseSignupRoleIds } = require('../../services/signupRestrictions');
 const { requireAdmin, popFlash, currentUser } = require('../helpers');
 const { fetchGuildRoles, RESERVED_SLUGS } = require('./helpers');
 
@@ -48,6 +49,7 @@ router.get('/', async (req, res) => {
   let settings = {
     signup_restriction: 'all',
     signup_role_id: null,
+    signup_role_ids: [],
     embed_title: null,
     embed_description: null,
     embed_image_url: null,
@@ -59,9 +61,14 @@ router.get('/', async (req, res) => {
       [guildId]
     );
     if (row) {
+      const [roleRows] = await pool.query(
+        'SELECT role_id FROM guild_signup_roles WHERE guild_id = ? ORDER BY role_id',
+        [guildId]
+      );
       settings = {
         signup_restriction: row.signup_restriction,
         signup_role_id: row.signup_role_id ? String(row.signup_role_id) : null,
+        signup_role_ids: roleRows.map((role) => String(role.role_id)),
         embed_title: row.embed_title,
         embed_description: row.embed_description,
         embed_image_url: row.embed_image_url,
@@ -103,23 +110,42 @@ router.post('/signup-restriction', express.urlencoded({ extended: false }), asyn
     return res.redirect('/guild-settings');
   }
 
-  let signupRoleId = null;
+  let signupRoleIds = [];
   if (restriction === 'role') {
-    const rid = String(req.body.signup_role_id || '').trim();
-    if (!rid || !/^\d+$/.test(rid)) {
-      req.session.flash = '❌ Please select a valid role for the "role" restriction.';
+    const parsed = parseSignupRoleIds(req.body.signup_role_ids);
+    if (parsed.error || parsed.roleIds.length === 0) {
+      req.session.flash = `❌ ${parsed.error || 'Please select at least one required role.'}`;
       return res.redirect('/guild-settings');
     }
-    signupRoleId = rid;
+    signupRoleIds = parsed.roleIds;
   }
 
-  await pool.query(
-    `INSERT INTO guild_settings (guild_id, signup_restriction, signup_role_id)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE signup_restriction = VALUES(signup_restriction),
-                             signup_role_id     = VALUES(signup_role_id)`,
-    [guildId, restriction, signupRoleId]
-  );
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `INSERT INTO guild_settings (guild_id, signup_restriction, signup_role_id)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE signup_restriction = VALUES(signup_restriction),
+                               signup_role_id     = VALUES(signup_role_id)`,
+      [guildId, restriction, signupRoleIds[0] || null]
+    );
+    await conn.query('DELETE FROM guild_signup_roles WHERE guild_id = ?', [guildId]);
+    if (signupRoleIds.length > 0) {
+      const placeholders = signupRoleIds.map(() => '(?, ?)').join(', ');
+      const params = signupRoleIds.flatMap((roleId) => [guildId, roleId]);
+      await conn.query(
+        `INSERT INTO guild_signup_roles (guild_id, role_id) VALUES ${placeholders}`,
+        params
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 
   req.session.flash = '✅ Signup restriction updated.';
   res.redirect('/guild-settings');

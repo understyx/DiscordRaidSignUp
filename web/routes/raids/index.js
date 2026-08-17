@@ -7,6 +7,7 @@ const { createRaidRepository } = require('../../repositories/raids');
 const { raidBaseUrl } = require('../../services/raids');
 const { normalizeRaidEditInput, formatRaidDateInput } = require('../../services/raidEdits');
 const { parseSignupSelection } = require('../../services/signup');
+const { hasAnyRequiredRole } = require('../../services/signupRestrictions');
 const { resolveIsAdmin } = require('../adminCheck');
 const { requireLogin, popFlash, currentUser, getRoleFromSpec } = require('../helpers');
 const {
@@ -106,6 +107,7 @@ const routeDependencies = {
   getRaidByUrlParams,
   getRoleFromSpec,
   parseSignupSelection,
+  hasAnyRequiredRole,
   path,
   pool,
   popFlash,

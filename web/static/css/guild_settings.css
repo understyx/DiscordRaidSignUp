@@ -2,6 +2,13 @@
   max-width: 960px;
 }
 
+.signup-role-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border-color: var(--border-dim) !important;
+  background: var(--bg-card-2);
+}
+
 .embed-color-input {
   width: 120px;
 }

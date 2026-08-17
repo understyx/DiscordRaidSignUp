@@ -81,6 +81,7 @@ test('guild settings includes the live custom embed preview', () => {
     settings: {
       signup_restriction: 'all',
       signup_role_id: null,
+      signup_role_ids: [],
       embed_title: 'Citadel Raids',
       embed_description: 'Choose your next raid',
       embed_image_url: '',
@@ -92,4 +93,29 @@ test('guild settings includes the live custom embed preview', () => {
   assert.match(html, /id="linkEmbedPreviewTitle"/);
   assert.match(html, /href="\/css\/guild_settings\.css"/);
   assert.doesNotMatch(html, /Sync color picker with text input/);
+});
+
+test('guild settings renders every selected signup role', () => {
+  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
+    autoescape: true,
+  });
+  const html = templates.render('guild_settings.html', {
+    guild_id: '123456789012345678',
+    configured_role_ids: [],
+    guild_roles: [
+      { id: '11', name: 'Tank' },
+      { id: '22', name: 'Healer' },
+      { id: '33', name: 'DPS' },
+    ],
+    guild_roles_map: {},
+    settings: {
+      signup_restriction: 'role',
+      signup_role_ids: ['11', '22'],
+    },
+  });
+
+  assert.match(html, /name="signup_role_ids" value="11"\s+checked/);
+  assert.match(html, /name="signup_role_ids" value="22"\s+checked/);
+  assert.doesNotMatch(html, /name="signup_role_ids" value="33"\s+checked/);
+  assert.match(html, /at least one selected Discord role/);
 });
