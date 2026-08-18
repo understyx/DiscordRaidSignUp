@@ -67,8 +67,7 @@
     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
       <div>
         <p class="section-kicker mb-1">Discord outreach</p>
-        <h3 class="h5 mb-1" id="bulkMessageHeading">Message matching members</h3>
-        <p class="text-muted small mb-0">Messages are queued and delivered gradually to respect Discord's API limits.</p>
+        <h3 class="h5 mb-0" id="bulkMessageHeading">Message matching members</h3>
       </div>
       <span class="badge bg-secondary" id="bulkRecipientCount">0 recipients</span>
     </div>
@@ -77,12 +76,12 @@
           data-max-recipients="{{ maxBulkRecipients }}">
       <div class="row g-3">
         <div class="col-sm-6 col-lg-3">
-          <label class="form-label small" for="bulkCharacterFilter">Character count</label>
+          <label class="form-label small" for="bulkCharacterFilter">WoW character count</label>
           <select class="form-select form-select-sm bg-dark text-light border-secondary"
                   id="bulkCharacterFilter" name="character_filter">
             <option value="zero" selected>0 characters</option>
             <option value="one_or_more">1 or more characters</option>
-            <option value="any">Any character count</option>
+            <option value="any">Any WoW character count</option>
           </select>
         </div>
         <div class="col-sm-6 col-lg-3">
