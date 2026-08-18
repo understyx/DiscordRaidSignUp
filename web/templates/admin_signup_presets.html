@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Everyone's Presets – RaidBot{% endblock %}
+{% block content %}
+<div class="mb-4 d-flex flex-wrap justify-content-between align-items-center gap-2">
+  <div>
+    <h2 class="mb-1">👀 Everyone's Signup Presets</h2>
+    <p class="text-muted mb-0">
+      Read-only view for {{ active_guild_name or active_guild_id }}.
+      {{ presetCount }} preset{% if presetCount != 1 %}s{% endif %} across
+      {{ owners | length }} player{% if owners | length != 1 %}s{% endif %}.
+    </p>
+  </div>
+  <a href="/raids" class="btn btn-sm btn-outline-secondary">← Back to Raids</a>
+</div>
+
+{% if owners | length == 0 %}
+<div class="card">
+  <div class="card-body text-center text-muted py-5">
+    Nobody has saved a signup preset in this guild yet.
+  </div>
+</div>
+{% endif %}
+
+{% for owner in owners %}
+<section class="mb-4">
+  <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
+    <h3 class="h5 mb-0">{{ owner.displayName }}</h3>
+    {% if owner.username and owner.username != owner.displayName %}
+    <span class="text-muted">@{{ owner.username }}</span>
+    {% endif %}
+    <span class="text-muted small">{{ owner.id }}</span>
+  </div>
+
+  <div class="row g-3">
+    {% for preset in owner.presets %}
+    <div class="col-xl-6">
+      <article class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+          <strong>{{ preset.name }}</strong>
+          {% if preset.createdAt %}
+          <time class="text-muted small" datetime="{{ preset.createdAt | dateiso }}">
+            {{ preset.createdAt | dateformat('%Y-%m-%d %H:%M') }} UTC
+          </time>
+          {% endif %}
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for character in preset.characters %}
+          <li class="list-group-item">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div>
+                {% if character.unavailable %}
+                <span class="text-muted">Unavailable character #{{ character.id }}</span>
+                {% else %}
+                <strong>{{ character.name }}</strong>{% if character.realm %}-{{ character.realm }}{% endif %}
+                <span class="text-muted">
+                  · {{ character.charClass or 'Unknown class' }}
+                  · {{ character.spec or 'Unknown spec' }}
+                  · GS {{ character.gearscore | gsformat }}
+                </span>
+                {% endif %}
+              </div>
+              {% if character.priority %}
+              <span class="badge text-bg-warning">Priority</span>
+              {% endif %}
+            </div>
+            {% if character.note %}
+            <div class="small mt-1"><span class="text-muted">Note:</span> {{ character.note }}</div>
+            {% endif %}
+          </li>
+          {% else %}
+          <li class="list-group-item text-muted">This preset has no characters.</li>
+          {% endfor %}
+        </ul>
+      </article>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

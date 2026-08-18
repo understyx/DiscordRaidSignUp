@@ -1,8 +1,9 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../../db');
-const { requireAdmin, popFlash } = require('../helpers');
+const { requireAdmin, popFlash, currentUser } = require('../helpers');
 const { isDevFullAdminEnabled, setDevFullAdminEnabled } = require('../../server/runtimeFlags');
+const { buildPresetPeek, integerIds } = require('../../services/presetPeek');
 const {
   _WOW_CLASSES,
   _CLASS_SPEC_ROLES,
@@ -34,6 +35,53 @@ router.post('/dev-full-admin/toggle', express.urlencoded({ extended: false }), (
   setDevFullAdminEnabled(next);
   req.session.flash = `✅ Developer full-admin is now ${next ? 'enabled' : 'disabled'} (website runtime).`;
   return res.redirect('/raids');
+});
+
+// GET /admin/signup-presets — developer-only, read-only view of every user's
+// signup presets in the active guild.
+router.get('/signup-presets', async (req, res) => {
+  if (!isDeveloper(req)) {
+    req.session.flash = '❌ Access denied. This page is only available to developers.';
+    return res.redirect('/raids');
+  }
+
+  const guildId = req.session.active_guild_id;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/select-guild');
+  }
+
+  const [presetRows] = await pool.query(
+    `SELECT sp.id, sp.discord_user_id, sp.name, sp.character_ids, sp.priority_ids,
+            sp.notes, sp.created_at, du.username, du.display_name
+       FROM signup_presets sp
+       LEFT JOIN discord_users du ON du.discord_user_id = sp.discord_user_id
+      WHERE sp.guild_id = ?
+      ORDER BY COALESCE(NULLIF(du.display_name, ''), du.username),
+               sp.discord_user_id, sp.created_at DESC, sp.id DESC`,
+    [guildId]
+  );
+
+  const characterIds = [
+    ...new Set(presetRows.flatMap((preset) => integerIds(preset.character_ids))),
+  ];
+  let characterRows = [];
+  if (characterIds.length > 0) {
+    const placeholders = characterIds.map(() => '?').join(', ');
+    [characterRows] = await pool.query(
+      `SELECT id, discord_user_id, char_name, realm, char_class, spec, role, gearscore
+         FROM characters
+        WHERE guild_id = ? AND id IN (${placeholders})`,
+      [guildId, ...characterIds]
+    );
+  }
+
+  const peek = buildPresetPeek(presetRows, characterRows);
+  res.render('admin_signup_presets.html', {
+    ...peek,
+    flash: popFlash(req),
+    user: currentUser(req),
+  });
 });
 
 // GET /admin/spec-aliases — viewable by developers only

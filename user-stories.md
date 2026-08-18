@@ -570,3 +570,13 @@ A notification is posted to a dedicated Discord channel so the applicant is info
 **so that** common abbreviations (e.g. "Ret" → "Retribution") are recognised when players post character lines.
 
 **Page:** `/admin/spec-aliases` (accessible only to the account matching `DEV_USER_ID`).
+
+### US-13.3 Peek at Signup Presets (Developer)
+
+**As the** designated developer,
+
+**I want to** inspect every player's saved signup presets for the active guild,
+
+**so that** I can troubleshoot preset behavior without changing anyone's data.
+
+**Page:** `/admin/signup-presets` from the Dev Tools menu (accessible only to the account matching `DEV_USER_ID`).
