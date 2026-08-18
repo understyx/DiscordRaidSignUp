@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, Mock, patch
 os.environ.setdefault("DISCORD_BOT_TOKEN", "test-token")
 
 from bot.cogs.character.cog import CharacterCog
-from bot.cogs.character.helpnoobs import HelpNoobsChoiceView, _useful_commands_embed
+from bot.cogs.character.helpnoobs import (
+    HelpNoobsChoiceView,
+    _message_guild_id,
+    _useful_commands_embed,
+)
 from bot.cogs.dev import DevCog
 
 
@@ -48,6 +52,19 @@ class CharacterCommandTests(unittest.TestCase):
         self.assertIn("/my_characters", field_text)
         self.assertIn("names, classes, specs, and GS", field_text)
         self.assertIn("/saves view", field_text)
+
+    def test_website_queued_guide_preserves_its_guild_context_in_footer(self):
+        interaction = SimpleNamespace(
+            message=SimpleNamespace(
+                embeds=[
+                    SimpleNamespace(
+                        footer=SimpleNamespace(text="Sent for Citadel · Guild ID: 123456")
+                    )
+                ]
+            )
+        )
+
+        self.assertEqual(_message_guild_id(interaction), 123456)
 
 
 class HelpRaidBotDeliveryTests(unittest.IsolatedAsyncioTestCase):

@@ -11,14 +11,189 @@
     <p class="section-kicker mb-1">Officer database</p>
     <h2 class="mb-1">Guild Characters</h2>
     <p class="text-muted mb-0">
-      {{ guild_name or "Active Guild" }} · {{ activeMemberCount }} Discord members
+      {{ guild_name or "Active Guild" }} · {{ activeMemberCount }} guild members
+      {% if excludedMemberCount %}· {{ excludedMemberCount }} excluded by rank{% endif %}
       {% if formerMemberCount %}· {{ formerMemberCount }} former{% endif %}
     </p>
   </div>
   <span class="badge bg-primary">Officer View</span>
 </div>
 
+<section class="card guild-rank-filter-card mb-3" aria-labelledby="guildRankFilterHeading">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+      <div>
+        <p class="section-kicker mb-1">Shared guild roster</p>
+        <h3 class="h5 mb-1" id="guildRankFilterHeading">Ranks that count as guild members</h3>
+        <p class="text-muted small mb-0">
+          Members must have at least one selected rank. People with no rank are always excluded.
+        </p>
+      </div>
+      <span class="badge bg-primary">Every officer</span>
+    </div>
+
+    {% if guildCharacterRoles | length %}
+    <form method="post" action="/guild-characters/rank-filter">
+      {% if selectedUser %}<input type="hidden" name="return_user" value="{{ selectedUser.userId }}">{% endif %}
+      <div class="guild-rank-options mb-3">
+        {% for role in guildCharacterRoles %}
+        <label class="guild-rank-option">
+          <input type="checkbox" name="rank_ids" value="{{ role.id }}" class="form-check-input"
+                 {% if role.id in guildCharacterRankIds %}checked{% endif %}>
+          <span{% if role.colorHex %} style="color: {{ role.colorHex }}"{% endif %}>{{ role.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <button type="submit" class="btn btn-wow btn-sm">Save guild filter</button>
+        <span class="small text-muted">
+          {% if guildRankFilterConfigured %}
+          This saved filter is the default for every officer in {{ guild_name or "this guild" }}.
+          {% else %}
+          All available ranks are selected initially. Save after removing guest or applicant ranks.
+          {% endif %}
+        </span>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-warning small mb-0">No selectable Discord ranks are available for this guild.</p>
+    {% endif %}
+  </div>
+</section>
+
 {% if users | length %}
+<section class="card bulk-message-card mb-3" aria-labelledby="bulkMessageHeading">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+      <div>
+        <p class="section-kicker mb-1">Discord outreach</p>
+        <h3 class="h5 mb-1" id="bulkMessageHeading">Message matching members</h3>
+        <p class="text-muted small mb-0">Messages are queued and delivered gradually to respect Discord's API limits.</p>
+      </div>
+      <span class="badge bg-secondary" id="bulkRecipientCount">0 recipients</span>
+    </div>
+
+    <form method="post" action="/guild-characters/message" id="bulkMessageForm"
+          data-max-recipients="{{ maxBulkRecipients }}">
+      <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label small" for="bulkCharacterFilter">Character count</label>
+          <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                  id="bulkCharacterFilter" name="character_filter">
+            <option value="zero" selected>0 characters</option>
+            <option value="one_or_more">1 or more characters</option>
+            <option value="any">Any character count</option>
+          </select>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label small" id="bulkRankFilterLabel">Top Discord rank</label>
+          <details class="bulk-rank-picker" id="bulkRankFilter">
+            <summary class="form-select form-select-sm bg-dark text-light border-secondary">Any rank</summary>
+            <div class="bulk-rank-options" role="group" aria-labelledby="bulkRankFilterLabel">
+              {% for role in messagingRoles %}
+              <label class="bulk-rank-option">
+                <input type="checkbox" name="rank_ids" value="{{ role.id }}"
+                       class="form-check-input bulk-rank-checkbox" data-rank-name="{{ role.name }}">
+                <span{% if role.colorHex %} style="color: {{ role.colorHex }}"{% endif %}>{{ role.name }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </details>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <label class="form-label small" for="bulkMessageAction">Message or bot action</label>
+          <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                  id="bulkMessageAction" name="message_action">
+            <option value="helpraidbot">/helpraidbot — character guide</option>
+            <option value="custom">Custom direct message</option>
+          </select>
+        </div>
+        <div class="col-sm-6 col-lg-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-wow btn-sm w-100" id="bulkMessageSubmit">
+            Queue messages
+          </button>
+        </div>
+        <div class="col-12 d-none" id="bulkCustomMessageWrap">
+          <label class="form-label small" for="bulkCustomMessage">Custom message</label>
+          <textarea class="form-control form-control-sm bg-dark text-light border-secondary"
+                    id="bulkCustomMessage" name="custom_message" rows="3" maxlength="2000"
+                    placeholder="Write the direct message…"></textarea>
+          <div class="form-text">Slash commands sent as text do not run. Choose a supported bot action above instead.</div>
+        </div>
+      </div>
+      <p class="small text-muted mb-0 mt-3" id="bulkMessageSummary">
+        Current guild members only. Up to {{ maxBulkRecipients }} recipients may be queued in one job.
+      </p>
+    </form>
+
+    {% if bulkMessageJobs | length %}
+    <div class="bulk-message-history mt-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="h6 mb-0">Recent messages</h4>
+        <a href="/guild-characters" class="small">Refresh status</a>
+      </div>
+      <div class="bulk-message-history-list">
+        {% for job in bulkMessageJobs %}
+        <article class="bulk-message-history-item">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+              <strong>{{ "/helpraidbot character guide" if job.message_action == "helpraidbot" else "Custom direct message" }}</strong>
+              <div class="small text-muted">
+                Queued by {{ job.creatorName }} on
+                <time datetime="{{ job.created_at | dateiso }}">{{ job.created_at | dateformat('%Y-%m-%d %H:%M') }} UTC</time>
+                {% if job.started_at %}
+                · Sending started <time datetime="{{ job.started_at | dateiso }}">{{ job.started_at | dateformat('%Y-%m-%d %H:%M') }} UTC</time>
+                {% endif %}
+                {% if job.completed_at %}
+                · Finished <time datetime="{{ job.completed_at | dateiso }}">{{ job.completed_at | dateformat('%Y-%m-%d %H:%M') }} UTC</time>
+                {% endif %}
+              </div>
+            </div>
+            <div class="text-end">
+              <span class="badge bulk-job-status bulk-job-status-{{ job.status }}">{{ job.status | replace("_", " ") }}</span>
+              <div class="small text-muted mt-1">
+                {{ job.sent_count }} sent{% if job.failed_count %}, <span class="text-danger">{{ job.failed_count }} failed</span>{% endif %}
+                · {{ job.recipient_count }} total
+              </div>
+            </div>
+          </div>
+
+          <div class="bulk-message-preview mt-2">{{ job.messagePreview }}</div>
+
+          <details class="bulk-message-recipients mt-2">
+            <summary>
+              Show {{ job.recipient_count }} recipient{{ '' if job.recipient_count == 1 else 's' }}
+            </summary>
+            <ul class="bulk-message-recipient-list mt-2 mb-0">
+              {% for recipient in job.recipients %}
+              <li>
+                <span class="bulk-recipient-identity">
+                  <strong>{{ recipient.displayName }}</strong>
+                  {% if recipient.username != recipient.displayName %}<span class="text-muted">@{{ recipient.username }}</span>{% endif %}
+                  <code>{{ recipient.userId }}</code>
+                </span>
+                <span class="bulk-recipient-delivery">
+                  <span class="badge bulk-recipient-status bulk-recipient-status-{{ recipient.status }}">{{ recipient.status }}</span>
+                  {% if recipient.status == 'sent' %}
+                  <small class="text-muted">Delivered {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
+                  {% elif recipient.status == 'failed' %}
+                  <small class="text-muted">Last attempted {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
+                  {% endif %}
+                </span>
+              </li>
+              {% else %}
+              <li class="text-muted">Recipient details are unavailable.</li>
+              {% endfor %}
+            </ul>
+          </details>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
 <div class="guild-database-layout">
   <aside class="guild-member-sidebar" aria-label="Discord members">
     <label class="visually-hidden" for="guildMemberSearch">Search Discord members</label>
@@ -33,6 +208,9 @@
       <a href="/guild-characters?user={{ member.userId }}"
          class="guild-member-link{{ ' former-member' if member.isFormer }}{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
          data-member-search="{{ (member.displayName ~ ' ' ~ member.username ~ ' ' ~ (member.roleName or '') ~ ' ' ~ member.userId) | lower }}"
+         data-character-count="{{ member.characterCount }}"
+         data-top-rank-id="{{ member.roleId or '' }}"
+         data-former="{{ 'true' if member.isFormer else 'false' }}"
          {% if selectedUser and member.userId == selectedUser.userId %}aria-current="page"{% endif %}>
         <span class="member-avatar" aria-hidden="true">{{ member.displayName | first | upper }}</span>
         <span class="member-identity">
@@ -199,7 +377,13 @@
   </section>
 </div>
 {% else %}
-<div class="alert alert-info">No Discord members were found in this guild.</div>
+<div class="alert alert-info">
+  {% if discordMemberCount %}
+  No current Discord members match the guild rank filter.
+  {% else %}
+  No Discord members were found in this guild.
+  {% endif %}
+</div>
 {% endif %}
 {% endblock %}
 

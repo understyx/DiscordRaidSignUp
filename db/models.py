@@ -181,6 +181,12 @@ class GuildSignupRole(Base):
     role_id = Column(BigInteger, primary_key=True)
 
 
+class GuildCharacterRank(Base):
+    __tablename__ = "guild_character_ranks"
+    guild_id = Column(BigInteger, primary_key=True)
+    role_id = Column(BigInteger, primary_key=True)
+
+
 class SuggestionStatus(str, enum.Enum):
     pending = "pending"
     accepted = "accepted"

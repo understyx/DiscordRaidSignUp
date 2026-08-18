@@ -21,11 +21,23 @@ from .edit_flow import CharacterEditView, build_edit_picker_embed, fetch_editabl
 logger = logging.getLogger(__name__)
 
 _CHARACTER_NAME_RE = re.compile(r"^[A-Za-z]{1,12}$")
+_GUILD_ID_FOOTER_RE = re.compile(r"(?:^|·\s*)Guild ID:\s*(\d+)\s*$")
 
 
 def build_character_guide_url(guild_id: int) -> str:
     """Return the authenticated, guild-scoped website onboarding URL."""
     return f"{WEB_BASE_URL.rstrip('/')}/help/add-characters/{guild_id}"
+
+
+def _message_guild_id(interaction: discord.Interaction) -> int | None:
+    """Read the guild context attached to guides queued by the website."""
+    message = getattr(interaction, "message", None)
+    for embed in getattr(message, "embeds", []) or []:
+        footer_text = getattr(getattr(embed, "footer", None), "text", None) or ""
+        match = _GUILD_ID_FOOTER_RE.search(footer_text)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def validate_character_details(name: str, realm: str, gearscore: str) -> tuple[str, str, float]:
@@ -665,8 +677,9 @@ class HelpNoobsChoiceView(discord.ui.View):
         if interaction.guild is not None and isinstance(interaction.user, discord.Member):
             return interaction.user, interaction.guild
 
-        if self.guild_id is not None:
-            guild = interaction.client.get_guild(self.guild_id)
+        guild_id = self.guild_id or _message_guild_id(interaction)
+        if guild_id is not None:
+            guild = interaction.client.get_guild(guild_id)
             member = guild.get_member(interaction.user.id) if guild is not None else None
             if guild is not None and member is not None:
                 return member, guild

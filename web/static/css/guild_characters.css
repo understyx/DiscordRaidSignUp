@@ -11,6 +11,123 @@
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
+.guild-rank-filter-card { border-color: rgba(212, 175, 55, 0.45); }
+.guild-rank-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.45rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+.guild-rank-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+.guild-rank-option:hover { background: rgba(255, 255, 255, 0.06); }
+.bulk-message-card { border-color: rgba(88, 101, 242, 0.45); }
+.bulk-message-card .form-text { color: #858fa3; }
+.bulk-rank-picker { position: relative; }
+.bulk-rank-picker > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.bulk-rank-picker > summary::-webkit-details-marker { display: none; }
+.bulk-rank-options {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  width: 100%;
+  max-height: 15rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.4rem;
+  padding: 0.4rem;
+  background: var(--bg-card);
+  box-shadow: 0 0.6rem 1.2rem rgba(0, 0, 0, 0.35);
+}
+.bulk-rank-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+.bulk-rank-option:hover { background: rgba(255, 255, 255, 0.06); }
+.bulk-message-history {
+  border-top: 1px solid var(--border-dim);
+  padding-top: 1rem;
+}
+.bulk-message-history-list { display: grid; gap: 0.75rem; }
+.bulk-message-history-item {
+  min-width: 0;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+.bulk-message-preview {
+  overflow-wrap: anywhere;
+  border-left: 3px solid rgba(88, 101, 242, 0.65);
+  padding: 0.55rem 0.7rem;
+  background: rgba(88, 101, 242, 0.08);
+  color: #d7dce6;
+  font-size: 0.84rem;
+  white-space: pre-wrap;
+}
+.bulk-message-recipients > summary {
+  width: fit-content;
+  color: #aeb8ff;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+.bulk-message-recipient-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding-left: 0;
+  list-style: none;
+}
+.bulk-message-recipient-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 0.78rem;
+}
+.bulk-recipient-identity,
+.bulk-recipient-delivery {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.bulk-recipient-status { background: #6c757d; }
+.bulk-recipient-status-sent { background: #198754; }
+.bulk-recipient-status-failed { background: #dc3545; }
+.bulk-recipient-status-sending { background: #5865f2; }
+@media (max-width: 575.98px) {
+  .bulk-message-recipient-list li,
+  .bulk-recipient-delivery { align-items: flex-start; flex-direction: column; }
+}
+.bulk-job-status { background: #5865f2; }
+.bulk-job-status-completed { background: #198754; }
+.bulk-job-status-completed_with_errors,
+.bulk-job-status-failed { background: #dc3545; }
+.bulk-job-status-queued { background: #6c757d; }
 .guild-database-layout {
   display: grid;
   grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
