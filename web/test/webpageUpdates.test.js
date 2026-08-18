@@ -228,6 +228,8 @@ test('guild database shows recent bulk message content, timing, and recipients',
     user: { id: '1', is_admin: true },
   });
 
+  assert.match(html, /<details class="bulk-message-history mt-4" open>/);
+  assert.match(html, /<summary class="bulk-message-history-summary">/);
   assert.match(html, /Recent messages/);
   assert.match(html, /Please add your character before Friday/);
   assert.match(html, /Queued by Officer One/);

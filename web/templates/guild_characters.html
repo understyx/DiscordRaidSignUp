@@ -126,9 +126,11 @@
     </form>
 
     {% if bulkMessageJobs | length %}
-    <div class="bulk-message-history mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h4 class="h6 mb-0">Recent messages</h4>
+    <details class="bulk-message-history mt-4" open>
+      <summary class="bulk-message-history-summary">
+        <span class="h6 mb-0">Recent messages</span>
+      </summary>
+      <div class="text-end mb-2">
         <a href="/guild-characters" class="small">Refresh status</a>
       </div>
       <div class="bulk-message-history-list">
@@ -188,7 +190,7 @@
         </article>
         {% endfor %}
       </div>
-    </div>
+    </details>
     {% endif %}
   </div>
 </section>
