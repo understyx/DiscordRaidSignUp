@@ -7,12 +7,18 @@ const DISCORD_BLURPLE = 0x5865f2;
 const MAX_CUSTOM_MESSAGE_LENGTH = 2000;
 const MAX_BULK_RECIPIENTS = 5000;
 
-function selectBulkRecipients(members, characterCounts, { characterFilter, rankIds }) {
+function selectBulkRecipients(
+  members,
+  characterCounts,
+  { characterFilter, rankIds, specificUserId }
+) {
   const selectedRankIds = new Set((rankIds || []).map(String));
   return members.filter((member) => {
     if (!member.user || member.user.bot) return false;
 
     const userId = String(member.user.id);
+    if (characterFilter === 'specific') return userId === String(specificUserId || '');
+
     const characterCount = Number(characterCounts.get(userId)) || 0;
     if (characterFilter === 'zero' && characterCount !== 0) return false;
     if (characterFilter === 'one_or_more' && characterCount < 1) return false;

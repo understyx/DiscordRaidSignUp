@@ -114,6 +114,24 @@
   cursor: pointer;
   font-size: 0.82rem;
 }
+.bulk-message-recipient-groups {
+  display: grid;
+  gap: 0.5rem;
+}
+.bulk-message-recipient-group {
+  border: 1px solid var(--border-dim);
+  border-radius: 0.4rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+.bulk-message-recipient-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
 .bulk-message-recipient-list {
   display: grid;
   gap: 0.35rem;
@@ -191,16 +209,6 @@
 .guild-member-link.active {
   border-color: rgba(88, 101, 242, 0.55);
   background: rgba(88, 101, 242, 0.16);
-  color: #fff;
-}
-.guild-member-link.former-member {
-  border-color: rgba(220, 53, 69, 0.38);
-  background: rgba(220, 53, 69, 0.2);
-}
-.guild-member-link.former-member:hover,
-.guild-member-link.former-member.active {
-  border-color: rgba(255, 91, 105, 0.72);
-  background: rgba(220, 53, 69, 0.32);
   color: #fff;
 }
 .member-avatar {

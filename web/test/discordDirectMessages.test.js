@@ -43,6 +43,14 @@ test('bulk recipient criteria combine character count and Discord role', () => {
     }).map((member) => member.user.id),
     ['1', '2']
   );
+  assert.deepEqual(
+    selectBulkRecipients(members, counts, {
+      characterFilter: 'specific',
+      rankIds: ['20'],
+      specificUserId: '1',
+    }).map((member) => member.user.id),
+    ['1']
+  );
 });
 
 test('/helpraidbot payload contains an interactive guide and durable guild context', () => {

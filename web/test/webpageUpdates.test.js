@@ -100,7 +100,6 @@ test('guild database renders a searchable Discord member sidebar and selected de
     activeMemberCount: 1,
     discordMemberCount: 2,
     excludedMemberCount: 1,
-    formerMemberCount: 0,
     guildCharacterRoles: [{ id: '10', name: 'Raid Leader', colorHex: '#ff8800' }],
     guildCharacterRankIds: ['10'],
     guildRankFilterConfigured: true,
@@ -125,6 +124,8 @@ test('guild database renders a searchable Discord member sidebar and selected de
   assert.match(html, /123456789012345678/);
   assert.match(html, /id="bulkMessageForm"/);
   assert.match(html, /0 characters/);
+  assert.match(html, /Specific Person/);
+  assert.match(html, /name="specific_user_id"/);
   assert.match(html, /\/helpraidbot — character guide/);
   assert.match(html, /data-character-count="0"/);
   assert.match(html, /Top Discord rank/);
@@ -133,40 +134,11 @@ test('guild database renders a searchable Discord member sidebar and selected de
   assert.doesNotMatch(html, /…345678/);
 });
 
-test('guild database marks departed character owners and keeps their cached identity', () => {
-  const formerUser = {
-    userId: '987654321098765432',
-    username: 'last-known-user',
-    displayName: 'Last Known Nickname',
-    characterCount: 2,
-    charGroups: [],
-    roleName: 'Veteran',
-    roleColor: '#cc3344',
-    roleId: null,
-    isFormer: true,
-  };
-  const html = templates.render('guild_characters.html', {
-    guild_name: 'Citadel',
-    users: [formerUser],
-    selectedUser: formerUser,
-    activeMemberCount: 0,
-    discordMemberCount: 0,
-    excludedMemberCount: 0,
-    formerMemberCount: 1,
-    guildCharacterRoles: [],
-    guildCharacterRankIds: [],
-    guildRankFilterConfigured: false,
-    messagingRoles: [],
-    maxBulkRecipients: 5000,
-    bulkMessageJobs: [],
-    user: { id: '1', is_admin: true },
-  });
+test('guild database limits its roster to current Discord members', () => {
+  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'guildCharacters.js'), 'utf8');
 
-  assert.match(html, /guild-member-link former-member active/);
-  assert.match(html, /Last Known Nickname/);
-  assert.match(html, /@last-known-user/);
-  assert.match(html, /Former member/);
-  assert.doesNotMatch(html, /Add their first character/);
+  assert.match(route, /const users = currentUsers/);
+  assert.doesNotMatch(route, /const formerUsers/);
 });
 
 test('guild database shows recent bulk message content, timing, and recipients', () => {
@@ -188,7 +160,6 @@ test('guild database shows recent bulk message content, timing, and recipients',
     activeMemberCount: 1,
     discordMemberCount: 1,
     excludedMemberCount: 0,
-    formerMemberCount: 0,
     guildCharacterRoles: [],
     guildCharacterRankIds: [],
     guildRankFilterConfigured: false,
@@ -207,20 +178,32 @@ test('guild database shows recent bulk message content, timing, and recipients',
         created_at: new Date('2026-08-18T18:00:00Z'),
         started_at: new Date('2026-08-18T18:01:00Z'),
         completed_at: null,
-        recipients: [
+        recipientGroups: [
           {
-            userId: '123456789012345678',
-            username: 'guardian',
-            displayName: 'Guardian',
-            status: 'sent',
-            updatedAt: new Date('2026-08-18T18:02:00Z'),
+            roleName: 'Raid Leader',
+            roleColor: '#ff8800',
+            recipients: [
+              {
+                userId: '123456789012345678',
+                username: 'guardian',
+                displayName: 'Guardian',
+                status: 'sent',
+                updatedAt: new Date('2026-08-18T18:02:00Z'),
+              },
+            ],
           },
           {
-            userId: '987654321098765432',
-            username: 'mage',
-            displayName: 'Mage',
-            status: 'pending',
-            updatedAt: new Date('2026-08-18T18:00:00Z'),
+            roleName: 'Member',
+            roleColor: null,
+            recipients: [
+              {
+                userId: '987654321098765432',
+                username: 'mage',
+                displayName: 'Mage',
+                status: 'pending',
+                updatedAt: new Date('2026-08-18T18:00:00Z'),
+              },
+            ],
           },
         ],
       },
@@ -234,6 +217,9 @@ test('guild database shows recent bulk message content, timing, and recipients',
   assert.match(html, /Please add your character before Friday/);
   assert.match(html, /Queued by Officer One/);
   assert.match(html, /Show 2 recipients/);
+  assert.match(html, /bulk-message-recipient-group/);
+  assert.match(html, /Raid Leader/);
+  assert.match(html, /Member/);
   assert.match(html, /Guardian/);
   assert.match(html, /123456789012345678/);
   assert.match(html, /Delivered 2026-08-18 20:00 UTC/);

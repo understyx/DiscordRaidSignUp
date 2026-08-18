@@ -21,7 +21,10 @@ memberSearch?.addEventListener('input', () => {
 const bulkMessageForm = document.getElementById('bulkMessageForm');
 const characterFilter = document.getElementById('bulkCharacterFilter');
 const rankFilter = document.getElementById('bulkRankFilter');
+const rankFilterWrap = document.getElementById('bulkRankFilterWrap');
 const rankCheckboxes = Array.from(document.querySelectorAll('.bulk-rank-checkbox'));
+const specificPersonWrap = document.getElementById('bulkSpecificPersonWrap');
+const specificPerson = document.getElementById('bulkSpecificPerson');
 const messageAction = document.getElementById('bulkMessageAction');
 const customMessageWrap = document.getElementById('bulkCustomMessageWrap');
 const customMessage = document.getElementById('bulkCustomMessage');
@@ -30,12 +33,19 @@ const bulkSubmit = document.getElementById('bulkMessageSubmit');
 
 function matchingMemberCount() {
   const characterCriterion = characterFilter?.value || 'zero';
+  if (characterCriterion === 'specific') {
+    const selectedUserId = specificPerson?.value || '';
+    return selectedUserId &&
+      memberLinks.some((link) => link.dataset.userId === selectedUserId)
+      ? 1
+      : 0;
+  }
+
   const rankIds = rankCheckboxes
     .filter((checkbox) => checkbox.checked)
     .map((checkbox) => checkbox.value);
 
   return memberLinks.filter((link) => {
-    if (link.dataset.former === 'true') return false;
     const count = Number(link.dataset.characterCount) || 0;
     if (characterCriterion === 'zero' && count !== 0) return false;
     if (characterCriterion === 'one_or_more' && count < 1) return false;
@@ -47,6 +57,7 @@ function refreshBulkMessageForm() {
   const count = matchingMemberCount();
   const maximum = Number(bulkMessageForm?.dataset.maxRecipients) || 0;
   const isCustom = messageAction?.value === 'custom';
+  const isSpecific = characterFilter?.value === 'specific';
   const selectedRanks = rankCheckboxes.filter((checkbox) => checkbox.checked);
 
   recipientCount.textContent = `${count} recipient${count === 1 ? '' : 's'}`;
@@ -54,6 +65,9 @@ function refreshBulkMessageForm() {
   recipientCount.classList.toggle('bg-secondary', count <= maximum);
   customMessageWrap?.classList.toggle('d-none', !isCustom);
   if (customMessage) customMessage.required = isCustom;
+  rankFilterWrap?.classList.toggle('d-none', isSpecific);
+  specificPersonWrap?.classList.toggle('d-none', !isSpecific);
+  if (specificPerson) specificPerson.required = isSpecific;
   if (bulkSubmit) bulkSubmit.disabled = count === 0 || count > maximum;
   const rankSummary = rankFilter?.querySelector('summary');
   if (rankSummary) {
@@ -63,7 +77,7 @@ function refreshBulkMessageForm() {
   }
 }
 
-[characterFilter, messageAction, ...rankCheckboxes].forEach((control) => {
+[characterFilter, specificPerson, messageAction, ...rankCheckboxes].forEach((control) => {
   control?.addEventListener('change', refreshBulkMessageForm);
 });
 

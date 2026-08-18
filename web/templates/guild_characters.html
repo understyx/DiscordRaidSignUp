@@ -13,7 +13,6 @@
     <p class="text-muted mb-0">
       {{ guild_name or "Active Guild" }} · {{ activeMemberCount }} guild members
       {% if excludedMemberCount %}· {{ excludedMemberCount }} excluded by rank{% endif %}
-      {% if formerMemberCount %}· {{ formerMemberCount }} former{% endif %}
     </p>
   </div>
   <span class="badge bg-primary">Officer View</span>
@@ -82,9 +81,10 @@
             <option value="zero" selected>0 characters</option>
             <option value="one_or_more">1 or more characters</option>
             <option value="any">Any WoW character count</option>
+            <option value="specific">Specific Person</option>
           </select>
         </div>
-        <div class="col-sm-6 col-lg-3">
+        <div class="col-sm-6 col-lg-3" id="bulkRankFilterWrap">
           <label class="form-label small" id="bulkRankFilterLabel">Top Discord rank</label>
           <details class="bulk-rank-picker" id="bulkRankFilter">
             <summary class="form-select form-select-sm bg-dark text-light border-secondary">Any rank</summary>
@@ -98,6 +98,18 @@
               {% endfor %}
             </div>
           </details>
+        </div>
+        <div class="col-sm-6 col-lg-3 d-none" id="bulkSpecificPersonWrap">
+          <label class="form-label small" for="bulkSpecificPerson">Specific Person</label>
+          <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                  id="bulkSpecificPerson" name="specific_user_id">
+            <option value="">Choose a guild member…</option>
+            {% for member in users %}
+            <option value="{{ member.userId }}">
+              {{ member.displayName }}{% if member.username != member.displayName %} (@{{ member.username }}){% endif %}
+            </option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-sm-6 col-lg-3">
           <label class="form-label small" for="bulkMessageAction">Message or bot action</label>
@@ -165,27 +177,37 @@
             <summary>
               Show {{ job.recipient_count }} recipient{{ '' if job.recipient_count == 1 else 's' }}
             </summary>
-            <ul class="bulk-message-recipient-list mt-2 mb-0">
-              {% for recipient in job.recipients %}
-              <li>
-                <span class="bulk-recipient-identity">
-                  <strong>{{ recipient.displayName }}</strong>
-                  {% if recipient.username != recipient.displayName %}<span class="text-muted">@{{ recipient.username }}</span>{% endif %}
-                  <code>{{ recipient.userId }}</code>
-                </span>
-                <span class="bulk-recipient-delivery">
-                  <span class="badge bulk-recipient-status bulk-recipient-status-{{ recipient.status }}">{{ recipient.status }}</span>
-                  {% if recipient.status == 'sent' %}
-                  <small class="text-muted">Delivered {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
-                  {% elif recipient.status == 'failed' %}
-                  <small class="text-muted">Last attempted {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
-                  {% endif %}
-                </span>
-              </li>
-              {% else %}
-              <li class="text-muted">Recipient details are unavailable.</li>
+            <div class="bulk-message-recipient-groups mt-2">
+              {% for group in job.recipientGroups %}
+              <details class="bulk-message-recipient-group">
+                <summary>
+                  <span{% if group.roleColor %} style="color: {{ group.roleColor }}"{% endif %}>{{ group.roleName }}</span>
+                  <span class="badge bg-secondary">{{ group.recipients | length }}</span>
+                </summary>
+                <ul class="bulk-message-recipient-list mt-2 mb-0">
+                  {% for recipient in group.recipients %}
+                  <li>
+                    <span class="bulk-recipient-identity">
+                      <strong>{{ recipient.displayName }}</strong>
+                      {% if recipient.username != recipient.displayName %}<span class="text-muted">@{{ recipient.username }}</span>{% endif %}
+                      <code>{{ recipient.userId }}</code>
+                    </span>
+                    <span class="bulk-recipient-delivery">
+                      <span class="badge bulk-recipient-status bulk-recipient-status-{{ recipient.status }}">{{ recipient.status }}</span>
+                      {% if recipient.status == 'sent' %}
+                      <small class="text-muted">Delivered {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
+                      {% elif recipient.status == 'failed' %}
+                      <small class="text-muted">Last attempted {{ recipient.updatedAt | dateformat('%Y-%m-%d %H:%M') }} UTC</small>
+                      {% endif %}
+                    </span>
+                  </li>
+                  {% else %}
+                  <li class="text-muted">Recipient details are unavailable.</li>
+                  {% endfor %}
+                </ul>
+              </details>
               {% endfor %}
-            </ul>
+            </div>
           </details>
         </article>
         {% endfor %}
@@ -207,11 +229,11 @@
     <nav class="guild-member-list" id="guildMemberList">
       {% for member in users %}
       <a href="/guild-characters?user={{ member.userId }}"
-         class="guild-member-link{{ ' former-member' if member.isFormer }}{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
+         class="guild-member-link{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
+         data-user-id="{{ member.userId }}"
          data-member-search="{{ (member.displayName ~ ' ' ~ member.username ~ ' ' ~ (member.roleName or '') ~ ' ' ~ member.userId) | lower }}"
          data-character-count="{{ member.characterCount }}"
          data-top-rank-id="{{ member.roleId or '' }}"
-         data-former="{{ 'true' if member.isFormer else 'false' }}"
          {% if selectedUser and member.userId == selectedUser.userId %}aria-current="page"{% endif %}>
         <span class="member-avatar" aria-hidden="true">{{ member.displayName | first | upper }}</span>
         <span class="member-identity">
@@ -243,17 +265,12 @@
             </p>
           </div>
         </div>
-        {% if selectedUser.isFormer %}
-        <span class="badge bg-danger">Former member</span>
-        {% else %}
         <button class="btn btn-sm btn-wow" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">
           ➕ Add character
         </button>
-        {% endif %}
       </div>
     </div>
 
-    {% if not selectedUser.isFormer %}
     <div class="collapse mb-3" id="addCharacterForMember">
       <div class="card card-body">
         <h4 class="h6 mb-3">Add a character for {{ selectedUser.displayName }}</h4>
@@ -288,7 +305,6 @@
         </form>
       </div>
     </div>
-    {% endif %}
 
     {% if selectedUser.charGroups | length %}
     <div class="card guild-character-table-card">
@@ -369,9 +385,7 @@
       <div class="fs-2 mb-2">🗂️</div>
       <h4 class="h6">No characters registered</h4>
       <p class="text-muted small mb-3">This Discord member is in the database index, but has no character records yet.</p>
-      {% if not selectedUser.isFormer %}
       <button class="btn btn-sm btn-wow mx-auto" type="button" data-bs-toggle="collapse" data-bs-target="#addCharacterForMember">Add their first character</button>
-      {% endif %}
     </div>
     {% endif %}
     {% endif %}

@@ -128,7 +128,6 @@ router.get('/', async (req, res) => {
     }
 
     const rolesById = new Map();
-    const rolesByName = new Map();
     for (const role of discordRoles) {
       if (String(role.id) === String(guildId)) continue;
       const details = {
@@ -139,8 +138,6 @@ router.get('/', async (req, res) => {
         colorHex: role.color ? `#${Number(role.color).toString(16).padStart(6, '0')}` : null,
       };
       rolesById.set(details.id, details);
-      const existing = rolesByName.get(details.name);
-      if (!existing || details.position > existing.position) rolesByName.set(details.name, details);
     }
 
     const guildCharacterRoles = [...rolesById.values()]
@@ -156,21 +153,17 @@ router.get('/', async (req, res) => {
     // Refresh the durable identity cache while Discord still supplies nicknames.
     await cacheDiscordMembers(members);
 
-    // 2. Include current Discord members plus cached character owners who have left the guild.
+    // 2. Show current Discord members only. Departed owners keep their stored characters but are
+    // omitted from this guild-member view.
     const [countRows] = await pool.query(
       `SELECT c.discord_user_id,
-              COUNT(DISTINCT CONCAT(c.char_name, '|', c.realm)) AS character_count,
-              MAX(c.discord_role) AS discord_role,
-              du.username,
-              du.display_name
+              COUNT(DISTINCT CONCAT(c.char_name, '|', c.realm)) AS character_count
        FROM characters c
-       LEFT JOIN discord_users du ON du.discord_user_id = c.discord_user_id
        WHERE c.guild_id = ? AND c.is_deleted = 0
-       GROUP BY c.discord_user_id, du.username, du.display_name`,
+       GROUP BY c.discord_user_id`,
       [guildId]
     );
     const characterOwners = new Map(countRows.map((row) => [String(row.discord_user_id), row]));
-    const currentMemberIds = new Set(members.map((member) => String(member.user.id)));
     const compareDisplayNames = (a, b) =>
       a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
 
@@ -184,30 +177,12 @@ router.get('/', async (req, res) => {
           username: member.user.username || userId,
           displayName: member.nick || member.user.global_name || member.user.username || userId,
           characterCount: Number(cachedCharacters?.character_count) || 0,
-          isFormer: false,
           ...discordRoleDetails(member, rolesById),
         };
       })
       .sort(compareDisplayNames);
-
-    const formerUsers = countRows
-      .filter((row) => !currentMemberIds.has(String(row.discord_user_id)))
-      .map((row) => {
-        const userId = String(row.discord_user_id);
-        const lastRole = row.discord_role ? rolesByName.get(row.discord_role) : null;
-        return {
-          userId,
-          username: row.username || userId,
-          displayName: row.display_name || row.username || userId,
-          characterCount: Number(row.character_count) || 0,
-          roleId: null,
-          roleName: row.discord_role || null,
-          roleColor: lastRole?.colorHex || null,
-          isFormer: true,
-        };
-      })
-      .sort(compareDisplayNames);
-    const users = [...currentUsers, ...formerUsers];
+    const currentMembersById = new Map(members.map((member) => [String(member.user.id), member]));
+    const users = currentUsers;
 
     const requestedUserId = String(req.query.user || '');
     const selectedUser =
@@ -272,10 +247,16 @@ router.get('/', async (req, res) => {
       for (const recipient of recipientRows) {
         const userId = String(recipient.discord_user_id);
         const username = recipient.username || userId;
+        const guildMember = currentMembersById.get(userId);
+        const role = guildMember ? discordRoleDetails(guildMember, rolesById) : null;
         recipientsByJobId.get(String(recipient.job_id))?.push({
           userId,
           username,
           displayName: recipient.display_name || username,
+          roleId: role?.roleId || null,
+          roleName: guildMember ? role?.roleName || 'No Discord rank' : 'Former member',
+          roleColor: role?.roleColor || null,
+          rolePosition: role?.roleId ? rolesById.get(role.roleId)?.position || 0 : -1,
           status: recipient.status,
           updatedAt: recipient.updated_at,
         });
@@ -288,6 +269,24 @@ router.get('/', async (req, res) => {
       job.recipients.sort((a, b) =>
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
       );
+      const recipientGroupsByRole = new Map();
+      for (const recipient of job.recipients) {
+        const groupKey = recipient.roleId || `unranked:${recipient.roleName}`;
+        if (!recipientGroupsByRole.has(groupKey)) {
+          recipientGroupsByRole.set(groupKey, {
+            roleName: recipient.roleName,
+            roleColor: recipient.roleColor,
+            rolePosition: recipient.rolePosition,
+            recipients: [],
+          });
+        }
+        recipientGroupsByRole.get(groupKey).recipients.push(recipient);
+      }
+      job.recipientGroups = [...recipientGroupsByRole.values()].sort(
+        (a, b) =>
+          b.rolePosition - a.rolePosition ||
+          a.roleName.localeCompare(b.roleName, undefined, { sensitivity: 'base' })
+      );
       job.creatorName = job.creator_display_name || job.creator_username || String(job.created_by);
     }
 
@@ -297,7 +296,6 @@ router.get('/', async (req, res) => {
       activeMemberCount: currentUsers.length,
       discordMemberCount: members.length,
       excludedMemberCount: members.length - currentUsers.length,
-      formerMemberCount: formerUsers.length,
       guildCharacterRoles,
       guildCharacterRankIds,
       guildRankFilterConfigured: savedRankIds.length > 0,
@@ -389,15 +387,23 @@ router.post('/message', express.urlencoded({ extended: false }), async (req, res
   const guildId = req.session.active_guild_id;
   const botToken = process.env.DISCORD_BOT_TOKEN;
   const characterFilter = String(req.body.character_filter || 'zero');
-  const rankIds = [...new Set([].concat(req.body.rank_ids || []).map(String))].filter(Boolean);
+  const submittedRankIds = [...new Set([].concat(req.body.rank_ids || []).map(String))].filter(
+    Boolean
+  );
+  const rankIds = characterFilter === 'specific' ? [] : submittedRankIds;
+  const specificUserId = String(req.body.specific_user_id || '');
   const messageAction = String(req.body.message_action || 'helpraidbot');
 
   if (!guildId || !botToken) {
     req.session.flash = '❌ The active guild or bot token is missing.';
     return res.redirect('/guild-characters');
   }
-  if (!['any', 'zero', 'one_or_more'].includes(characterFilter)) {
+  if (!['any', 'zero', 'one_or_more', 'specific'].includes(characterFilter)) {
     req.session.flash = '❌ Invalid character-count criterion.';
+    return res.redirect('/guild-characters');
+  }
+  if (characterFilter === 'specific' && !/^\d+$/.test(specificUserId)) {
+    req.session.flash = '❌ Choose a specific guild member.';
     return res.redirect('/guild-characters');
   }
   if (rankIds.some((rankId) => !/^\d+$/.test(rankId))) {
@@ -461,6 +467,7 @@ router.post('/message', express.urlencoded({ extended: false }), async (req, res
     const recipients = selectBulkRecipients(rankedMembers, characterCounts, {
       characterFilter,
       rankIds,
+      specificUserId,
     });
 
     if (!recipients.length) {
@@ -499,7 +506,11 @@ router.post('/message', express.urlencoded({ extended: false }), async (req, res
           guildId,
           req.session.user_id,
           messageAction,
-          JSON.stringify({ characterFilter, rankIds }),
+          JSON.stringify({
+            characterFilter,
+            rankIds,
+            specificUserId: characterFilter === 'specific' ? specificUserId : null,
+          }),
           JSON.stringify(payload),
           recipients.length,
         ]
