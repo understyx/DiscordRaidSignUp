@@ -25,12 +25,6 @@ from .parser import (
 logger = logging.getLogger(__name__)
 
 
-def _raid_id_to_guild_id(session, raid_id: int) -> Optional[int]:
-    """Helper to get guild_id from a raid_id."""
-    raid = session.get(Raid, raid_id)
-    return raid.guild_id if raid else None
-
-
 def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
     """Upsert Discord username/display_name into discord_users table."""
     display = getattr(user, "display_name", None)
@@ -48,6 +42,121 @@ def _upsert_discord_user(session, user: discord.User | discord.Member) -> None:
                 updated_at=datetime.datetime.now(datetime.timezone.utc),
             )
         )
+
+
+def _save_text_signup_db(
+    session,
+    user: discord.User | discord.Member,
+    parsed: list[dict],
+    raid_id: int,
+    signup_status: SignupStatus,
+) -> list[str]:
+    """Persist parsed characters and replace a user's signups for one raid."""
+    raid = session.get(Raid, raid_id)
+    if raid is None:
+        raise ValueError(f"Raid {raid_id} does not exist")
+    if raid.guild_id is None:
+        raise ValueError(f"Raid {raid_id} is not associated with a guild")
+
+    guild_id = raid.guild_id
+    discord_user_id = user.id
+    _upsert_discord_user(session, user)
+
+    # The submitted message is the complete signup, so replace older rows.
+    session.query(Signup).filter_by(
+        raid_id=raid_id,
+        discord_user_id=discord_user_id,
+    ).delete()
+
+    char_spec_info: dict[str, dict] = {}
+    entry_characters: list[tuple[dict, Character]] = []
+    top_role = get_top_role_name(user) if isinstance(user, discord.Member) else None
+
+    for entry in parsed:
+        char = (
+            session.query(Character)
+            .filter_by(
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
+                char_name=entry["char_name"],
+                spec=entry["spec"],
+            )
+            .first()
+        )
+        if char is None:
+            char = Character(
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
+                char_name=entry["char_name"],
+            )
+            session.add(char)
+        char.char_class = entry["char_class"]
+        char.spec = entry["spec"]
+        char.role = get_role_from_spec(entry["char_class"], entry["spec"])
+        char.gearscore = entry["gearscore"]
+        char.is_deleted = False
+        char.last_updated = datetime.datetime.now(datetime.timezone.utc)
+        session.flush()
+        entry_characters.append((entry, char))
+
+    # Update all characters for this user in this guild with current Discord info.
+    session.query(Character).filter_by(
+        guild_id=guild_id,
+        discord_user_id=discord_user_id,
+    ).update(
+        {
+            "discord_role": top_role,
+            "membership_status": "active",
+            "last_updated": datetime.datetime.now(datetime.timezone.utc),
+        }
+    )
+
+    for entry, char in entry_characters:
+        signup_type = SignupType.prio_character if entry["is_prio"] else SignupType.fill
+        session.add(
+            Signup(
+                raid_id=raid_id,
+                discord_user_id=discord_user_id,
+                character_id=char.id,
+                signup_type=signup_type,
+                status=signup_status,
+                is_saved=entry["is_saved"],
+                note=entry.get("note") or None,
+            )
+        )
+
+        key = entry["char_name"].lower()
+        if key not in char_spec_info:
+            char_spec_info[key] = {
+                "char_name": entry["char_name"],
+                "char_class": entry["char_class"],
+                "specs": [],
+                "is_saved": entry["is_saved"],
+                "note": entry.get("note", ""),
+            }
+        char_spec_info[key]["specs"].append(
+            {
+                "spec": entry["spec"],
+                "gearscore": entry["gearscore"],
+                "is_prio": entry["is_prio"],
+            }
+        )
+
+    session.commit()
+
+    summaries = []
+    for data in char_spec_info.values():
+        spec_parts = []
+        for spec in data["specs"]:
+            star = " ⭐" if spec["is_prio"] else ""
+            spec_parts.append(f"{spec['spec']}{star} GS {format_gs(spec['gearscore'])}")
+        specs_str = " / ".join(spec_parts)
+        saved_flag = " ❌" if data["is_saved"] else ""
+        note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
+        summaries.append(
+            f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}{note_str}"
+        )
+    return summaries
 
 
 async def process_text_signup(
@@ -115,98 +224,7 @@ async def process_text_signup(
     def _save_and_signup_db():
         session = get_session()
         try:
-            _upsert_discord_user(session, user)
-            # Remove ALL existing signups for this user+raid so the new message
-            # fully overwrites the old sign-up instead of merging with it.
-            session.query(Signup).filter_by(
-                raid_id=raid_id,
-                discord_user_id=discord_user_id,
-            ).delete()
-
-            char_spec_info: dict[str, dict] = {}
-            top_role = get_top_role_name(user) if isinstance(user, discord.Member) else None
-
-            for entry in parsed:
-                char = (
-                    session.query(Character)
-                    .filter_by(
-                        discord_user_id=discord_user_id,
-                        char_name=entry["char_name"],
-                        spec=entry["spec"],
-                    )
-                    .first()
-                )
-                if char is None:
-                    char = Character(
-                        discord_user_id=discord_user_id,
-                        char_name=entry["char_name"],
-                    )
-                    session.add(char)
-                char.char_class = entry["char_class"]
-                char.spec = entry["spec"]
-                char.role = get_role_from_spec(entry["char_class"], entry["spec"])
-                char.gearscore = entry["gearscore"]
-                char.is_deleted = False
-                char.last_updated = datetime.datetime.now(datetime.timezone.utc)
-                session.flush()
-
-            # Update ALL characters for this user in this guild with the latest Discord info
-            session.query(Character).filter_by(
-                guild_id=_raid_id_to_guild_id(session, raid_id),
-                discord_user_id=discord_user_id,
-            ).update(
-                {
-                    "discord_role": top_role,
-                    "membership_status": "active",
-                    "last_updated": datetime.datetime.now(datetime.timezone.utc),
-                }
-            )
-
-            for entry in parsed:
-                signup_type = SignupType.prio_character if entry["is_prio"] else SignupType.fill
-                session.add(
-                    Signup(
-                        raid_id=raid_id,
-                        discord_user_id=discord_user_id,
-                        character_id=char.id,
-                        signup_type=signup_type,
-                        status=signup_status,
-                        is_saved=entry["is_saved"],
-                        note=entry.get("note") or None,
-                    )
-                )
-
-                key = entry["char_name"].lower()
-                if key not in char_spec_info:
-                    char_spec_info[key] = {
-                        "char_name": entry["char_name"],
-                        "char_class": entry["char_class"],
-                        "specs": [],
-                        "is_saved": entry["is_saved"],
-                        "note": entry.get("note", ""),
-                    }
-                char_spec_info[key]["specs"].append(
-                    {
-                        "spec": entry["spec"],
-                        "gearscore": entry["gearscore"],
-                        "is_prio": entry["is_prio"],
-                    }
-                )
-            session.commit()
-
-            summaries = []
-            for data in char_spec_info.values():
-                spec_parts = []
-                for s in data["specs"]:
-                    star = " ⭐" if s["is_prio"] else ""
-                    spec_parts.append(f"{s['spec']}{star} GS {format_gs(s['gearscore'])}")
-                specs_str = " / ".join(spec_parts)
-                saved_flag = " ❌" if data["is_saved"] else ""
-                note_str = f" 💬 *{data['note']}*" if data.get("note") else ""
-                summaries.append(
-                    f"• **{data['char_name']}** ({data['char_class']}) – {specs_str}{saved_flag}{note_str}"
-                )
-            return summaries
+            return _save_text_signup_db(session, user, parsed, raid_id, signup_status)
         finally:
             session.close()
 
