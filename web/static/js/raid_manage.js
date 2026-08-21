@@ -912,6 +912,7 @@ function scheduleSaveRetry() {
 
 async function performSaveQueue() {
   let droppedUnavailableCount = 0;
+  const droppedReasons = new Set();
   while (dirtyChanges.size > 0) {
     const snapshot = new Map(dirtyChanges);
     const changes = [...snapshot].map(([role_slot, change]) => ({ role_slot, ...change }));
@@ -951,6 +952,9 @@ async function performSaveQueue() {
     }
 
     droppedUnavailableCount += Array.isArray(data.dropped) ? data.dropped.length : 0;
+    for (const detail of data.dropped_details || []) {
+      if (detail.reason) droppedReasons.add(detail.reason);
+    }
     currentRevision = Number(data.revision) || currentRevision;
     for (const [slot, savedChange] of snapshot) {
       const latest = dirtyChanges.get(slot);
@@ -964,7 +968,7 @@ async function performSaveQueue() {
   }
   markClean(
     droppedUnavailableCount > 0
-      ? `✓ saved · ${droppedUnavailableCount} stale signup assignment${droppedUnavailableCount === 1 ? '' : 's'} removed`
+      ? `✓ saved · ${droppedUnavailableCount} stale signup assignment${droppedUnavailableCount === 1 ? '' : 's'} removed${droppedReasons.size ? ` (${[...droppedReasons].join(', ')})` : ''}`
       : '✓ saved'
   );
 }

@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const {
   CompositionValidationError,
+  describeIneligibleEntries,
   mergeCompositionChanges,
   normalizeEntry,
   parseCompNumber,
@@ -84,6 +85,46 @@ test('composition validation can drop characters and players whose sign-ups chan
   assert.deepEqual(
     entries.map((entry) => entry.role_slot),
     ['slot_1', 'slot_3', 'slot_5']
+  );
+});
+
+test('ineligible composition entries include actionable reasons', async () => {
+  const db = {
+    async query(sql) {
+      if (sql.includes('FROM characters c')) {
+        return [
+          [
+            {
+              id: 7,
+              guild_id: '9001',
+              is_deleted: 0,
+              signup_count: 1,
+              has_available_signup: 0,
+            },
+            {
+              id: 8,
+              guild_id: '9999',
+              is_deleted: 0,
+              signup_count: 1,
+              has_available_signup: 1,
+            },
+          ],
+        ];
+      }
+      if (sql.includes('FROM signups')) return [[]];
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+
+  const details = await describeIneligibleEntries(db, raid, [
+    { role_slot: 'slot_1', character_id: 7, discord_user_id: null },
+    { role_slot: 'slot_2', character_id: 8, discord_user_id: null },
+    { role_slot: 'slot_3', character_id: 9, discord_user_id: null },
+  ]);
+
+  assert.deepEqual(
+    details.map((entry) => entry.reason),
+    ['character signup is marked saved', 'character belongs to another guild', 'character missing']
   );
 });
 

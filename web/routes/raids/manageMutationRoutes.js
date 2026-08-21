@@ -4,6 +4,7 @@ const {
   CompositionValidationError,
   applyCompositionChanges,
   bumpCompositionRevision,
+  describeIneligibleEntries,
   ensureCompositionMeta,
   fetchCompositionRows,
   lockCompositionMeta,
@@ -191,19 +192,15 @@ function registerManageMutationRoutes(router, dependencies) {
       const dropped = finalEntries
         .filter((entry) => !eligibleSlots.has(entry.role_slot))
         .map((entry) => entry.role_slot);
+      let droppedDetails = [];
       if (dropped.length > 0) {
-        const droppedEntries = finalEntries
-          .filter((entry) => dropped.includes(entry.role_slot))
-          .map((entry) => ({
-            role_slot: entry.role_slot,
-            character_id: entry.character_id || null,
-            discord_user_id: entry.discord_user_id || null,
-          }));
+        const droppedEntries = finalEntries.filter((entry) => dropped.includes(entry.role_slot));
+        droppedDetails = await describeIneligibleEntries(connection, raid, droppedEntries);
         console.info(
           '[composition] Removing assignments without an eligible signup from raid %s comp %s: %s',
           raid.id,
           compNumber,
-          JSON.stringify(droppedEntries)
+          JSON.stringify(droppedDetails)
         );
       }
       const changesBySlot = new Map(normalizedChanges.map((entry) => [entry.role_slot, entry]));
@@ -230,6 +227,7 @@ function registerManageMutationRoutes(router, dependencies) {
           cleared: entry.clear,
         })),
         dropped,
+        dropped_details: droppedDetails,
         entries: serializeCompositionRows(rows),
       });
     } catch (error) {
