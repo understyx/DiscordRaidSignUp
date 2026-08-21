@@ -45,3 +45,95 @@ test('guild admin resolution rejects missing roles and fails closed', async () =
 test('guilds without configured admin roles preserve open administration', async () => {
   assert.equal(await resolverWith()('100', '42'), true);
 });
+
+test('admin resolution caches Discord membership checks', async () => {
+  let fetchCount = 0;
+  const resolve = createAdminResolver({
+    botToken: 'token',
+    devOverrideEnabled: () => false,
+    devUserId: '',
+    fetch: async () => {
+      fetchCount += 1;
+      return {
+        ok: true,
+        async json() {
+          return { roles: ['8'] };
+        },
+      };
+    },
+    pool: {
+      async query() {
+        return [[{ role_id: '8' }]];
+      },
+    },
+  });
+
+  assert.equal(await resolve('100', '42'), true);
+  assert.equal(await resolve('100', '42'), true);
+  assert.equal(fetchCount, 1);
+});
+
+test('transient Discord failures reuse a recently verified permission', async () => {
+  let clock = 0;
+  let shouldFail = false;
+  const resolve = createAdminResolver({
+    botToken: 'token',
+    cacheTtlMs: 10,
+    staleTtlMs: 100,
+    now: () => clock,
+    logger: { warn() {} },
+    devOverrideEnabled: () => false,
+    devUserId: '',
+    fetch: async () => {
+      if (shouldFail) return { ok: false, status: 429 };
+      return {
+        ok: true,
+        async json() {
+          return { roles: ['8'] };
+        },
+      };
+    },
+    pool: {
+      async query() {
+        return [[{ role_id: '8' }]];
+      },
+    },
+  });
+
+  assert.equal(await resolve('100', '42'), true);
+  clock = 20;
+  shouldFail = true;
+  assert.equal(await resolve('100', '42'), true);
+});
+
+test('a confirmed missing guild member overrides a cached permission', async () => {
+  let clock = 0;
+  let missing = false;
+  const resolve = createAdminResolver({
+    botToken: 'token',
+    cacheTtlMs: 10,
+    staleTtlMs: 100,
+    now: () => clock,
+    devOverrideEnabled: () => false,
+    devUserId: '',
+    fetch: async () => {
+      if (missing) return { ok: false, status: 404 };
+      return {
+        ok: true,
+        async json() {
+          return { roles: ['8'] };
+        },
+      };
+    },
+    pool: {
+      async query() {
+        return [[{ role_id: '8' }]];
+      },
+    },
+  });
+
+  assert.equal(await resolve('100', '42'), true);
+  clock = 20;
+  missing = true;
+  assert.equal(await resolve('100', '42'), false);
+});

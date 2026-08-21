@@ -131,12 +131,22 @@ function registerManageMutationRoutes(router, dependencies) {
   router.patch('/:raid_number/manage', express.json(), async (req, res) => {
     if (!req.session.user_id) return res.status(401).json({ ok: false });
     const patchGuildId = req.session.active_guild_id || null;
-    if (!(await resolveIsAdmin(req.session.user_id, patchGuildId)))
-      return res.status(403).json({ ok: false, error: 'Forbidden' });
-
     const raidNumber = parseInt(req.params.raid_number);
     const raid = await getRaidByUrlParams(patchGuildId, raidNumber);
     if (!raid) return res.status(404).json({ ok: false, error: 'Raid not found' });
+    const raidGuildId = raid.guild_id ? String(raid.guild_id) : null;
+    if (!(await resolveIsAdmin(req.session.user_id, raidGuildId))) {
+      console.warn(
+        '[composition] Autosave forbidden for user %s, guild %s, raid %s.',
+        req.session.user_id,
+        raidGuildId || 'legacy',
+        raid.id
+      );
+      return res.status(403).json({
+        ok: false,
+        error: 'Officer permission could not be confirmed for this raid. Refresh and try again.',
+      });
+    }
 
     let compNumber;
     try {
@@ -181,6 +191,21 @@ function registerManageMutationRoutes(router, dependencies) {
       const dropped = finalEntries
         .filter((entry) => !eligibleSlots.has(entry.role_slot))
         .map((entry) => entry.role_slot);
+      if (dropped.length > 0) {
+        const droppedEntries = finalEntries
+          .filter((entry) => dropped.includes(entry.role_slot))
+          .map((entry) => ({
+            role_slot: entry.role_slot,
+            character_id: entry.character_id || null,
+            discord_user_id: entry.discord_user_id || null,
+          }));
+        console.info(
+          '[composition] Removing assignments without an eligible signup from raid %s comp %s: %s',
+          raid.id,
+          compNumber,
+          JSON.stringify(droppedEntries)
+        );
+      }
       const changesBySlot = new Map(normalizedChanges.map((entry) => [entry.role_slot, entry]));
       for (const roleSlot of dropped) {
         changesBySlot.set(roleSlot, { role_slot: roleSlot, clear: true });

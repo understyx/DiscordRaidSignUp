@@ -34,5 +34,5 @@ test('unassigned filtering uses the player-level current-comp state', () => {
 
 test('autosave reports assignments removed after sign-up changes', () => {
   assert.match(source, /data\.dropped/);
-  assert.match(source, /unavailable assignment/);
+  assert.match(source, /stale signup assignment/);
 });

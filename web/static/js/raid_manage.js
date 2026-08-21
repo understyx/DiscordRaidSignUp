@@ -964,7 +964,7 @@ async function performSaveQueue() {
   }
   markClean(
     droppedUnavailableCount > 0
-      ? `✓ saved · ${droppedUnavailableCount} unavailable assignment${droppedUnavailableCount === 1 ? '' : 's'} removed`
+      ? `✓ saved · ${droppedUnavailableCount} stale signup assignment${droppedUnavailableCount === 1 ? '' : 's'} removed`
       : '✓ saved'
   );
 }
