@@ -90,7 +90,7 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
     seenSlots.add(entry.role_slot);
   }
 
-  const activeEntries = normalized.filter((entry) => !entry.clear);
+  let activeEntries = normalized.filter((entry) => !entry.clear);
   const characterIds = [
     ...new Set(activeEntries.map((entry) => entry.character_id).filter(Boolean)),
   ];
@@ -105,9 +105,14 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
       [raid.id, ...characterIds, raid.guild_id]
     );
     for (const row of rows) characterOwners.set(Number(row.id), String(row.discord_user_id));
-    if (characterOwners.size !== characterIds.length) {
+    if (characterOwners.size !== characterIds.length && !options.dropIneligible) {
       throw new CompositionValidationError(
         'Every assigned character must be an active character signed up for this raid.'
+      );
+    }
+    if (options.dropIneligible) {
+      activeEntries = activeEntries.filter(
+        (entry) => entry.character_id === null || characterOwners.has(entry.character_id)
       );
     }
   }
@@ -123,9 +128,14 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
       [raid.id, ...playerIds]
     );
     const signedPlayers = new Set(rows.map((row) => String(row.discord_user_id)));
-    if (signedPlayers.size !== playerIds.length) {
+    if (signedPlayers.size !== playerIds.length && !options.dropIneligible) {
       throw new CompositionValidationError(
         'Every assigned player must be signed up for this raid.'
+      );
+    }
+    if (options.dropIneligible) {
+      activeEntries = activeEntries.filter(
+        (entry) => !entry.discord_user_id || signedPlayers.has(entry.discord_user_id)
       );
     }
   }
@@ -144,7 +154,10 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
     seenOwners.add(owner);
   }
 
-  return normalized;
+  if (!options.dropIneligible) return normalized;
+
+  const eligibleSlots = new Set(activeEntries.map((entry) => entry.role_slot));
+  return normalized.filter((entry) => entry.clear || eligibleSlots.has(entry.role_slot));
 }
 
 async function ensureCompositionMeta(db, raidId, compNumber) {

@@ -911,6 +911,7 @@ function scheduleSaveRetry() {
 }
 
 async function performSaveQueue() {
+  let droppedUnavailableCount = 0;
   while (dirtyChanges.size > 0) {
     const snapshot = new Map(dirtyChanges);
     const changes = [...snapshot].map(([role_slot, change]) => ({ role_slot, ...change }));
@@ -949,6 +950,7 @@ async function performSaveQueue() {
       throw new Error(data.error || `Save failed (${response.status})`);
     }
 
+    droppedUnavailableCount += Array.isArray(data.dropped) ? data.dropped.length : 0;
     currentRevision = Number(data.revision) || currentRevision;
     for (const [slot, savedChange] of snapshot) {
       const latest = dirtyChanges.get(slot);
@@ -960,7 +962,11 @@ async function performSaveQueue() {
     clearTimeout(retryTimer);
     retryTimer = null;
   }
-  markClean('✓ saved');
+  markClean(
+    droppedUnavailableCount > 0
+      ? `✓ saved · ${droppedUnavailableCount} unavailable assignment${droppedUnavailableCount === 1 ? '' : 's'} removed`
+      : '✓ saved'
+  );
 }
 
 function flushPendingChanges() {

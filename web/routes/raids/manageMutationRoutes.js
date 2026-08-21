@@ -109,7 +109,9 @@ function registerManageMutationRoutes(router, dependencies) {
         const state = await currentState(pool, raid.id, compNumber);
         return res.status(409).json({ ok: false, conflict: true, ...state });
       }
-      const entries = await validateCompositionEntries(connection, raid, body.entries);
+      const entries = await validateCompositionEntries(connection, raid, body.entries, {
+        dropIneligible: true,
+      });
       await replaceCompositionRows(connection, raid.id, compNumber, req.session.user_id, entries);
       const revision = await bumpCompositionRevision(connection, raid.id, compNumber);
       await connection.commit();
@@ -169,13 +171,27 @@ function registerManageMutationRoutes(router, dependencies) {
       );
       const currentRows = await fetchCompositionRows(connection, raid.id, compNumber);
       const finalEntries = mergeCompositionChanges(currentRows, normalizedChanges);
-      await validateCompositionEntries(connection, raid, finalEntries);
+      const eligibleFinalEntries = await validateCompositionEntries(
+        connection,
+        raid,
+        finalEntries,
+        { dropIneligible: true }
+      );
+      const eligibleSlots = new Set(eligibleFinalEntries.map((entry) => entry.role_slot));
+      const dropped = finalEntries
+        .filter((entry) => !eligibleSlots.has(entry.role_slot))
+        .map((entry) => entry.role_slot);
+      const changesBySlot = new Map(normalizedChanges.map((entry) => [entry.role_slot, entry]));
+      for (const roleSlot of dropped) {
+        changesBySlot.set(roleSlot, { role_slot: roleSlot, clear: true });
+      }
+      const appliedChanges = [...changesBySlot.values()];
       await applyCompositionChanges(
         connection,
         raid.id,
         compNumber,
         req.session.user_id,
-        normalizedChanges
+        appliedChanges
       );
       const revision = await bumpCompositionRevision(connection, raid.id, compNumber);
       await connection.commit();
@@ -184,10 +200,11 @@ function registerManageMutationRoutes(router, dependencies) {
       return res.json({
         ok: true,
         revision,
-        saved: normalizedChanges.map((entry) => ({
+        saved: appliedChanges.map((entry) => ({
           role_slot: entry.role_slot,
           cleared: entry.clear,
         })),
+        dropped,
         entries: serializeCompositionRows(rows),
       });
     } catch (error) {

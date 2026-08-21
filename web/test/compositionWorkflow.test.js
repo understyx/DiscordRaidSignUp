@@ -64,6 +64,29 @@ test('composition validation rejects the same Discord player in two forms', asyn
   );
 });
 
+test('composition validation can drop characters and players whose sign-ups changed', async () => {
+  const entries = await validateCompositionEntries(
+    validationDb({
+      characters: [{ id: 7, discord_user_id: '101' }],
+      players: [{ discord_user_id: '202' }],
+    }),
+    raid,
+    [
+      { role_slot: 'slot_1', character_id: 7 },
+      { role_slot: 'slot_2', character_id: 8 },
+      { role_slot: 'slot_3', discord_user_id: '202' },
+      { role_slot: 'slot_4', discord_user_id: '303' },
+      { role_slot: 'slot_5', placeholder_text: 'Flexible DPS' },
+    ],
+    { dropIneligible: true }
+  );
+
+  assert.deepEqual(
+    entries.map((entry) => entry.role_slot),
+    ['slot_1', 'slot_3', 'slot_5']
+  );
+});
+
 test('patch merging preserves untouched slots and applies clears', () => {
   const rows = [
     { role_slot: 'slot_1', slot_role: 'tank', character_id: 7 },

@@ -31,3 +31,8 @@ test('collaboration applies an empty remote player-placeholder slot', () => {
 test('unassigned filtering uses the player-level current-comp state', () => {
   assert.match(source, /poolStatusFilter === 'unassigned' && !playerAssignedCurrent/);
 });
+
+test('autosave reports assignments removed after sign-up changes', () => {
+  assert.match(source, /data\.dropped/);
+  assert.match(source, /unavailable assignment/);
+});
