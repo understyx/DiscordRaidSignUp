@@ -48,6 +48,29 @@ test('composition validation accepts signed guild characters and placeholders', 
   assert.equal(entries[1].placeholder_text, 'Healer');
 });
 
+test('saved signups remain eligible composition assignments', async () => {
+  const queries = [];
+  const db = {
+    async query(sql) {
+      queries.push(sql);
+      if (sql.includes('FROM characters c')) return [[{ id: 7, discord_user_id: '101' }]];
+      if (sql.includes('SELECT DISTINCT discord_user_id FROM signups')) {
+        return [[{ discord_user_id: '202' }]];
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+
+  const entries = await validateCompositionEntries(db, raid, [
+    { role_slot: 'slot_1', character_id: 7 },
+    { role_slot: 'slot_2', discord_user_id: '202' },
+  ]);
+
+  assert.equal(entries.length, 2);
+  assert.equal(queries.length, 2);
+  for (const sql of queries) assert.doesNotMatch(sql, /is_saved\s*=\s*0/);
+});
+
 test('composition validation rejects the same Discord player in two forms', async () => {
   await assert.rejects(
     validateCompositionEntries(
@@ -97,16 +120,14 @@ test('ineligible composition entries include actionable reasons', async () => {
             {
               id: 7,
               guild_id: '9001',
-              is_deleted: 0,
+              is_deleted: 1,
               signup_count: 1,
-              has_available_signup: 0,
             },
             {
               id: 8,
               guild_id: '9999',
               is_deleted: 0,
               signup_count: 1,
-              has_available_signup: 1,
             },
           ],
         ];
@@ -124,7 +145,7 @@ test('ineligible composition entries include actionable reasons', async () => {
 
   assert.deepEqual(
     details.map((entry) => entry.reason),
-    ['character signup is marked saved', 'character belongs to another guild', 'character missing']
+    ['character is deleted', 'character belongs to another guild', 'character missing']
   );
 });
 

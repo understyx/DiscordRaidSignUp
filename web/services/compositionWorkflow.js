@@ -100,7 +100,7 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
     const [rows] = await db.query(
       `SELECT DISTINCT c.id, c.discord_user_id
        FROM characters c
-       JOIN signups s ON s.character_id = c.id AND s.raid_id = ? AND s.is_saved = 0
+       JOIN signups s ON s.character_id = c.id AND s.raid_id = ?
        WHERE c.id IN (${placeholders}) AND c.guild_id = ? AND c.is_deleted = 0`,
       [raid.id, ...characterIds, raid.guild_id]
     );
@@ -124,7 +124,7 @@ async function validateCompositionEntries(db, raid, entries, options = {}) {
     const placeholders = playerIds.map(() => '?').join(', ');
     const [rows] = await db.query(
       `SELECT DISTINCT discord_user_id FROM signups
-       WHERE raid_id = ? AND is_saved = 0 AND discord_user_id IN (${placeholders})`,
+       WHERE raid_id = ? AND discord_user_id IN (${placeholders})`,
       [raid.id, ...playerIds]
     );
     const signedPlayers = new Set(rows.map((row) => String(row.discord_user_id)));
@@ -169,9 +169,7 @@ async function describeIneligibleEntries(db, raid, entries) {
   if (characterIds.length > 0) {
     const placeholders = characterIds.map(() => '?').join(', ');
     const [rows] = await db.query(
-      `SELECT c.id, c.guild_id, c.is_deleted,
-              COUNT(s.id) AS signup_count,
-              COALESCE(MAX(CASE WHEN s.is_saved = 0 THEN 1 ELSE 0 END), 0) AS has_available_signup
+      `SELECT c.id, c.guild_id, c.is_deleted, COUNT(s.id) AS signup_count
        FROM characters c
        LEFT JOIN signups s ON s.character_id = c.id AND s.raid_id = ?
        WHERE c.id IN (${placeholders})
@@ -190,8 +188,6 @@ async function describeIneligibleEntries(db, raid, entries) {
       else if (Number(state.is_deleted) !== 0) reason = 'character is deleted';
       else if (Number(state.signup_count) === 0)
         reason = 'character is not signed up for this raid';
-      else if (Number(state.has_available_signup) === 0)
-        reason = 'character signup is marked saved';
       else reason = 'character failed an unknown eligibility check';
     }
     details.push({
@@ -206,14 +202,11 @@ async function describeIneligibleEntries(db, raid, entries) {
     (entry) => entry.character_id === null && Boolean(entry.discord_user_id)
   );
   const playerIds = [...new Set(playerEntries.map((entry) => entry.discord_user_id))];
-  const availablePlayers = new Set();
   const signedPlayers = new Set();
   if (playerIds.length > 0) {
     const placeholders = playerIds.map(() => '?').join(', ');
     const [rows] = await db.query(
-      `SELECT discord_user_id,
-              COUNT(*) AS signup_count,
-              COALESCE(MAX(CASE WHEN is_saved = 0 THEN 1 ELSE 0 END), 0) AS has_available_signup
+      `SELECT discord_user_id, COUNT(*) AS signup_count
        FROM signups
        WHERE raid_id = ? AND discord_user_id IN (${placeholders})
        GROUP BY discord_user_id`,
@@ -222,16 +215,13 @@ async function describeIneligibleEntries(db, raid, entries) {
     for (const row of rows) {
       const playerId = String(row.discord_user_id);
       signedPlayers.add(playerId);
-      if (Number(row.has_available_signup) !== 0) availablePlayers.add(playerId);
     }
   }
 
   for (const entry of playerEntries) {
     const reason = !signedPlayers.has(entry.discord_user_id)
       ? 'player is not signed up for this raid'
-      : !availablePlayers.has(entry.discord_user_id)
-        ? 'all player signups are marked saved'
-        : 'player failed an unknown eligibility check';
+      : 'player failed an unknown eligibility check';
     details.push({
       role_slot: entry.role_slot,
       character_id: null,
