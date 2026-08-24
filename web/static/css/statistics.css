@@ -1,0 +1,75 @@
+.statistics-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.statistics-kicker,
+.statistics-total-label {
+  color: var(--wow-gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.statistics-total .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.statistics-total strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.statistics-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom-color: var(--border-dim);
+}
+
+.statistics-table th:not(:first-child),
+.statistics-table td:not(:first-child) {
+  width: 10rem;
+}
+
+.statistics-member-id {
+  display: block;
+  width: fit-content;
+  margin-top: 0.2rem;
+  color: #7f899d;
+  font-size: 0.7rem;
+}
+
+.statistics-count {
+  display: inline-flex;
+  min-width: 2.25rem;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+}
+
+.statistics-count-placed {
+  background: rgba(25, 135, 84, 0.22);
+  color: #86dfb3;
+}
+
+@media (max-width: 575.98px) {
+  .statistics-heading {
+    align-items: flex-start;
+  }
+
+  .statistics-table th:not(:first-child),
+  .statistics-table td:not(:first-child) {
+    width: auto;
+    min-width: 7rem;
+  }
+}

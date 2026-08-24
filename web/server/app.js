@@ -14,6 +14,7 @@ const adminRouter = require('../routes/admin');
 const guildSettingsRouter = require('../routes/guildSettings');
 const guildCharactersRouter = require('../routes/guildCharacters');
 const recruitmentRouter = require('../routes/recruitment');
+const statisticsRouter = require('../routes/statistics');
 const { registerFilters } = require('./filters');
 const { safeRelativeRedirect } = require('../services/guildAccess');
 const {
@@ -233,6 +234,7 @@ function createApp() {
   app.use('/guild-settings', guildSettingsRouter);
   app.use('/guild-characters', guildCharactersRouter);
   app.use('/recruitment', recruitmentRouter);
+  app.use('/statistics', statisticsRouter);
 
   // Bare-slug shortcut: /<slug> serves a recruitment form directly.
   // This must come after all other specific routes to avoid collisions.
