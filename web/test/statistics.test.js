@@ -163,6 +163,7 @@ test('statistics page renders attendance for officers', () => {
     html,
     /datetime="2026-08-10T18:00:00.000Z" data-raid-relative-time>2026-08-10<\/time>/
   );
+  assert.match(html, /class="statistics-exact-date">2026-08-10<\/small>/);
   assert.match(html, /data-last-signup-at="2026-08-10T18:00:00.000Z"/);
   assert.match(html, /data-signup-count="8"/);
   assert.match(html, /data-placed-count="6"/);

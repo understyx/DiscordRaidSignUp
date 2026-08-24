@@ -92,6 +92,13 @@
   font-weight: 600;
 }
 
+.statistics-exact-date {
+  display: block;
+  margin-top: 0.1rem;
+  color: #7f899d;
+  font-size: 0.7rem;
+}
+
 .statistics-count {
   display: inline-flex;
   min-width: 2.25rem;

@@ -109,6 +109,7 @@
               <td class="statistics-last-signup">
                 {% if member.lastSignupAt %}
                 <time datetime="{{ member.lastSignupAt | dateiso }}" data-raid-relative-time>{{ member.lastSignupAt | dateformat('%Y-%m-%d') }}</time>
+                <small class="statistics-exact-date">{{ member.lastSignupAt | dateformat('%Y-%m-%d') }}</small>
                 {% elif member.signupCount %}
                 <span class="text-muted">Unknown</span>
                 {% else %}
