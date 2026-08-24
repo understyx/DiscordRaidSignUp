@@ -94,6 +94,7 @@ function buildAttendanceRoleGroups(attendance, members, discordRoles, selectedRa
       nameColor: colorRole ? colorRole.colorHex : null,
       signupCount: savedAttendance ? savedAttendance.signupCount : 0,
       placedCount: savedAttendance ? savedAttendance.placedCount : 0,
+      lastSignupAt: savedAttendance ? savedAttendance.lastSignupAt : null,
     });
   }
 

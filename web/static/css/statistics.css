@@ -80,10 +80,16 @@
   font-size: 0.7rem;
 }
 
-.statistics-joined-date {
+.statistics-joined-date,
+.statistics-last-signup {
   color: #b8c0cf;
   font-size: 0.84rem;
   white-space: nowrap;
+}
+
+.statistics-never {
+  color: #ff9ca6;
+  font-weight: 600;
 }
 
 .statistics-count {

@@ -319,8 +319,8 @@ router.post('/seed-fake-signups/:raid_id', async (req, res) => {
         const charId = charResult.insertId;
 
         await conn.query(
-          `INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status)
-           VALUES (?, ?, ?, 'fill', 'signed')`,
+          `INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, created_at)
+           VALUES (?, ?, ?, 'fill', 'signed', NOW())`,
           [raidId, fakeId, charId]
         );
         totalChars++;

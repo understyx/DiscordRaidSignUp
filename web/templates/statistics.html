@@ -57,6 +57,8 @@
         <option value="signups_asc">Sign-ups: low to high</option>
         <option value="joined_desc">Joined server: newest first</option>
         <option value="joined_asc">Joined server: oldest first</option>
+        <option value="last_signup_desc">Last signed up: newest first</option>
+        <option value="last_signup_asc">Last signed up: oldest first</option>
         <option value="name_asc">Display name: A to Z</option>
         <option value="name_desc">Display name: Z to A</option>
       </select>
@@ -80,6 +82,7 @@
             <tr>
               <th scope="col">Guild member</th>
               <th scope="col">Joined server</th>
+              <th scope="col">Last signed up</th>
               <th scope="col" class="text-end">Signed up</th>
               <th scope="col" class="text-end">Placed in a comp</th>
             </tr>
@@ -89,6 +92,7 @@
             <tr data-display-name="{{ member.displayName }}"
                 data-user-id="{{ member.userId }}"
                 data-joined-at="{{ member.joinedAt or '' }}"
+                data-last-signup-at="{{ member.lastSignupAt or '' }}"
                 data-signup-count="{{ member.signupCount }}"
                 data-placed-count="{{ member.placedCount }}">
               <td>
@@ -100,6 +104,15 @@
                 <time datetime="{{ member.joinedAt | dateiso }}">{{ member.joinedAt | dateformat('%Y-%m-%d') }}</time>
                 {% else %}
                 <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="statistics-last-signup">
+                {% if member.lastSignupAt %}
+                <time datetime="{{ member.lastSignupAt | dateiso }}" data-raid-relative-time>{{ member.lastSignupAt | dateformat('%Y-%m-%d') }}</time>
+                {% elif member.signupCount %}
+                <span class="text-muted">Unknown</span>
+                {% else %}
+                <span class="statistics-never">Never</span>
                 {% endif %}
               </td>
               <td class="text-end">

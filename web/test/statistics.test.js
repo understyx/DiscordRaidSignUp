@@ -31,6 +31,7 @@ test('attendance is guild-scoped and counts each member once per raid', async ()
             display_name: 'Guardian',
             signup_count: '8',
             placed_count: '6',
+            last_signup_at: new Date('2026-08-10T18:00:00.000Z'),
           },
         ],
       ];
@@ -46,10 +47,12 @@ test('attendance is guild-scoped and counts each member once per raid', async ()
       displayName: 'Guardian',
       signupCount: 8,
       placedCount: 6,
+      lastSignupAt: '2026-08-10T18:00:00.000Z',
     },
   ]);
   assert.deepEqual(calls[0][1], ['42', '42', '42']);
   assert.match(calls[0][0], /COUNT\(DISTINCT s\.raid_id\)/);
+  assert.match(calls[0][0], /MAX\(s\.created_at\) AS last_signup_at/);
   assert.match(calls[0][0], /s\.status IN \('signed', 'tentative'\)/);
   assert.match(calls[0][0], /COALESCE\(co\.discord_user_id, c\.discord_user_id\)/);
   assert.match(calls[0][0], /COUNT\(DISTINCT placed_rows\.raid_id\)/);
@@ -58,7 +61,12 @@ test('attendance is guild-scoped and counts each member once per raid', async ()
 test('attendance uses server display names and groups members by Discord rank', () => {
   const groups = buildAttendanceRoleGroups(
     [
-      { userId: '100', signupCount: 8, placedCount: 6 },
+      {
+        userId: '100',
+        signupCount: 8,
+        placedCount: 6,
+        lastSignupAt: '2026-08-10T18:00:00.000Z',
+      },
       { userId: '200', signupCount: 4, placedCount: 2 },
     ],
     [
@@ -93,6 +101,7 @@ test('attendance uses server display names and groups members by Discord rank', 
   assert.equal(groups[0].name, 'Officer');
   assert.equal(groups[0].members[0].displayName, 'Server Guardian');
   assert.equal(groups[0].members[0].joinedAt, '2024-01-15T18:30:00.000Z');
+  assert.equal(groups[0].members[0].lastSignupAt, '2026-08-10T18:00:00.000Z');
   assert.equal(groups[0].members[0].nameColor, '#ff8800');
   assert.equal(groups[1].name, 'Raider');
   assert.equal(groups[1].members[0].displayName, 'Global Mage');
@@ -114,6 +123,7 @@ test('statistics page renders attendance for officers', () => {
             userId: '123456789012345678',
             displayName: 'Citadel Guardian',
             joinedAt: '2024-01-15T18:30:00.000Z',
+            lastSignupAt: '2026-08-10T18:00:00.000Z',
             nameColor: '#ff8800',
             signupCount: 8,
             placedCount: 6,
@@ -141,11 +151,19 @@ test('statistics page renders attendance for officers', () => {
   assert.match(html, /value="signups_desc"/);
   assert.match(html, /value="joined_desc"/);
   assert.match(html, /value="joined_asc"/);
+  assert.match(html, /value="last_signup_desc"/);
+  assert.match(html, /value="last_signup_asc"/);
   assert.match(html, /value="name_asc"/);
   assert.match(html, /data-display-name="Citadel Guardian"/);
   assert.match(html, /data-joined-at="2024-01-15T18:30:00.000Z"/);
   assert.match(html, /<th scope="col">Joined server<\/th>/);
+  assert.match(html, /<th scope="col">Last signed up<\/th>/);
   assert.match(html, /datetime="2024-01-15T18:30:00.000Z">2024-01-15<\/time>/);
+  assert.match(
+    html,
+    /datetime="2026-08-10T18:00:00.000Z" data-raid-relative-time>2026-08-10<\/time>/
+  );
+  assert.match(html, /data-last-signup-at="2026-08-10T18:00:00.000Z"/);
   assert.match(html, /data-signup-count="8"/);
   assert.match(html, /data-placed-count="6"/);
   assert.match(html, /src="\/js\/statistics\.js"/);
@@ -174,6 +192,7 @@ test('statistics highlights zero attendance counts in red', () => {
   });
 
   assert.equal((html.match(/statistics-count-zero/g) || []).length, 2);
+  assert.match(html, /class="statistics-never">Never<\/span>/);
 });
 
 test('statistics sorting reorders every Discord-rank section', () => {
@@ -187,8 +206,19 @@ test('statistics sorting reorders every Discord-rank section', () => {
   assert.match(source, /case 'signups_desc'/);
   assert.match(source, /case 'joined_desc'/);
   assert.match(source, /case 'joined_asc'/);
+  assert.match(source, /case 'last_signup_desc'/);
+  assert.match(source, /case 'last_signup_asc'/);
   assert.match(source, /case 'name_desc'/);
   assert.match(source, /sortSelect\.addEventListener\('change', sortMembers\)/);
+});
+
+test('website sign-ups record when the member signed up', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'routes', 'raids', 'signupRoutes.js'),
+    'utf8'
+  );
+
+  assert.match(source, /status, note, created_at\) VALUES \(\?, \?, \?, \?, \?, \?, NOW\(\)\)/);
 });
 
 test('officer navigation links to statistics', () => {

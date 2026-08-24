@@ -242,7 +242,7 @@ function registerSignupRoutes(router, dependencies) {
       const sstatus = isTentative ? 'tentative' : 'signed';
       const note = noteByCharId.get(charId) || null;
       await pool.query(
-        'INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, note) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO signups (raid_id, discord_user_id, character_id, signup_type, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
         [raidId, userId, charId, stype, sstatus, note]
       );
 

@@ -9,6 +9,7 @@ function createStatisticsRepository(pool) {
     const [rows] = await pool.query(
       `SELECT members.discord_user_id, members.username, members.display_name,
               COALESCE(signups.signup_count, 0) AS signup_count,
+              signups.last_signup_at,
               COALESCE(placements.placed_count, 0) AS placed_count
        FROM (
          SELECT c.discord_user_id,
@@ -20,7 +21,9 @@ function createStatisticsRepository(pool) {
          GROUP BY c.discord_user_id
        ) members
        LEFT JOIN (
-         SELECT s.discord_user_id, COUNT(DISTINCT s.raid_id) AS signup_count
+         SELECT s.discord_user_id,
+                COUNT(DISTINCT s.raid_id) AS signup_count,
+                MAX(s.created_at) AS last_signup_at
          FROM signups s
          INNER JOIN raids r ON r.id = s.raid_id
          WHERE r.guild_id = ? AND s.status IN ('signed', 'tentative')
@@ -48,12 +51,17 @@ function createStatisticsRepository(pool) {
     return rows.map((row) => {
       const userId = String(row.discord_user_id);
       const username = row.username || userId;
+      const lastSignupDate = row.last_signup_at ? new Date(row.last_signup_at) : null;
       return {
         userId,
         username,
         displayName: row.display_name || username,
         signupCount: Number(row.signup_count) || 0,
         placedCount: Number(row.placed_count) || 0,
+        lastSignupAt:
+          lastSignupDate && !Number.isNaN(lastSignupDate.getTime())
+            ? lastSignupDate.toISOString()
+            : null,
       };
     });
   }
