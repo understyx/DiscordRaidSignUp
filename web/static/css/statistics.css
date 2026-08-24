@@ -34,6 +34,27 @@
   border-bottom-color: var(--border-dim);
 }
 
+.statistics-role-groups {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.statistics-role-group {
+  overflow: hidden;
+  border: 1px solid var(--border-dim);
+  border-radius: 0.55rem;
+}
+
+.statistics-role-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 4px solid var(--rank-color, #6c757d);
+  padding: 0.7rem 0.85rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
 .statistics-table th:not(:first-child),
 .statistics-table td:not(:first-child) {
   width: 10rem;

@@ -17,7 +17,7 @@
     <div class="card statistics-total h-100">
       <div class="card-body">
         <span class="statistics-total-label">Guild members</span>
-        <strong>{{ attendance | length }}</strong>
+        <strong>{{ member_count }}</strong>
       </div>
     </div>
   </div>
@@ -44,41 +44,52 @@
     <div>
       <h3 class="h5 mb-1" id="attendanceHeading">Raid attendance by member</h3>
       <p class="text-muted small mb-0">
-        Each raid counts once per member. Confirmed and tentative sign-ups are included; declined sign-ups are not.
+        Current Discord members are grouped by their highest rank. Each raid counts once per member; declined sign-ups are not included.
       </p>
     </div>
   </div>
 
-  {% if attendance | length %}
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0 statistics-table">
-      <thead class="table-dark">
-        <tr>
-          <th scope="col">Guild member</th>
-          <th scope="col" class="text-end">Signed up</th>
-          <th scope="col" class="text-end">Placed in a comp</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for member in attendance %}
-        <tr>
-          <td>
-            <strong>{{ member.displayName }}</strong>
-            {% if member.username != member.displayName %}<span class="text-muted small">@{{ member.username }}</span>{% endif %}
-            <code class="statistics-member-id">{{ member.userId }}</code>
-          </td>
-          <td class="text-end"><span class="statistics-count">{{ member.signupCount }}</span></td>
-          <td class="text-end"><span class="statistics-count statistics-count-placed">{{ member.placedCount }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% if role_groups | length %}
+  <div class="statistics-role-groups">
+    {% for group in role_groups %}
+    <section class="statistics-role-group" aria-labelledby="statisticsRole-{{ group.id }}">
+      <div class="statistics-role-heading"{% if group.color %} style="--rank-color: {{ group.color }}"{% endif %}>
+        <h4 class="h6 mb-0" id="statisticsRole-{{ group.id }}"{% if group.color %} style="color: {{ group.color }}"{% endif %}>
+          {{ group.name }}
+        </h4>
+        <span class="badge bg-secondary">{{ group.members | length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 statistics-table">
+          <thead class="table-dark">
+            <tr>
+              <th scope="col">Guild member</th>
+              <th scope="col" class="text-end">Signed up</th>
+              <th scope="col" class="text-end">Placed in a comp</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for member in group.members %}
+            <tr>
+              <td>
+                <strong{% if member.nameColor %} style="color: {{ member.nameColor }}"{% endif %}>{{ member.displayName }}</strong>
+                <code class="statistics-member-id">{{ member.userId }}</code>
+              </td>
+              <td class="text-end"><span class="statistics-count">{{ member.signupCount }}</span></td>
+              <td class="text-end"><span class="statistics-count statistics-count-placed">{{ member.placedCount }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
   </div>
   {% else %}
   <div class="card-body text-center py-5">
     <div class="fs-2 mb-2">📊</div>
     <h3 class="h6">No guild member statistics yet</h3>
-    <p class="text-muted small mb-0">Attendance will appear after guild members register characters.</p>
+    <p class="text-muted small mb-0">No current Discord members match the configured guild-rank filter.</p>
   </div>
   {% endif %}
 </section>

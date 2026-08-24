@@ -16,7 +16,7 @@ function createStatisticsRepository(pool) {
                 MAX(du.display_name) AS display_name
          FROM characters c
          LEFT JOIN discord_users du ON du.discord_user_id = c.discord_user_id
-         WHERE c.guild_id = ? AND c.membership_status = 'active'
+         WHERE c.guild_id = ?
          GROUP BY c.discord_user_id
        ) members
        LEFT JOIN (
