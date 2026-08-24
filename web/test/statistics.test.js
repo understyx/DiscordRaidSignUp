@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const nunjucks = require('nunjucks');
@@ -125,6 +126,54 @@ test('statistics page renders attendance for officers', () => {
   assert.match(html, /123456789012345678/);
   assert.match(html, /<th scope="col" class="text-end">Signed up<\/th>/);
   assert.match(html, /<th scope="col" class="text-end">Placed in a comp<\/th>/);
+  assert.match(html, /id="statisticsSort"/);
+  assert.match(html, /value="placed_desc" selected/);
+  assert.match(html, /value="signups_desc"/);
+  assert.match(html, /value="name_asc"/);
+  assert.match(html, /data-display-name="Citadel Guardian"/);
+  assert.match(html, /data-signup-count="8"/);
+  assert.match(html, /data-placed-count="6"/);
+  assert.match(html, /src="\/js\/statistics\.js"/);
+});
+
+test('statistics highlights zero attendance counts in red', () => {
+  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
+    autoescape: true,
+  });
+  const html = templates.render('statistics.html', {
+    guild_name: 'Citadel',
+    member_count: 1,
+    role_groups: [
+      {
+        id: '20',
+        name: 'Raider',
+        members: [
+          {
+            userId: '200',
+            displayName: 'New Raider',
+            signupCount: 0,
+            placedCount: 0,
+          },
+        ],
+      },
+    ],
+    totals: { signups: 0, placements: 0 },
+  });
+
+  assert.equal((html.match(/statistics-count-zero/g) || []).length, 2);
+});
+
+test('statistics sorting reorders every Discord-rank section', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'static', 'js', 'statistics.js'),
+    'utf8'
+  );
+
+  assert.match(source, /querySelectorAll\('\[data-statistics-members\]'\)/);
+  assert.match(source, /case 'placed_asc'/);
+  assert.match(source, /case 'signups_desc'/);
+  assert.match(source, /case 'name_desc'/);
+  assert.match(source, /sortSelect\.addEventListener\('change', sortMembers\)/);
 });
 
 test('officer navigation links to statistics', () => {

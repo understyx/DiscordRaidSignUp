@@ -34,6 +34,18 @@
   border-bottom-color: var(--border-dim);
 }
 
+.statistics-sort-control {
+  flex: 0 0 15rem;
+}
+
+.statistics-sort-control label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #aab2c2;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .statistics-role-groups {
   display: grid;
   gap: 1rem;
@@ -83,9 +95,25 @@
   color: #86dfb3;
 }
 
+.statistics-count-zero {
+  background: rgba(220, 53, 69, 0.24);
+  color: #ff9ca6;
+}
+
 @media (max-width: 575.98px) {
   .statistics-heading {
     align-items: flex-start;
+  }
+
+  .statistics-card-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .statistics-sort-control {
+    flex-basis: auto;
+    width: 100%;
   }
 
   .statistics-table th:not(:first-child),

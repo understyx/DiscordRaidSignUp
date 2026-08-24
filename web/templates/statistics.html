@@ -47,6 +47,19 @@
         Current Discord members are grouped by their highest rank. Each raid counts once per member; declined sign-ups are not included.
       </p>
     </div>
+    {% if role_groups | length %}
+    <div class="statistics-sort-control">
+      <label for="statisticsSort">Sort members</label>
+      <select class="form-select form-select-sm bg-dark text-light border-secondary" id="statisticsSort">
+        <option value="placed_desc" selected>Comp placements: high to low</option>
+        <option value="placed_asc">Comp placements: low to high</option>
+        <option value="signups_desc">Sign-ups: high to low</option>
+        <option value="signups_asc">Sign-ups: low to high</option>
+        <option value="name_asc">Display name: A to Z</option>
+        <option value="name_desc">Display name: Z to A</option>
+      </select>
+    </div>
+    {% endif %}
   </div>
 
   {% if role_groups | length %}
@@ -68,15 +81,22 @@
               <th scope="col" class="text-end">Placed in a comp</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody data-statistics-members>
             {% for member in group.members %}
-            <tr>
+            <tr data-display-name="{{ member.displayName }}"
+                data-user-id="{{ member.userId }}"
+                data-signup-count="{{ member.signupCount }}"
+                data-placed-count="{{ member.placedCount }}">
               <td>
                 <strong{% if member.nameColor %} style="color: {{ member.nameColor }}"{% endif %}>{{ member.displayName }}</strong>
                 <code class="statistics-member-id">{{ member.userId }}</code>
               </td>
-              <td class="text-end"><span class="statistics-count">{{ member.signupCount }}</span></td>
-              <td class="text-end"><span class="statistics-count statistics-count-placed">{{ member.placedCount }}</span></td>
+              <td class="text-end">
+                <span class="statistics-count{% if member.signupCount == 0 %} statistics-count-zero{% endif %}">{{ member.signupCount }}</span>
+              </td>
+              <td class="text-end">
+                <span class="statistics-count statistics-count-placed{% if member.placedCount == 0 %} statistics-count-zero{% endif %}">{{ member.placedCount }}</span>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -94,3 +114,5 @@
   {% endif %}
 </section>
 {% endblock %}
+
+{% block scripts %}<script src="/js/statistics.js"></script>{% endblock %}
