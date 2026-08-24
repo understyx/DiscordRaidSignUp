@@ -55,6 +55,8 @@
         <option value="placed_asc">Comp placements: low to high</option>
         <option value="signups_desc">Sign-ups: high to low</option>
         <option value="signups_asc">Sign-ups: low to high</option>
+        <option value="joined_desc">Joined server: newest first</option>
+        <option value="joined_asc">Joined server: oldest first</option>
         <option value="name_asc">Display name: A to Z</option>
         <option value="name_desc">Display name: Z to A</option>
       </select>
@@ -77,6 +79,7 @@
           <thead class="table-dark">
             <tr>
               <th scope="col">Guild member</th>
+              <th scope="col">Joined server</th>
               <th scope="col" class="text-end">Signed up</th>
               <th scope="col" class="text-end">Placed in a comp</th>
             </tr>
@@ -85,11 +88,19 @@
             {% for member in group.members %}
             <tr data-display-name="{{ member.displayName }}"
                 data-user-id="{{ member.userId }}"
+                data-joined-at="{{ member.joinedAt or '' }}"
                 data-signup-count="{{ member.signupCount }}"
                 data-placed-count="{{ member.placedCount }}">
               <td>
                 <strong{% if member.nameColor %} style="color: {{ member.nameColor }}"{% endif %}>{{ member.displayName }}</strong>
                 <code class="statistics-member-id">{{ member.userId }}</code>
+              </td>
+              <td class="statistics-joined-date">
+                {% if member.joinedAt %}
+                <time datetime="{{ member.joinedAt | dateiso }}">{{ member.joinedAt | dateformat('%Y-%m-%d') }}</time>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
               </td>
               <td class="text-end">
                 <span class="statistics-count{% if member.signupCount == 0 %} statistics-count-zero{% endif %}">{{ member.signupCount }}</span>

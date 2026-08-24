@@ -7,7 +7,16 @@ const test = require('node:test');
 const nunjucks = require('nunjucks');
 
 const { createStatisticsRepository } = require('../repositories/statistics');
+const { registerFilters } = require('../server/filters');
 const { buildAttendanceRoleGroups } = require('../services/guildStatistics');
+
+function createTemplates() {
+  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
+    autoescape: true,
+  });
+  registerFilters(templates);
+  return templates;
+}
 
 test('attendance is guild-scoped and counts each member once per raid', async () => {
   const calls = [];
@@ -55,6 +64,7 @@ test('attendance uses server display names and groups members by Discord rank', 
     [
       {
         nick: 'Server Guardian',
+        joined_at: '2024-01-15T18:30:00.000Z',
         roles: ['10', '20'],
         user: { id: '100', username: 'guardian', global_name: 'Global Guardian' },
       },
@@ -82,6 +92,7 @@ test('attendance uses server display names and groups members by Discord rank', 
   assert.equal(groups.length, 2);
   assert.equal(groups[0].name, 'Officer');
   assert.equal(groups[0].members[0].displayName, 'Server Guardian');
+  assert.equal(groups[0].members[0].joinedAt, '2024-01-15T18:30:00.000Z');
   assert.equal(groups[0].members[0].nameColor, '#ff8800');
   assert.equal(groups[1].name, 'Raider');
   assert.equal(groups[1].members[0].displayName, 'Global Mage');
@@ -89,9 +100,7 @@ test('attendance uses server display names and groups members by Discord rank', 
 });
 
 test('statistics page renders attendance for officers', () => {
-  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
-    autoescape: true,
-  });
+  const templates = createTemplates();
   const html = templates.render('statistics.html', {
     guild_name: 'Citadel',
     member_count: 1,
@@ -104,6 +113,7 @@ test('statistics page renders attendance for officers', () => {
           {
             userId: '123456789012345678',
             displayName: 'Citadel Guardian',
+            joinedAt: '2024-01-15T18:30:00.000Z',
             nameColor: '#ff8800',
             signupCount: 8,
             placedCount: 6,
@@ -129,17 +139,20 @@ test('statistics page renders attendance for officers', () => {
   assert.match(html, /id="statisticsSort"/);
   assert.match(html, /value="placed_desc" selected/);
   assert.match(html, /value="signups_desc"/);
+  assert.match(html, /value="joined_desc"/);
+  assert.match(html, /value="joined_asc"/);
   assert.match(html, /value="name_asc"/);
   assert.match(html, /data-display-name="Citadel Guardian"/);
+  assert.match(html, /data-joined-at="2024-01-15T18:30:00.000Z"/);
+  assert.match(html, /<th scope="col">Joined server<\/th>/);
+  assert.match(html, /datetime="2024-01-15T18:30:00.000Z">2024-01-15<\/time>/);
   assert.match(html, /data-signup-count="8"/);
   assert.match(html, /data-placed-count="6"/);
   assert.match(html, /src="\/js\/statistics\.js"/);
 });
 
 test('statistics highlights zero attendance counts in red', () => {
-  const templates = nunjucks.configure(path.join(__dirname, '..', 'templates'), {
-    autoescape: true,
-  });
+  const templates = createTemplates();
   const html = templates.render('statistics.html', {
     guild_name: 'Citadel',
     member_count: 1,
@@ -172,6 +185,8 @@ test('statistics sorting reorders every Discord-rank section', () => {
   assert.match(source, /querySelectorAll\('\[data-statistics-members\]'\)/);
   assert.match(source, /case 'placed_asc'/);
   assert.match(source, /case 'signups_desc'/);
+  assert.match(source, /case 'joined_desc'/);
+  assert.match(source, /case 'joined_asc'/);
   assert.match(source, /case 'name_desc'/);
   assert.match(source, /sortSelect\.addEventListener\('change', sortMembers\)/);
 });

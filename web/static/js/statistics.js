@@ -15,6 +15,17 @@
     return collator.compare(a.dataset.userId, b.dataset.userId);
   }
 
+  function compareJoinDates(a, b, direction) {
+    const aJoinedAt = Date.parse(a.dataset.joinedAt);
+    const bJoinedAt = Date.parse(b.dataset.joinedAt);
+    const aMissing = Number.isNaN(aJoinedAt);
+    const bMissing = Number.isNaN(bJoinedAt);
+    if (aMissing && bMissing) return compareNames(a, b);
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return direction * (aJoinedAt - bJoinedAt) || compareNames(a, b);
+  }
+
   function compareMembers(a, b, sorting) {
     const signupDifference = Number(a.dataset.signupCount) - Number(b.dataset.signupCount);
     const placedDifference = Number(a.dataset.placedCount) - Number(b.dataset.placedCount);
@@ -26,6 +37,10 @@
         return -signupDifference || -placedDifference || compareNames(a, b);
       case 'signups_asc':
         return signupDifference || placedDifference || compareNames(a, b);
+      case 'joined_desc':
+        return compareJoinDates(a, b, -1);
+      case 'joined_asc':
+        return compareJoinDates(a, b, 1);
       case 'name_asc':
         return compareNames(a, b);
       case 'name_desc':

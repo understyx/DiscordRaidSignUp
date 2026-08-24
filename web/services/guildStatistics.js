@@ -90,6 +90,7 @@ function buildAttendanceRoleGroups(attendance, members, discordRoles, selectedRa
       userId,
       username,
       displayName: serverDisplayName,
+      joinedAt: member.joined_at || null,
       nameColor: colorRole ? colorRole.colorHex : null,
       signupCount: savedAttendance ? savedAttendance.signupCount : 0,
       placedCount: savedAttendance ? savedAttendance.placedCount : 0,

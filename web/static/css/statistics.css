@@ -80,6 +80,12 @@
   font-size: 0.7rem;
 }
 
+.statistics-joined-date {
+  color: #b8c0cf;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
 .statistics-count {
   display: inline-flex;
   min-width: 2.25rem;
