@@ -2,7 +2,10 @@
 
 (() => {
   const sortSelect = document.getElementById('statisticsSort');
-  if (!sortSelect) return;
+  const searchInput = document.getElementById('statisticsSearch');
+  if (!sortSelect && !searchInput) return;
+
+  const roleGroups = [...document.querySelectorAll('[data-statistics-role-group]')];
 
   const collator = new Intl.Collator(undefined, {
     numeric: true,
@@ -56,7 +59,7 @@
   }
 
   function sortMembers() {
-    const sorting = sortSelect.value;
+    const sorting = sortSelect?.value || 'placed_desc';
     for (const body of document.querySelectorAll('[data-statistics-members]')) {
       const rows = [...body.querySelectorAll('tr')];
       rows.sort((a, b) => compareMembers(a, b, sorting));
@@ -64,6 +67,41 @@
     }
   }
 
-  sortSelect.addEventListener('change', sortMembers);
+  function filterMembers() {
+    const query = searchInput?.value.trim().toLocaleLowerCase() || '';
+    let total = 0;
+    let visible = 0;
+
+    for (const group of roleGroups) {
+      const rows = [...group.querySelectorAll('[data-statistics-members] tr')];
+      let visibleInGroup = 0;
+      total += rows.length;
+
+      for (const row of rows) {
+        const matches = !query || row.dataset.searchText.includes(query);
+        row.classList.toggle('d-none', !matches);
+        if (matches) {
+          visible += 1;
+          visibleInGroup += 1;
+        }
+      }
+
+      group.classList.toggle('d-none', visibleInGroup === 0);
+      const count = group.querySelector('[data-statistics-role-count]');
+      if (count) count.textContent = visibleInGroup;
+    }
+
+    document.getElementById('statisticsSearchEmpty')?.classList.toggle('d-none', visible !== 0);
+    const status = document.getElementById('statisticsSearchStatus');
+    if (status) {
+      status.textContent = query
+        ? `${visible} of ${total} member${total === 1 ? '' : 's'}`
+        : `${total} member${total === 1 ? '' : 's'}`;
+    }
+  }
+
+  if (sortSelect) sortSelect.addEventListener('change', sortMembers);
+  if (searchInput) searchInput.addEventListener('input', filterMembers);
   sortMembers();
+  filterMembers();
 })();

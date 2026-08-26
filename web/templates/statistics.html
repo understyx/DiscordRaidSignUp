@@ -48,33 +48,47 @@
       </p>
     </div>
     {% if role_groups | length %}
-    <div class="statistics-sort-control">
-      <label for="statisticsSort">Sort members</label>
-      <select class="form-select form-select-sm bg-dark text-light border-secondary" id="statisticsSort">
-        <option value="placed_desc" selected>Comp placements: high to low</option>
-        <option value="placed_asc">Comp placements: low to high</option>
-        <option value="signups_desc">Sign-ups: high to low</option>
-        <option value="signups_asc">Sign-ups: low to high</option>
-        <option value="joined_desc">Joined server: newest first</option>
-        <option value="joined_asc">Joined server: oldest first</option>
-        <option value="last_signup_desc">Last signed up: newest first</option>
-        <option value="last_signup_asc">Last signed up: oldest first</option>
-        <option value="name_asc">Display name: A to Z</option>
-        <option value="name_desc">Display name: Z to A</option>
-      </select>
+    <div class="statistics-controls">
+      <div class="statistics-search-control">
+        <label for="statisticsSearch">Search player</label>
+        <input type="search"
+               class="form-control form-control-sm bg-dark text-light border-secondary"
+               id="statisticsSearch"
+               placeholder="Name, username, or Discord ID…"
+               autocomplete="off"
+               aria-controls="statisticsRoleGroups">
+        <span class="statistics-search-status" id="statisticsSearchStatus" role="status" aria-live="polite">
+          {{ member_count }} member{% if member_count != 1 %}s{% endif %}
+        </span>
+      </div>
+      <div class="statistics-sort-control">
+        <label for="statisticsSort">Sort members</label>
+        <select class="form-select form-select-sm bg-dark text-light border-secondary" id="statisticsSort">
+          <option value="placed_desc" selected>Comp placements: high to low</option>
+          <option value="placed_asc">Comp placements: low to high</option>
+          <option value="signups_desc">Sign-ups: high to low</option>
+          <option value="signups_asc">Sign-ups: low to high</option>
+          <option value="joined_desc">Joined server: newest first</option>
+          <option value="joined_asc">Joined server: oldest first</option>
+          <option value="last_signup_desc">Last signed up: newest first</option>
+          <option value="last_signup_asc">Last signed up: oldest first</option>
+          <option value="name_asc">Display name: A to Z</option>
+          <option value="name_desc">Display name: Z to A</option>
+        </select>
+      </div>
     </div>
     {% endif %}
   </div>
 
   {% if role_groups | length %}
-  <div class="statistics-role-groups">
+  <div class="statistics-role-groups" id="statisticsRoleGroups">
     {% for group in role_groups %}
-    <section class="statistics-role-group" aria-labelledby="statisticsRole-{{ group.id }}">
+    <section class="statistics-role-group" data-statistics-role-group aria-labelledby="statisticsRole-{{ group.id }}">
       <div class="statistics-role-heading"{% if group.color %} style="--rank-color: {{ group.color }}"{% endif %}>
         <h4 class="h6 mb-0" id="statisticsRole-{{ group.id }}"{% if group.color %} style="color: {{ group.color }}"{% endif %}>
           {{ group.name }}
         </h4>
-        <span class="badge bg-secondary">{{ group.members | length }}</span>
+        <span class="badge bg-secondary" data-statistics-role-count>{{ group.members | length }}</span>
       </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0 statistics-table">
@@ -91,6 +105,7 @@
             {% for member in group.members %}
             <tr data-display-name="{{ member.displayName }}"
                 data-user-id="{{ member.userId }}"
+                data-search-text="{{ (member.displayName ~ ' ' ~ (member.username or '') ~ ' ' ~ member.userId) | lower }}"
                 data-joined-at="{{ member.joinedAt or '' }}"
                 data-last-signup-at="{{ member.lastSignupAt or '' }}"
                 data-signup-count="{{ member.signupCount }}"
@@ -129,6 +144,11 @@
       </div>
     </section>
     {% endfor %}
+    <div class="statistics-search-empty d-none" id="statisticsSearchEmpty">
+      <div class="fs-2 mb-2">🔍</div>
+      <h4 class="h6">No players found</h4>
+      <p class="text-muted small mb-0">Try a different name, username, or Discord ID.</p>
+    </div>
   </div>
   {% else %}
   <div class="card-body text-center py-5">

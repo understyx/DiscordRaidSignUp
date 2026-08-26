@@ -29,21 +29,42 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.025);
   border-bottom-color: var(--border-dim);
+}
+
+.statistics-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.statistics-search-control {
+  position: relative;
+  flex: 0 0 15rem;
 }
 
 .statistics-sort-control {
   flex: 0 0 15rem;
 }
 
+.statistics-search-control label,
 .statistics-sort-control label {
   display: block;
   margin-bottom: 0.3rem;
   color: #aab2c2;
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.statistics-search-status {
+  display: block;
+  margin-top: 0.3rem;
+  color: #7f899d;
+  font-size: 0.72rem;
 }
 
 .statistics-role-groups {
@@ -56,6 +77,11 @@
   overflow: hidden;
   border: 1px solid var(--border-dim);
   border-radius: 0.55rem;
+}
+
+.statistics-search-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
 }
 
 .statistics-role-heading {
@@ -131,6 +157,15 @@
   }
 
   .statistics-sort-control {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .statistics-controls {
+    flex-direction: column;
+  }
+
+  .statistics-search-control {
     flex-basis: auto;
     width: 100%;
   }

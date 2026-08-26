@@ -121,6 +121,7 @@ test('statistics page renders attendance for officers', () => {
         members: [
           {
             userId: '123456789012345678',
+            username: 'guardian',
             displayName: 'Citadel Guardian',
             joinedAt: '2024-01-15T18:30:00.000Z',
             lastSignupAt: '2026-08-10T18:00:00.000Z',
@@ -147,6 +148,11 @@ test('statistics page renders attendance for officers', () => {
   assert.match(html, /<th scope="col" class="text-end">Signed up<\/th>/);
   assert.match(html, /<th scope="col" class="text-end">Placed in a comp<\/th>/);
   assert.match(html, /id="statisticsSort"/);
+  assert.match(html, /id="statisticsSearch"/);
+  assert.match(html, /placeholder="Name, username, or Discord ID…"/);
+  assert.match(html, /data-search-text="citadel guardian guardian 123456789012345678"/);
+  assert.match(html, /id="statisticsSearchEmpty"/);
+  assert.match(html, /No players found/);
   assert.match(html, /value="placed_desc" selected/);
   assert.match(html, /value="signups_desc"/);
   assert.match(html, /value="joined_desc"/);
@@ -211,6 +217,19 @@ test('statistics sorting reorders every Discord-rank section', () => {
   assert.match(source, /case 'last_signup_asc'/);
   assert.match(source, /case 'name_desc'/);
   assert.match(source, /sortSelect\.addEventListener\('change', sortMembers\)/);
+});
+
+test('statistics search filters players across Discord-rank sections', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'static', 'js', 'statistics.js'),
+    'utf8'
+  );
+
+  assert.match(source, /getElementById\('statisticsSearch'\)/);
+  assert.match(source, /row\.dataset\.searchText\.includes\(query\)/);
+  assert.match(source, /group\.classList\.toggle\('d-none', visibleInGroup === 0\)/);
+  assert.match(source, /getElementById\('statisticsSearchEmpty'\)/);
+  assert.match(source, /searchInput\.addEventListener\('input', filterMembers\)/);
 });
 
 test('website sign-ups record when the member signed up', () => {
