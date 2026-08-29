@@ -15,6 +15,11 @@ const express = require('express');
 const fetch = require('node-fetch');
 const pool = require('../../db');
 const { parseSignupRoleIds } = require('../../services/signupRestrictions');
+const {
+  DEFAULT_WEEKLY_RESET,
+  WEEKDAY_NAMES,
+  normalizeWeeklyResetSettings,
+} = require('../../services/weeklyReset');
 const { requireAdmin, popFlash, currentUser } = require('../helpers');
 const { fetchGuildRoles, RESERVED_SLUGS } = require('./helpers');
 
@@ -54,10 +59,16 @@ router.get('/', async (req, res) => {
     embed_description: null,
     embed_image_url: null,
     embed_color: null,
+    weekly_reset_weekday: DEFAULT_WEEKLY_RESET.weekday,
+    weekly_reset_time: DEFAULT_WEEKLY_RESET.time,
+    weekly_reset_timezone: DEFAULT_WEEKLY_RESET.timezone,
   };
   if (guildId) {
     const [[row]] = await pool.query(
-      'SELECT signup_restriction, signup_role_id, embed_title, embed_description, embed_image_url, embed_color FROM guild_settings WHERE guild_id = ?',
+      `SELECT signup_restriction, signup_role_id, embed_title, embed_description,
+              embed_image_url, embed_color, weekly_reset_weekday,
+              weekly_reset_time, weekly_reset_timezone
+       FROM guild_settings WHERE guild_id = ?`,
       [guildId]
     );
     if (row) {
@@ -73,6 +84,9 @@ router.get('/', async (req, res) => {
         embed_description: row.embed_description,
         embed_image_url: row.embed_image_url,
         embed_color: row.embed_color,
+        weekly_reset_weekday: Number(row.weekly_reset_weekday),
+        weekly_reset_time: String(row.weekly_reset_time || DEFAULT_WEEKLY_RESET.time).slice(0, 5),
+        weekly_reset_timezone: row.weekly_reset_timezone || DEFAULT_WEEKLY_RESET.timezone,
       };
     }
   }
@@ -86,11 +100,50 @@ router.get('/', async (req, res) => {
     guild_roles: guildRoles,
     guild_roles_map: guildRolesMap,
     settings,
+    weekday_names: WEEKDAY_NAMES,
     guild_subdomain: guildSubdomain,
     base_domain: process.env.BASE_DOMAIN || null,
     flash: popFlash(req),
     user: currentUser(req),
   });
+});
+
+// ── POST /guild-settings/weekly-reset ────────────────────────────────────────
+
+router.post('/weekly-reset', express.urlencoded({ extended: false }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guildId = req.session.active_guild_id || null;
+  if (!guildId) {
+    req.session.flash = '❌ No active guild selected.';
+    return res.redirect('/guild-settings');
+  }
+
+  let reset;
+  try {
+    reset = normalizeWeeklyResetSettings({
+      weekday: req.body.weekly_reset_weekday,
+      time: req.body.weekly_reset_time,
+      timezone: req.body.weekly_reset_timezone,
+    });
+  } catch (error) {
+    req.session.flash = `❌ ${error.message}`;
+    return res.redirect('/guild-settings');
+  }
+
+  await pool.query(
+    `INSERT INTO guild_settings
+       (guild_id, weekly_reset_weekday, weekly_reset_time, weekly_reset_timezone)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       weekly_reset_weekday = VALUES(weekly_reset_weekday),
+       weekly_reset_time = VALUES(weekly_reset_time),
+       weekly_reset_timezone = VALUES(weekly_reset_timezone)`,
+    [guildId, reset.weekday, `${reset.time}:00`, reset.timezone]
+  );
+
+  req.session.flash = '✅ Weekly reset schedule updated.';
+  res.redirect('/guild-settings');
 });
 
 // ── POST /guild-settings/signup-restriction ───────────────────────────────────

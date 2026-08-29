@@ -206,7 +206,50 @@
 <script src="/js/guild_settings.js"></script>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   Section 3 – Guild Subdomain
+   Section 3 – Weekly Reset
+   ══════════════════════════════════════════════════════════════════════════ #}
+<h5 class="mt-4 mb-3 border-bottom border-secondary pb-2">📅 Weekly Reset</h5>
+<p class="text-muted">
+  Set the weekly boundary used to warn officers when a character is already placed in
+  another raid during the same reset. The default is Wednesday at 09:00 in Europe/Berlin.
+</p>
+
+<div class="card" style="max-width: 600px;">
+  <div class="card-body">
+    {% if not guild_id %}
+    <p class="text-muted mb-0">Select a guild first to configure its weekly reset.</p>
+    {% else %}
+    <form method="post" action="/guild-settings/weekly-reset">
+      <div class="row g-3">
+        <div class="col-sm-6">
+          <label for="weeklyResetWeekday" class="form-label">Reset day</label>
+          <select class="form-select" id="weeklyResetWeekday" name="weekly_reset_weekday" required>
+            {% for weekday in weekday_names %}
+            <option value="{{ loop.index0 }}"{% if loop.index0 == settings.weekly_reset_weekday %} selected{% endif %}>{{ weekday }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-6">
+          <label for="weeklyResetTime" class="form-label">Reset time</label>
+          <input class="form-control" id="weeklyResetTime" name="weekly_reset_time" type="time"
+                 value="{{ settings.weekly_reset_time or '09:00' }}" required>
+        </div>
+        <div class="col-12">
+          <label for="weeklyResetTimezone" class="form-label">Timezone</label>
+          <input class="form-control" id="weeklyResetTimezone" name="weekly_reset_timezone"
+                 value="{{ settings.weekly_reset_timezone or 'Europe/Berlin' }}"
+                 maxlength="64" placeholder="Europe/Berlin" required>
+          <div class="form-text">Use an IANA timezone such as Europe/Berlin, UTC, or America/New_York. Daylight-saving changes are applied automatically.</div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-wow mt-3">Save Weekly Reset</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   Section 4 – Guild Subdomain
    ══════════════════════════════════════════════════════════════════════════ #}
 <h5 class="mt-4 mb-3 border-bottom border-secondary pb-2">🌐 Guild Subdomain</h5>
 <p class="text-muted">
@@ -273,7 +316,7 @@
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   Section 4 – Custom Link Embed
+   Section 5 – Custom Link Embed
    ══════════════════════════════════════════════════════════════════════════ #}
 <h5 class="mt-4 mb-3 border-bottom border-secondary pb-2">🖼️ Custom Link Embed</h5>
 <p class="text-muted">

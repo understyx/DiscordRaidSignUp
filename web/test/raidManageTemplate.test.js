@@ -65,3 +65,71 @@ test('manage page renders the guarded workflow controls', () => {
   assert.equal(config.RAID_URL, '/raids/1');
   assert.equal(config.PUBLISHED_REVISION, 1);
 });
+
+test('manage page warns when a character is placed in another raid this reset', () => {
+  const environment = new nunjucks.Environment(
+    new nunjucks.FileSystemLoader(path.join(__dirname, '..', 'templates')),
+    { autoescape: true }
+  );
+  registerFilters(environment);
+  const html = environment.render('raid_manage.html', {
+    raid: { id: 1, name: 'Icecrown', status: 'open', max_size: 1 },
+    raid_url: '/raids/1',
+    can_edit: true,
+    comp_meta: { 1: { revision: 0, published_revision: null } },
+    current_meta: { revision: 0, published_revision: null },
+    comp_numbers: [1],
+    comp_labels: {},
+    comp_summaries: { 1: {} },
+    current_comp: 1,
+    next_comp: 2,
+    available_player_count: 1,
+    signupsByUser: [
+      {
+        discord_user_id: '42',
+        display_label: 'Player',
+        membership_status: 'active',
+        is_tentative: false,
+        is_unavailable: false,
+        characters: [
+          {
+            char_name: 'Aegis',
+            char_class: 'Paladin',
+            discord_user_id: '42',
+            note: '',
+            sfs_count: 0,
+            val_count: 0,
+            is_unavailable: false,
+            saved_instances: [],
+            specs: [
+              { character_id: 7, spec: 'Holy', gearscore: 6400, is_prio: false, is_saved: false },
+            ],
+            reset_conflicts: [
+              {
+                raid_name: 'Ruby Sanctum',
+                raid_date: new Date('2026-08-30T18:00:00Z'),
+                comp_label: 'Core Team',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    slots: ['slot_1'],
+    slot_role_map: { slot_1: 'dps' },
+    comp_map: {},
+    comp_character_map: {},
+    comp_status_map: {},
+    signup_by_char_id: {},
+    player_placeholder_map: {},
+    placeholder_map: {},
+    max_size: 1,
+    wotlk_buffs: [],
+    user: { id: '1' },
+    roster_config: {},
+  });
+
+  assert.match(html, /class="raid-conflict-icon"/);
+  assert.match(html, /Placed into Ruby Sanctum, Core Team on 2026-08-30 18:00 UTC/);
+  assert.match(html, />⚠️<\/span>/);
+});

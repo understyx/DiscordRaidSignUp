@@ -1,6 +1,7 @@
 'use strict';
 
 const { ensureCompositionMeta, parseCompNumber } = require('../../services/compositionWorkflow');
+const { DEFAULT_WEEKLY_RESET, getWeeklyResetWindow } = require('../../services/weeklyReset');
 
 function registerManagePageRoutes(router, dependencies) {
   const {
@@ -179,10 +180,76 @@ function registerManagePageRoutes(router, dependencies) {
         charGroup.specs.sort((a, b) => Number(a.is_saved) - Number(b.is_saved));
         charGroup.saved_instances = [...instanceSet].sort();
         charGroup.is_unavailable = charGroup.specs.every((spec) => spec.is_saved);
+        charGroup.reset_conflicts = [];
       }
       userGroup.is_unavailable = userGroup.characters.every(
         (character) => character.is_unavailable
       );
+    }
+
+    // Show when the same named character is already placed in another raid during
+    // this guild's weekly reset window. Match by owner + character name so an
+    // alternate spec row for the same character is still detected.
+    let weeklyResetSettings = DEFAULT_WEEKLY_RESET;
+    if (raidGuildId) {
+      const [[resetRow]] = await pool.query(
+        `SELECT weekly_reset_weekday, weekly_reset_time, weekly_reset_timezone
+         FROM guild_settings WHERE guild_id = ?`,
+        [raidGuildId]
+      );
+      if (resetRow) {
+        weeklyResetSettings = {
+          weekday: resetRow.weekly_reset_weekday,
+          time: resetRow.weekly_reset_time,
+          timezone: resetRow.weekly_reset_timezone,
+        };
+      }
+    }
+
+    const resetWindow = getWeeklyResetWindow(raid.date, weeklyResetSettings);
+    if (signups.length > 0) {
+      const [conflictRows] = await pool.query(
+        `SELECT DISTINCT placed.discord_user_id, placed.char_name,
+                other_raid.id AS raid_id, other_raid.name AS raid_name,
+                other_raid.date AS raid_date,
+                other_raid.guild_raid_number, co.comp_number, cl.label AS comp_label
+         FROM compositions co
+         JOIN characters placed ON placed.id = co.character_id
+         JOIN raids other_raid ON other_raid.id = co.raid_id
+         JOIN signups current_signup ON current_signup.raid_id = ?
+         JOIN characters current_character
+           ON current_character.id = current_signup.character_id
+          AND current_character.discord_user_id = placed.discord_user_id
+          AND current_character.char_name = placed.char_name
+         LEFT JOIN comp_labels cl
+           ON cl.raid_id = co.raid_id AND cl.comp_number = co.comp_number
+         WHERE other_raid.guild_id <=> ?
+           AND other_raid.id <> ?
+           AND other_raid.date >= ?
+           AND other_raid.date < ?
+         ORDER BY other_raid.date, other_raid.id, co.comp_number`,
+        [raidId, raidGuildId, raidId, resetWindow.start, resetWindow.end]
+      );
+
+      const conflictsByCharacter = new Map();
+      for (const row of conflictRows) {
+        const key = `${String(row.discord_user_id)}\0${String(row.char_name).toLocaleLowerCase()}`;
+        if (!conflictsByCharacter.has(key)) conflictsByCharacter.set(key, []);
+        conflictsByCharacter.get(key).push({
+          raid_name: row.raid_name,
+          raid_date: row.raid_date,
+          guild_raid_number: row.guild_raid_number,
+          comp_number: row.comp_number,
+          comp_label: row.comp_label || `Raid ${row.comp_number}`,
+        });
+      }
+
+      for (const userGroup of signupsByUser) {
+        for (const charGroup of userGroup.characters) {
+          const key = `${userGroup.discord_user_id}\0${charGroup.char_name.toLocaleLowerCase()}`;
+          charGroup.reset_conflicts = conflictsByCharacter.get(key) || [];
+        }
+      }
     }
 
     // Fetch officer notes for all signed-up users in this guild

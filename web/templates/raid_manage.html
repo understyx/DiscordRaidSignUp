@@ -168,6 +168,13 @@
                  style="position:relative;">
                 <div class="char-card-heading">
                   <span class="fw-bold cls-{{ cls_key }}">{{ charGroup.char_name }}</span>
+                  {% if charGroup.reset_conflicts | length %}
+                  <span class="raid-conflict-icon" tabindex="0" role="img"
+                        aria-label="Warning: this character is placed in another raid during the same weekly reset"
+                        data-bs-toggle="tooltip" data-bs-placement="top"
+                        data-bs-custom-class="raid-conflict-tooltip"
+                        data-bs-title="{% for conflict in charGroup.reset_conflicts %}Placed into {{ conflict.raid_name }}, {{ conflict.comp_label }} on {{ conflict.raid_date | dateformat('%Y-%m-%d %H:%M') }} UTC{% if not loop.last %}&#10;{% endif %}{% endfor %}">⚠️</span>
+                  {% endif %}
                   {% if can_edit and not charGroup.is_unavailable %}<button type="button" class="select-char-btn" onclick="event.stopPropagation(); selectCharacterSource(null, this.closest('.char-card'))" aria-label="Select {{ charGroup.char_name }} for assignment" title="Select for assignment">＋</button>{% endif %}
                 </div>{% if charGroup.saved_instances | length %}<span class="saves-icon"
                       data-bs-toggle="tooltip"

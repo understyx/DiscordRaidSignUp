@@ -78,6 +78,7 @@ test('guild settings includes the live custom embed preview', () => {
     configured_role_ids: [],
     guild_roles: [],
     guild_roles_map: {},
+    weekday_names: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     settings: {
       signup_restriction: 'all',
       signup_role_id: null,
@@ -86,12 +87,18 @@ test('guild settings includes the live custom embed preview', () => {
       embed_description: 'Choose your next raid',
       embed_image_url: '',
       embed_color: '5865F2',
+      weekly_reset_weekday: 3,
+      weekly_reset_time: '09:00',
+      weekly_reset_timezone: 'Europe/Berlin',
     },
   });
 
   assert.match(html, /id="linkEmbedPreview"/);
   assert.match(html, /id="linkEmbedPreviewTitle"/);
   assert.match(html, /href="\/css\/guild_settings\.css"/);
+  assert.match(html, /action="\/guild-settings\/weekly-reset"/);
+  assert.match(html, /value="3" selected>Wednesday/);
+  assert.match(html, /value="Europe\/Berlin"/);
   assert.doesNotMatch(html, /Sync color picker with text input/);
 });
 
