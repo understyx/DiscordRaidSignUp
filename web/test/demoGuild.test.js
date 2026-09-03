@@ -120,7 +120,11 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
   assert.equal(committed, true);
   assert.equal(released, true);
   assert.ok(statements.some((sql) => /DELETE FROM signups/.test(sql)));
-  assert.ok(statements.some((sql) => /INSERT INTO compositions/.test(sql)));
+  assert.ok(
+    statements.some(
+      (sql) => /INSERT INTO compositions/.test(sql) && /created_at, updated_at/.test(sql)
+    )
+  );
   assert.deepEqual(
     [200, 201, 202].map((raidId) => compositionCounts.get(raidId) || 0),
     [18, 0, 23]

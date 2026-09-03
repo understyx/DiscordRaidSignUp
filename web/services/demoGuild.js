@@ -444,8 +444,9 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
       for (const [index, character] of roster.entries()) {
         await connection.query(
           `INSERT INTO compositions
-            (raid_id, character_id, role_slot, slot_role, comp_number, created_by, created_at)
-           VALUES (?, ?, ?, ?, 1, ?, NOW())`,
+            (raid_id, character_id, role_slot, slot_role, comp_number, created_by,
+             created_at, updated_at)
+           VALUES (?, ?, ?, ?, 1, ?, NOW(3), NOW(3))`,
           [raidId, character.id, `slot_${index + 1}`, compositionRole(character), config.userId]
         );
       }

@@ -123,6 +123,8 @@ function createApp() {
     })
   );
 
+  let nextDemoHealthCheckAt = 0;
+
   // demo.raiding.site is the real guild interface backed by disposable data.
   // The synthetic session is scoped to that hostname and stripped immediately
   // when the same shared cookie appears on the main site or a real guild site.
@@ -130,7 +132,10 @@ function createApp() {
     const config = demoConfig(process.env);
     const onDemoHost = isDemoHostname(req.hostname, config.baseDomain);
     applyDemoSession(req.session, onDemoHost, config);
-    if (onDemoHost) {
+    if (onDemoHost && Date.now() >= nextDemoHealthCheckAt) {
+      // One page load requests several dynamic scripts. A short cooldown keeps
+      // those requests from repeating the same health check or failure log.
+      nextDemoHealthCheckAt = Date.now() + 15_000;
       try {
         await ensureDemoGuildData(pool, config);
       } catch (error) {
