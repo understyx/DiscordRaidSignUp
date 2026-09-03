@@ -87,6 +87,7 @@ test('guild database renders a searchable Discord member sidebar and selected de
     username: 'guardian',
     displayName: 'Guardian',
     characterCount: 0,
+    characterNames: 'Aegis Bulwark',
     charGroups: [],
     roleName: 'Raid Leader',
     roleColor: '#ff8800',
@@ -110,6 +111,11 @@ test('guild database renders a searchable Discord member sidebar and selected de
   });
 
   assert.match(html, /id="guildMemberSearch"/);
+  assert.match(html, /placeholder="Search members or characters…"/);
+  assert.match(
+    html,
+    /data-member-search="guardian guardian raid leader 123456789012345678 aegis bulwark"/
+  );
   assert.match(html, /Ranks that count as guild members/);
   assert.match(html, /action="\/guild-characters\/rank-filter"/);
   assert.match(html, /name="rank_ids" value="10" class="form-check-input"\s+checked/);
@@ -138,6 +144,11 @@ test('guild database limits its roster to current Discord members', () => {
   const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'guildCharacters.js'), 'utf8');
 
   assert.match(route, /const users = currentUsers/);
+  assert.match(
+    route,
+    /GROUP_CONCAT\(DISTINCT c\.char_name ORDER BY c\.char_name SEPARATOR ' '\) AS character_names/
+  );
+  assert.match(route, /characterNames: cachedCharacters\?\.character_names \|\| ''/);
   assert.doesNotMatch(route, /const formerUsers/);
 });
 

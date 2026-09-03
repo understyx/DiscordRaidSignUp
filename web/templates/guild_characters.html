@@ -219,10 +219,10 @@
 
 <div class="guild-database-layout">
   <aside class="guild-member-sidebar" aria-label="Discord members">
-    <label class="visually-hidden" for="guildMemberSearch">Search Discord members</label>
+    <label class="visually-hidden" for="guildMemberSearch">Search guild members or characters</label>
     <input type="search" id="guildMemberSearch"
            class="form-control form-control-sm bg-dark text-light border-secondary"
-           placeholder="Search members…" autocomplete="off">
+           placeholder="Search members or characters…" autocomplete="off">
     <div class="guild-member-count small text-muted mt-2 mb-2" id="guildMemberCount">
       {{ users | length }} members
     </div>
@@ -231,7 +231,7 @@
       <a href="/guild-characters?user={{ member.userId }}"
          class="guild-member-link{{ ' active' if selectedUser and member.userId == selectedUser.userId }}"
          data-user-id="{{ member.userId }}"
-         data-member-search="{{ (member.displayName ~ ' ' ~ member.username ~ ' ' ~ (member.roleName or '') ~ ' ' ~ member.userId) | lower }}"
+         data-member-search="{{ (member.displayName ~ ' ' ~ member.username ~ ' ' ~ (member.roleName or '') ~ ' ' ~ member.userId ~ ' ' ~ (member.characterNames or '')) | lower }}"
          data-character-count="{{ member.characterCount }}"
          data-top-rank-id="{{ member.roleId or '' }}"
          {% if selectedUser and member.userId == selectedUser.userId %}aria-current="page"{% endif %}>
@@ -247,7 +247,7 @@
       </a>
       {% endfor %}
     </nav>
-    <p class="small text-muted p-3 d-none" id="guildMemberEmpty">No members match that search.</p>
+    <p class="small text-muted p-3 d-none" id="guildMemberEmpty">No members or characters match that search.</p>
   </aside>
 
   <section class="guild-character-detail">

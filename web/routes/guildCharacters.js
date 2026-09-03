@@ -157,7 +157,8 @@ router.get('/', async (req, res) => {
     // omitted from this guild-member view.
     const [countRows] = await pool.query(
       `SELECT c.discord_user_id,
-              COUNT(DISTINCT CONCAT(c.char_name, '|', c.realm)) AS character_count
+              COUNT(DISTINCT CONCAT(c.char_name, '|', c.realm)) AS character_count,
+              GROUP_CONCAT(DISTINCT c.char_name ORDER BY c.char_name SEPARATOR ' ') AS character_names
        FROM characters c
        WHERE c.guild_id = ? AND c.is_deleted = 0
        GROUP BY c.discord_user_id`,
@@ -177,6 +178,7 @@ router.get('/', async (req, res) => {
           username: member.user.username || userId,
           displayName: member.nick || member.user.global_name || member.user.username || userId,
           characterCount: Number(cachedCharacters?.character_count) || 0,
+          characterNames: cachedCharacters?.character_names || '',
           ...discordRoleDetails(member, rolesById),
         };
       })
