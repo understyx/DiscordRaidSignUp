@@ -24,10 +24,88 @@ const {
   isLinkPreviewRequest,
 } = require('../services/linkPreview');
 
+const RESERVED_PUBLIC_SUBDOMAINS = new Set(['armory', 'demo', 'www']);
+const DEFAULT_PUBLIC_DOMAIN = 'raiding.site';
+const DEFAULT_BOT_PERMISSIONS = '268453888'; // Manage Roles, Send Messages, Embed Links
+
+function normalizedHostname(hostname) {
+  return String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '');
+}
+
+function isApexSiteHost(hostname, baseDomain) {
+  const host = normalizedHostname(hostname);
+  const domain = normalizedHostname(baseDomain);
+  if (domain) return host === domain || host === `www.${domain}`;
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
+function isDemoSiteHost(hostname, baseDomain) {
+  const host = normalizedHostname(hostname);
+  const domain = normalizedHostname(baseDomain);
+  return Boolean(domain && host === `demo.${domain}`);
+}
+
+function publicSiteLinks(baseDomain) {
+  const domain = normalizedHostname(baseDomain) || DEFAULT_PUBLIC_DOMAIN;
+  return {
+    home: `https://${domain}`,
+    demo: `https://demo.${domain}`,
+    armory: `https://armory.${domain}`,
+  };
+}
+
+function buildBotInviteUrl(clientId, configuredUrl) {
+  if (configuredUrl) return configuredUrl;
+  if (!clientId) return null;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    permissions: DEFAULT_BOT_PERMISSIONS,
+    integration_type: '0',
+    scope: 'bot applications.commands',
+  });
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
 function createApp() {
   const app = express();
 
-  // Session
+  // Public assets and templates do not need a session. Keeping them ahead of
+  // session setup means the demo never touches live session or guild data.
+  app.use(express.static(path.join(__dirname, '..', 'static')));
+
+  const templateDir = path.join(__dirname, '..', 'templates');
+  const njkEnv = nunjucks.configure(templateDir, {
+    autoescape: true,
+    express: app,
+  });
+  registerFilters(njkEnv);
+
+  app.use((req, res, next) => {
+    const baseDomain = process.env.BASE_DOMAIN;
+    const links = publicSiteLinks(baseDomain);
+    const botInviteUrl = buildBotInviteUrl(
+      process.env.DISCORD_CLIENT_ID,
+      process.env.DISCORD_BOT_INVITE_URL
+    );
+
+    if (isDemoSiteHost(req.hostname, baseDomain)) {
+      if (req.method === 'GET' && req.path === '/') {
+        return res.render('demo.html', { links, bot_invite_url: botInviteUrl });
+      }
+      return res.status(404).render('demo.html', { links, bot_invite_url: botInviteUrl });
+    }
+
+    if (req.method === 'GET' && req.path === '/' && isApexSiteHost(req.hostname, baseDomain)) {
+      return res.render('landing.html', { links, bot_invite_url: botInviteUrl });
+    }
+
+    next();
+  });
+
+  // Guild pages use a shared session across the main domain and guild subdomains.
   const _sessionCookieOpts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -52,7 +130,7 @@ function createApp() {
     })
   );
 
-  // Dynamic spec_aliases.js — served before static files so DB version takes priority
+  // Dynamic guild-aware scripts.
   app.get('/js/spec_aliases.js', async (req, res) => {
     try {
       const guildId = req.session.active_guild_id;
@@ -81,18 +159,6 @@ function createApp() {
     res.type('application/javascript').send(`const WOW_DATA = ${JSON.stringify(WOW_DATA)};\n`);
   });
 
-  // Static files
-  app.use(express.static(path.join(__dirname, '..', 'static')));
-
-  // Nunjucks
-  const templateDir = path.join(__dirname, '..', 'templates');
-  const njkEnv = nunjucks.configure(templateDir, {
-    autoescape: true,
-    express: app,
-  });
-
-  registerFilters(njkEnv);
-
   // Resolve the guild represented by a subdomain, an old guild-scoped raid URL,
   // or the active session. This runs before routes so link-preview crawlers can
   // receive guild metadata without being redirected through Discord OAuth.
@@ -114,7 +180,7 @@ function createApp() {
 
       // Reject empty or nested subdomain slugs. If the hostname is not a guild
       // subdomain, the guild ID carried by legacy raid links takes precedence.
-      if (slug && !slug.includes('.')) {
+      if (slug && !slug.includes('.') && !RESERVED_PUBLIC_SUBDOMAINS.has(slug)) {
         [[row]] = await pool.query(
           `SELECT bg.guild_id, bg.guild_name, gs.embed_title, gs.embed_description, gs.embed_image_url, gs.embed_color
            FROM bot_guilds bg
@@ -338,4 +404,10 @@ function createApp() {
   return app;
 }
 
-module.exports = { createApp };
+module.exports = {
+  buildBotInviteUrl,
+  createApp,
+  isApexSiteHost,
+  isDemoSiteHost,
+  publicSiteLinks,
+};

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Raiding.site Demo — Safe raid sandbox</title>
+  <meta name="description" content="Explore a safe, interactive Raiding.site demo without changing a real guild." />
+  <meta name="theme-color" content="#090b14" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/public.css" />
+</head>
+<body class="public-page demo-page">
+  <header class="public-nav">
+    <a class="wordmark" href="{{ links.home }}"><span class="wordmark-rune">R</span><span>raiding<span class="wordmark-dot">.</span>site</span></a>
+    <div class="demo-pill"><span></span> Safe demo</div>
+    <nav aria-label="Demo navigation"><a href="{{ links.home }}">Back to main site</a></nav>
+  </header>
+
+  <main class="demo-main">
+    <section class="demo-intro">
+      <div>
+        <p class="eyebrow"><span></span> No login · no live data</p>
+        <h1>Take it for a spin.</h1>
+        <p>This sample roster lives only in your browser. Join a raid, switch roles, and explore freely—nothing here can affect a real guild.</p>
+      </div>
+      <button class="button button-quiet reset-demo" type="button" id="resetDemo">Reset demo</button>
+    </section>
+
+    <section class="demo-layout" aria-label="Interactive sample raid">
+      <aside class="demo-sidebar">
+        <p class="sidebar-label">Demo guild</p>
+        <h2>Ember Vanguard</h2>
+        <nav aria-label="Demo sections">
+          <button class="active" type="button"><span>◈</span> Upcoming raids <b>3</b></button>
+          <button type="button"><span>♙</span> My characters</button>
+          <button type="button"><span>⌁</span> Guild roster</button>
+          <button type="button"><span>◇</span> Recruitment</button>
+        </nav>
+        <div class="sandbox-note"><strong>Sandbox mode</strong><span>Your changes disappear when you leave.</span></div>
+      </aside>
+
+      <div class="demo-content">
+        <div class="demo-content-heading">
+          <div><p class="eyebrow"><span></span> Upcoming</p><h2>Choose a raid</h2></div>
+          <span class="demo-date">September 2026</span>
+        </div>
+
+        <div class="demo-raid-list">
+          <article class="demo-raid featured" data-raid="icc25">
+            <div class="raid-date"><strong>05</strong><span>SEP</span></div>
+            <div class="raid-details"><span class="difficulty heroic">Heroic</span><h3>Icecrown Citadel 25</h3><p>Thursday · 19:30 server time</p></div>
+            <div class="mini-comp"><span><i class="tank">◆</i> 2/2</span><span><i class="healer">✦</i> 4/5</span><span><i class="damage">▲</i> 15/18</span></div>
+            <button class="demo-join" type="button" data-demo-join>Join raid</button>
+          </article>
+          <article class="demo-raid" data-raid="rs25">
+            <div class="raid-date"><strong>07</strong><span>SEP</span></div>
+            <div class="raid-details"><span class="difficulty">Normal</span><h3>Ruby Sanctum 25</h3><p>Saturday · 20:00 server time</p></div>
+            <div class="mini-comp"><span><i class="tank">◆</i> 2/2</span><span><i class="healer">✦</i> 5/5</span><span><i class="damage">▲</i> 17/18</span></div>
+            <button class="demo-join" type="button" data-demo-join>Join raid</button>
+          </article>
+          <article class="demo-raid" data-raid="togc25">
+            <div class="raid-date"><strong>10</strong><span>SEP</span></div>
+            <div class="raid-details"><span class="difficulty heroic">Heroic</span><h3>Trial of the Grand Crusader</h3><p>Tuesday · 19:30 server time</p></div>
+            <div class="mini-comp"><span><i class="tank">◆</i> 2/2</span><span><i class="healer">✦</i> 5/5</span><span><i class="damage">▲</i> 18/18</span></div>
+            <button class="demo-join" type="button" data-demo-join>Join waitlist</button>
+          </article>
+        </div>
+
+        <div class="demo-feedback" id="demoFeedback" role="status" aria-live="polite">Choose any raid to try the sign-up flow.</div>
+      </div>
+    </section>
+
+    <section class="demo-cta">
+      <div><p class="eyebrow"><span></span> Like what you see?</p><h2>Bring your own guild.</h2></div>
+      {% if bot_invite_url %}<a class="button button-primary" href="{{ bot_invite_url }}" target="_blank" rel="noopener noreferrer">Invite the Discord bot <span>↗</span></a>{% endif %}
+    </section>
+  </main>
+  <script src="/js/demo.js"></script>
+</body>
+</html>

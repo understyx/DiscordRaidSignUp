@@ -379,6 +379,7 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 | `DISCORD_BOT_TOKEN`               | Bot token from Discord Developer Portal                                     | –                                     |
 | `DISCORD_CLIENT_ID`               | OAuth2 Client ID                                                            | –                                     |
 | `DISCORD_CLIENT_SECRET`           | OAuth2 Client Secret                                                        | –                                     |
+| `DISCORD_BOT_INVITE_URL`          | Optional full bot invite URL shown on the public landing and demo pages. When blank, an invite is generated from `DISCORD_CLIENT_ID`. | generated |
 | `DB_HOST`                         | Database host                                                               | `localhost`                           |
 | `DB_PORT`                         | Database port                                                               | `3306`                                |
 | `DB_USER`                         | Database user                                                               | `raidbot`                             |
@@ -394,3 +395,9 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 | `DEV_USER_ID`                     | Discord user ID of the developer/admin account — grants access to developer tools such as spec aliases and the read-only signup preset peek | – |
 | `DEV_FULL_ADMIN`                  | Set to `true` to treat `DEV_USER_ID` as raid-admin in every guild/server on the website (also toggleable live from Dev Tools) | `false` |
 | `DEV_MODE`                        | Set to `true` to enable fake-data seeding buttons for UI testing            | `false`                               |
+
+When `BASE_DOMAIN=raiding.site`, the web service reserves the following public
+hosts: `raiding.site` (landing page), `www.raiding.site` (landing page), and
+`demo.raiding.site` (isolated browser-only demo). Other one-level subdomains
+continue to resolve as guild sites. `armory.raiding.site` is linked from the
+landing page but is expected to be routed to the separate armory project.
