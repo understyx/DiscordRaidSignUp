@@ -99,7 +99,7 @@ function registerListRoutes(router, dependencies) {
     // querying Discord's member endpoint with the bot token. Discovered guilds are persisted into
     // the session so subsequent page loads skip the API calls.
     const botToken = process.env.DISCORD_BOT_TOKEN;
-    if (botToken) {
+    if (botToken && !req.session.is_demo_session) {
       const verifiedIds = new Set(userBotGuilds.map((g) => g.guild_id));
       if (req.session.active_guild_id) verifiedIds.add(String(req.session.active_guild_id));
 

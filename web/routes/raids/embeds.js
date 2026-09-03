@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('../../db');
 const { DISCORD_API, editDiscordMessage } = require('./discord');
+const { isDemoGuildId } = require('../../services/demoGuild');
 
 const EMOJIS = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', '..', '..', 'emojis.json'), 'utf8')
@@ -274,7 +275,7 @@ async function syncRaidSignupMessage(raid) {
  */
 async function fetchUserGuildRoles(guildId, userIds) {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!guildId || !botToken || !userIds.length) return {};
+  if (!guildId || !botToken || !userIds.length || isDemoGuildId(guildId)) return {};
 
   try {
     const rolesResp = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {

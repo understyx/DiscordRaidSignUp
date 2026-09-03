@@ -14,6 +14,7 @@
 const fetch = require('node-fetch');
 const pool = require('../db');
 const { isDevFullAdminEnabled } = require('../server/runtimeFlags');
+const { demoConfig, isDemoGuildId } = require('../services/demoGuild');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 function createAdminResolver(options) {
@@ -40,6 +41,9 @@ function createAdminResolver(options) {
   }
 
   return async function resolveIsAdmin(userId, guildId) {
+    const demo = demoConfig(process.env);
+    if (isDemoGuildId(guildId) && String(userId) === demo.userId) return true;
+
     const isDev = devOverrideEnabled() && devUserId && String(userId) === String(devUserId);
     if (isDev) return true;
 

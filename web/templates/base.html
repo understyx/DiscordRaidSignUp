@@ -47,7 +47,7 @@
           {% if user and user.id %}
           <li class="nav-item"><a class="nav-link" href="/characters">My Characters</a></li>
           {% endif %}
-          {% if user and user.is_admin and has_any_guild %}
+          {% if user and user.is_admin and has_any_guild and not demo_mode %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" id="guildNavigation" role="button"
                data-bs-toggle="dropdown" aria-expanded="false">🏰 Guild</a>
@@ -104,7 +104,7 @@
             <a class="nav-link dropdown-toggle" href="#" id="accountNavigation" role="button"
                data-bs-toggle="dropdown" aria-expanded="false">👤 {{ user.username }}</a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountNavigation">
-              <li><a class="dropdown-item" href="/auth/logout">Logout</a></li>
+              {% if not demo_mode %}<li><a class="dropdown-item" href="/auth/logout">Logout</a></li>{% endif %}
             </ul>
           </li>
           {% else %}
@@ -118,6 +118,12 @@
   </nav>
 
   <div class="container mt-4">
+    {% if demo_mode %}
+    <div class="alert alert-warning d-flex justify-content-between align-items-center gap-3" role="status">
+      <span><strong>Demo guild:</strong> Raid and character changes are disposable and reset every {{ demo_reset_minutes }} minutes. Discord-connected tools are disabled.</span>
+      <a class="btn btn-sm btn-outline-dark flex-shrink-0" href="{{ public_home_url }}">Exit demo</a>
+    </div>
+    {% endif %}
     {% if flash %}
     <div class="alert alert-info alert-dismissible fade show" role="alert">
       {{ flash }}

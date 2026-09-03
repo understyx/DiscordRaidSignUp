@@ -1,141 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Raiding.site — Your raid night, organized</title>
-  <meta name="description" content="Plan raids, manage sign-ups, and keep your guild moving with Raiding.site." />
-  <meta name="theme-color" content="#090b14" />
-  <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="Raiding.site" />
-  <meta property="og:title" content="Less admin. More raiding." />
-  <meta property="og:description" content="Plan raids, manage sign-ups, and keep your guild moving—right from Discord." />
-  <meta property="og:url" content="{{ links.home }}" />
-  <meta property="og:image" content="{{ links.home }}/images/raiding-site-social.png" />
-  <meta property="og:image:alt" content="Raiding.site — Less admin. More raiding." />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Less admin. More raiding." />
-  <meta name="twitter:description" content="Plan raids, manage sign-ups, and keep your guild moving—right from Discord." />
-  <meta name="twitter:image" content="{{ links.home }}/images/raiding-site-social.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/public.css" />
+  <title>Raiding.site</title>
+  <meta name="description" content="Open your guild raid site, explore the demo, or visit the armory." />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/base.css" />
 </head>
-<body class="public-page landing-page">
-  <header class="public-nav">
-    <a class="wordmark" href="{{ links.home }}" aria-label="Raiding.site home">
-      <span class="wordmark-rune" aria-hidden="true">R</span>
-      <span>raiding<span class="wordmark-dot">.</span>site</span>
-    </a>
-    <nav aria-label="Main navigation">
-      <a href="{{ links.armory }}">Armory <span aria-hidden="true">↗</span></a>
-      <a href="{{ links.demo }}">Live demo</a>
-      <a class="nav-login" href="/auth/login">Log in</a>
-    </nav>
-  </header>
-
-  <main>
-    <section class="landing-hero">
-      <div class="hero-copy">
-        <p class="eyebrow"><span></span> Built for guilds that raid together</p>
-        <h1>Less admin.<br /><em>More raiding.</em></h1>
-        <p class="hero-intro">
-          Plan the roster, collect sign-ups, and keep everyone in sync—right from Discord.
-          One calm home for the busy work behind a great raid night.
-        </p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="/auth/login">
-            <span class="discord-mark" aria-hidden="true">◖◗</span>
-            Log in with Discord
-          </a>
-          <a class="button button-quiet" href="{{ links.demo }}">Explore the demo <span aria-hidden="true">→</span></a>
-        </div>
-        <p class="hero-note">Already in a guild? Log in to open its private raid site.</p>
-      </div>
-
-      <div class="raid-preview" aria-label="Example raid roster">
-        <div class="preview-glow"></div>
-        <div class="preview-topline">
-          <span class="preview-status"><i></i> Sign-ups open</span>
-          <span>THU · 19:30</span>
-        </div>
-        <div class="preview-heading">
-          <div>
-            <p>Icecrown Citadel</p>
-            <h2>ICC 25 Heroic</h2>
+<body>
+  <main class="container">
+    <div class="row justify-content-center mt-5 pt-md-5">
+      <div class="col-md-6 col-lg-5">
+        <div class="card p-4 p-md-5 text-center shadow">
+          <h1 class="h2 mb-2">⚔️ Raiding.site</h1>
+          <p class="text-muted mb-4">Choose where you want to go.</p>
+          <div class="d-grid gap-3">
+            <a class="btn btn-wow btn-lg" href="/auth/login">Login to guild</a>
+            <a class="btn btn-outline-light btn-lg" href="{{ links.demo }}/raids">Explore demo</a>
+            <a class="btn btn-outline-light btn-lg" href="{{ links.armory }}">Armory</a>
           </div>
-          <div class="raid-badge" aria-hidden="true">25</div>
-        </div>
-        <div class="composition-row">
-          <div><span class="role-icon tank">◆</span><strong>2</strong><small>Tanks</small></div>
-          <div><span class="role-icon healer">✦</span><strong>5</strong><small>Healers</small></div>
-          <div><span class="role-icon damage">▲</span><strong>16</strong><small>Damage</small></div>
-        </div>
-        <div class="roster-line">
-          <div class="avatar-stack" aria-hidden="true">
-            <span>AK</span><span>MY</span><span>RN</span><span>+</span>
-          </div>
-          <p><strong>23 confirmed</strong><br /><span>2 spots still open</span></p>
-        </div>
-        <div class="preview-progress"><span></span></div>
-        <div class="preview-footer">
-          <span>Roster locks in 1 day</span>
-          <span class="ready-check">Ready check ✓</span>
         </div>
       </div>
-    </section>
-
-    <section class="product-links" aria-labelledby="choose-heading">
-      <div class="section-heading">
-        <p class="eyebrow"><span></span> Choose your path</p>
-        <h2 id="choose-heading">Everything your raid needs.</h2>
-      </div>
-      <div class="link-grid">
-        <a class="product-card guild-card" href="/auth/login">
-          <span class="card-index">01</span>
-          <span class="card-symbol" aria-hidden="true">⚔</span>
-          <h3>Your guild site</h3>
-          <p>Open your private roster, raids, characters, recruitment, and guild tools.</p>
-          <strong>Log in to continue <span aria-hidden="true">→</span></strong>
-        </a>
-        <a class="product-card" href="{{ links.demo }}">
-          <span class="card-index">02</span>
-          <span class="card-symbol" aria-hidden="true">◇</span>
-          <h3>Try the demo</h3>
-          <p>Click around a sample raid setup. It is completely separate from live guild data.</p>
-          <strong>Enter the sandbox <span aria-hidden="true">→</span></strong>
-        </a>
-        <a class="product-card" href="{{ links.armory }}">
-          <span class="card-index">03</span>
-          <span class="card-symbol" aria-hidden="true">⌁</span>
-          <h3>Player armory</h3>
-          <p>Look up characters and inspect the profiles that help shape a stronger roster.</p>
-          <strong>Visit the armory <span aria-hidden="true">↗</span></strong>
-        </a>
-      </div>
-    </section>
-
-    <section class="invite-strip">
-      <div>
-        <p class="eyebrow"><span></span> Bring Raiding.site home</p>
-        <h2>Ready for a smoother raid night?</h2>
-        <p>Add the bot to your Discord server and give your guild a place to organize.</p>
-      </div>
-      {% if bot_invite_url %}
-      <a class="button button-light" href="{{ bot_invite_url }}" target="_blank" rel="noopener noreferrer">
-        Invite the Discord bot <span aria-hidden="true">↗</span>
-      </a>
-      {% else %}
-      <span class="button button-disabled" aria-disabled="true">Bot invite coming soon</span>
-      {% endif %}
-    </section>
+    </div>
   </main>
-
-  <footer class="public-footer">
-    <a class="wordmark footer-mark" href="{{ links.home }}"><span class="wordmark-rune">R</span><span>raiding<span class="wordmark-dot">.</span>site</span></a>
-    <p>Built for the pull after “one last pull.”</p>
-    <div><a href="{{ links.demo }}">Demo</a><a href="{{ links.armory }}">Armory</a><a href="/auth/login">Log in</a></div>
-  </footer>
 </body>
 </html>

@@ -17,6 +17,7 @@ const recruitmentRouter = require('../routes/recruitment');
 const statisticsRouter = require('../routes/statistics');
 const { registerFilters } = require('./filters');
 const { safeRelativeRedirect } = require('../services/guildAccess');
+const { applyDemoSession, demoConfig, isDemoHostname } = require('../services/demoGuild');
 const {
   buildLinkEmbed,
   guildIdFromRaidPath,
@@ -24,9 +25,8 @@ const {
   isLinkPreviewRequest,
 } = require('../services/linkPreview');
 
-const RESERVED_PUBLIC_SUBDOMAINS = new Set(['armory', 'demo', 'www']);
+const RESERVED_PUBLIC_SUBDOMAINS = new Set(['armory', 'www']);
 const DEFAULT_PUBLIC_DOMAIN = 'raiding.site';
-const DEFAULT_BOT_PERMISSIONS = '268453888'; // Manage Roles, Send Messages, Embed Links
 
 function normalizedHostname(hostname) {
   return String(hostname || '')
@@ -42,12 +42,6 @@ function isApexSiteHost(hostname, baseDomain) {
   return host === 'localhost' || host === '127.0.0.1' || host === '::1';
 }
 
-function isDemoSiteHost(hostname, baseDomain) {
-  const host = normalizedHostname(hostname);
-  const domain = normalizedHostname(baseDomain);
-  return Boolean(domain && host === `demo.${domain}`);
-}
-
 function publicSiteLinks(baseDomain) {
   const domain = normalizedHostname(baseDomain) || DEFAULT_PUBLIC_DOMAIN;
   return {
@@ -57,23 +51,10 @@ function publicSiteLinks(baseDomain) {
   };
 }
 
-function buildBotInviteUrl(clientId, configuredUrl) {
-  if (configuredUrl) return configuredUrl;
-  if (!clientId) return null;
-  const params = new URLSearchParams({
-    client_id: clientId,
-    permissions: DEFAULT_BOT_PERMISSIONS,
-    integration_type: '0',
-    scope: 'bot applications.commands',
-  });
-  return `https://discord.com/oauth2/authorize?${params.toString()}`;
-}
-
 function createApp() {
   const app = express();
 
-  // Public assets and templates do not need a session. Keeping them ahead of
-  // session setup means the demo never touches live session or guild data.
+  // Public assets and the simple apex landing page do not need a session.
   app.use(express.static(path.join(__dirname, '..', 'static')));
 
   const templateDir = path.join(__dirname, '..', 'templates');
@@ -86,20 +67,9 @@ function createApp() {
   app.use((req, res, next) => {
     const baseDomain = process.env.BASE_DOMAIN;
     const links = publicSiteLinks(baseDomain);
-    const botInviteUrl = buildBotInviteUrl(
-      process.env.DISCORD_CLIENT_ID,
-      process.env.DISCORD_BOT_INVITE_URL
-    );
-
-    if (isDemoSiteHost(req.hostname, baseDomain)) {
-      if (req.method === 'GET' && req.path === '/') {
-        return res.render('demo.html', { links, bot_invite_url: botInviteUrl });
-      }
-      return res.status(404).render('demo.html', { links, bot_invite_url: botInviteUrl });
-    }
 
     if (req.method === 'GET' && req.path === '/' && isApexSiteHost(req.hostname, baseDomain)) {
-      return res.render('landing.html', { links, bot_invite_url: botInviteUrl });
+      return res.render('landing.html', { links });
     }
 
     next();
@@ -129,6 +99,15 @@ function createApp() {
       cookie: _sessionCookieOpts,
     })
   );
+
+  // demo.raiding.site is the real guild interface backed by disposable data.
+  // The synthetic session is scoped to that hostname and stripped immediately
+  // when the same shared cookie appears on the main site or a real guild site.
+  app.use((req, _res, next) => {
+    const config = demoConfig(process.env);
+    applyDemoSession(req.session, isDemoHostname(req.hostname, config.baseDomain), config);
+    next();
+  });
 
   // Dynamic guild-aware scripts.
   app.get('/js/spec_aliases.js', async (req, res) => {
@@ -256,6 +235,9 @@ function createApp() {
     res.locals.dev_mode = process.env.DEV_MODE === 'true';
     res.locals.dev_user_id = process.env.DEV_USER_ID || '';
     res.locals.dev_full_admin = isDevFullAdminEnabled();
+    res.locals.demo_mode = !!req.session.is_demo_session;
+    res.locals.demo_reset_minutes = demoConfig(process.env).resetIntervalMinutes;
+    res.locals.public_home_url = publicSiteLinks(process.env.BASE_DOMAIN).home;
     res.locals.active_guild_id = req.session.active_guild_id || null;
     res.locals.active_guild_name = req.session.active_guild_name || null;
     if (req.guildContext) {
@@ -290,6 +272,23 @@ function createApp() {
       });
     }
     next();
+  });
+
+  // Demo visitors can use database-backed raid and character features. Pages
+  // that require a real Discord server are intentionally unavailable.
+  app.use((req, res, next) => {
+    if (!req.session.is_demo_session) return next();
+    const discordOnlyPrefixes = [
+      '/auth',
+      '/guild-settings',
+      '/guild-characters',
+      '/recruitment',
+      '/select-guild',
+      '/statistics',
+    ];
+    if (!discordOnlyPrefixes.some((prefix) => req.path.startsWith(prefix))) return next();
+    req.session.flash = 'Discord-connected tools are unavailable in the demo guild.';
+    return res.redirect('/raids');
   });
 
   // Routes
@@ -405,9 +404,7 @@ function createApp() {
 }
 
 module.exports = {
-  buildBotInviteUrl,
   createApp,
   isApexSiteHost,
-  isDemoSiteHost,
   publicSiteLinks,
 };

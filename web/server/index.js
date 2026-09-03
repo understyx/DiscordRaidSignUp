@@ -3,12 +3,22 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.e
 const { createApp } = require('./app');
 const { scheduleWeeklyReset } = require('./scheduler');
 const { startBulkMessageWorker } = require('./bulkMessageWorker');
+const { startDemoGuildReset } = require('../services/demoGuild');
 
-const app = createApp();
 const PORT = parseInt(process.env.PORT || '8000', 10);
 
-app.listen(PORT, () => {
-  console.log(`Web server listening on port ${PORT}`);
+async function start() {
+  await startDemoGuildReset();
+
+  const app = createApp();
+  app.listen(PORT, () => {
+    console.log(`Web server listening on port ${PORT}`);
+  });
+  scheduleWeeklyReset();
+  startBulkMessageWorker();
+}
+
+start().catch((error) => {
+  console.error('[server] Failed to start:', error);
+  process.exitCode = 1;
 });
-scheduleWeeklyReset();
-startBulkMessageWorker();
