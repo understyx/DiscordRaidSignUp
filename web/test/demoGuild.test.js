@@ -27,10 +27,15 @@ test('demo seed contains editable characters and future raids', () => {
   const now = new Date('2026-09-04T12:00:00Z');
   const seed = buildDemoSeed(config, { now, random: () => 0.42 });
 
-  assert.equal(seed.characters.length, 28);
-  assert.equal(seed.characters.filter((character) => character.userId === config.userId).length, 3);
+  assert.equal(seed.characters.length, 47);
+  assert.equal(seed.characters.filter((character) => character.userId === config.userId).length, 5);
+  assert.equal(new Set(seed.characters.map((character) => character.userId)).size, 37);
   assert.equal(seed.raids.length, 3);
   assert.ok(seed.raids.every((raid) => raid.date > now));
+  assert.deepEqual(
+    seed.raids.map((raid) => raid.compositionSize),
+    [18, 0, 23]
+  );
   assert.ok(seed.characters.some((character) => character.role === 'tank'));
   assert.ok(seed.characters.some((character) => character.role === 'healer'));
 });
@@ -55,6 +60,7 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
   let committed = false;
   let released = false;
   const statements = [];
+  const compositionCounts = new Map();
   const connection = {
     async beginTransaction() {},
     async commit() {
@@ -64,7 +70,7 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
     release() {
       released = true;
     },
-    async query(sql) {
+    async query(sql, params = []) {
       statements.push(sql);
       if (/SELECT id FROM raids/.test(sql)) return [[{ id: 1 }]];
       if (/SELECT id FROM characters/.test(sql)) return [[{ id: 2 }]];
@@ -74,6 +80,9 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
       if (/SELECT id FROM bulk_message_jobs/.test(sql)) return [[{ id: 6 }]];
       if (/INSERT INTO characters/.test(sql)) return [{ insertId: nextCharacterId++ }];
       if (/INSERT INTO raids/.test(sql)) return [{ insertId: nextRaidId++ }];
+      if (/INSERT INTO compositions/.test(sql)) {
+        compositionCounts.set(params[0], (compositionCounts.get(params[0]) || 0) + 1);
+      }
       return [{ affectedRows: 1 }];
     },
   };
@@ -85,11 +94,15 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
   const config = demoConfig({ BASE_DOMAIN: 'raiding.site', DEMO_RESET_INTERVAL_MINUTES: '12' });
 
   const result = await resetDemoGuildData(database, config);
-  assert.deepEqual(result, { characters: 28, raids: 3 });
+  assert.deepEqual(result, { characters: 47, raids: 3 });
   assert.equal(committed, true);
   assert.equal(released, true);
   assert.ok(statements.some((sql) => /DELETE FROM signups/.test(sql)));
   assert.ok(statements.some((sql) => /INSERT INTO compositions/.test(sql)));
+  assert.deepEqual(
+    [200, 201, 202].map((raidId) => compositionCounts.get(raidId) || 0),
+    [18, 0, 23]
+  );
 
   let scheduledDelay = null;
   const logs = [];
@@ -103,5 +116,5 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
     },
   });
   assert.equal(scheduledDelay, 12 * 60 * 1000);
-  assert.match(logs[0], /Rebuilt 3 raids and 28 characters/);
+  assert.match(logs[0], /Rebuilt 3 raids and 47 characters/);
 });

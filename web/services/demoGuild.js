@@ -9,6 +9,14 @@ const DEFAULT_DEMO_GUILD_ID = '-1';
 const DEFAULT_DEMO_USER_ID = '-99';
 const DEFAULT_RESET_INTERVAL_MINUTES = 30;
 
+const DEMO_CHARACTER_TEMPLATES = [
+  ['Aegis', 'Paladin', 'Protection', 'tank'],
+  ['Dawnsong', 'Priest', 'Discipline', 'healer'],
+  ['Ashenbolt', 'Mage', 'Fire', 'dps'],
+  ['Nightarrow', 'Hunter', 'Marksmanship', 'dps'],
+  ['Wildheart', 'Druid', 'Feral (Cat)', 'dps'],
+];
+
 const CHARACTER_TEMPLATES = [
   ['Aegis', 'Paladin', 'Protection', 'tank'],
   ['Starbloom', 'Druid', 'Restoration', 'healer'],
@@ -40,11 +48,62 @@ const CHARACTER_TEMPLATES = [
   ['Felheart', 'Warlock', 'Destruction', 'dps'],
 ];
 
-const RAID_TEMPLATES = [
-  ['Icecrown Citadel 25', 'ICC25', 25, 2],
-  ['Ruby Sanctum 25', 'RS25', 25, 5],
-  ['Trial of the Grand Crusader', 'TOC25', 25, 8],
+const PLAYER_NAMES = [
+  'Arden',
+  'Brakka',
+  'Cinder',
+  'Dorian',
+  'Elowen',
+  'Fenric',
+  'Garran',
+  'Hesper',
+  'Isolde',
+  'Joren',
+  'Kaelis',
+  'Liora',
+  'Marek',
+  'Neris',
+  'Orin',
+  'Phaedra',
+  'Quill',
+  'Riven',
+  'Sylas',
+  'Tamsin',
+  'Ulric',
+  'Vesper',
+  'Wren',
+  'Xara',
+  'Yorick',
+  'Zephan',
+  'Aster',
+  'Bram',
+  'Corin',
+  'Delia',
+  'Eamon',
+  'Freya',
+  'Galen',
+  'Helia',
+  'Ivar',
+  'Juno',
 ];
+
+const RAID_TEMPLATES = [
+  ['Icecrown Citadel 25', 'ICC25', 25, 2, 18],
+  ['Ruby Sanctum 25', 'RS25', 25, 5, 0],
+  ['Trial of the Grand Crusader', 'TOC25', 25, 8, 23],
+];
+
+const MELEE_SPECS = new Set([
+  'Assassination',
+  'Blood',
+  'Combat',
+  'Enhancement',
+  'Feral (Cat)',
+  'Frost',
+  'Fury',
+  'Retribution',
+  'Unholy',
+]);
 
 function normalizeHostname(value) {
   return String(value || '')
@@ -124,27 +183,57 @@ function shuffle(values, random = Math.random) {
 }
 
 function buildDemoSeed(config, { now = new Date(), random = Math.random } = {}) {
-  const shuffledCharacters = shuffle(CHARACTER_TEMPLATES, random);
-  const characters = shuffledCharacters.map(([baseName, charClass, spec, role], index) => ({
-    userId: index < 3 ? config.userId : String(-100n - BigInt(index)),
-    username: index < 3 ? config.username : `Demo Player ${index - 2}`,
-    name: `${baseName}${randomInt(10, 99, random)}`,
+  const demoCharacters = DEMO_CHARACTER_TEMPLATES.map(([name, charClass, spec, role]) => ({
+    userId: config.userId,
+    username: config.username,
+    name,
     charClass,
     spec,
     role,
-    gearscore: randomInt(5700, 6550, random),
+    gearscore: randomInt(6100, 6550, random),
   }));
 
-  const raids = RAID_TEMPLATES.map(([name, instance, maxSize, daysAhead], index) => ({
-    guildRaidNumber: index + 1,
-    name,
-    instance,
-    maxSize,
-    date: new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000),
-    description: index === 0 ? 'Heroic progression. Flasks and food ready before pull.' : '',
-  }));
+  const shuffledPlayers = shuffle(PLAYER_NAMES, random);
+  const shuffledTemplates = shuffle(CHARACTER_TEMPLATES, random);
+  const fakeCharacters = shuffledPlayers.flatMap((username, index) => {
+    const userId = String(-100n - BigInt(index));
+    const templates = [shuffledTemplates[index % shuffledTemplates.length]];
+    // A handful of players have an alt so the signup pool demonstrates the
+    // same multi-character choices real raiders see.
+    if (index % 6 === 0) {
+      templates.push(shuffledTemplates[(index + 9) % shuffledTemplates.length]);
+    }
+    return templates.map(([baseName, charClass, spec, role], characterIndex) => ({
+      userId,
+      username,
+      name: `${baseName}${randomInt(10, 99, random)}${characterIndex ? 'a' : ''}`,
+      charClass,
+      spec,
+      role,
+      gearscore: randomInt(5700, 6500, random),
+    }));
+  });
+
+  const characters = [...demoCharacters, ...fakeCharacters];
+
+  const raids = RAID_TEMPLATES.map(
+    ([name, instance, maxSize, daysAhead, compositionSize], index) => ({
+      guildRaidNumber: index + 1,
+      name,
+      instance,
+      maxSize,
+      compositionSize,
+      date: new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000),
+      description: index === 0 ? 'Heroic progression. Flasks and food ready before pull.' : '',
+    })
+  );
 
   return { characters, raids };
+}
+
+function compositionRole(character) {
+  if (character.role !== 'dps') return character.role;
+  return MELEE_SPECS.has(character.spec) ? 'mdps' : 'rdps';
 }
 
 async function deleteIds(connection, table, column, ids) {
@@ -304,14 +393,48 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
         ]
       );
       const raidId = raidResult.insertId;
-      const signedCharacters = shuffle(insertedCharacters, Math.random).slice(0, randomInt(18, 24));
+      const demoCharacters = insertedCharacters.filter(
+        (character) => character.userId === config.userId
+      );
+      const fakeCharacters = insertedCharacters.filter(
+        (character) => character.userId !== config.userId
+      );
+      const guaranteedRoleMix = [
+        ...shuffle(
+          fakeCharacters.filter((character) => character.role === 'tank'),
+          Math.random
+        ).slice(0, 2),
+        ...shuffle(
+          fakeCharacters.filter((character) => character.role === 'healer'),
+          Math.random
+        ).slice(0, 6),
+        ...shuffle(
+          fakeCharacters.filter((character) => character.role === 'dps'),
+          Math.random
+        ).slice(0, 24),
+      ];
+      const selectedIds = new Set(guaranteedRoleMix.map((character) => character.id));
+      const targetFakeSignups = randomInt(32, 36);
+      const extraCharacters = shuffle(
+        fakeCharacters.filter((character) => !selectedIds.has(character.id)),
+        Math.random
+      ).slice(0, Math.max(0, targetFakeSignups - guaranteedRoleMix.length));
+      const signupPool = [...demoCharacters, ...guaranteedRoleMix, ...extraCharacters];
+      const signedCharacters = [
+        ...new Map(signupPool.map((character) => [character.id, character])).values(),
+      ];
 
-      for (const character of signedCharacters) {
+      for (const [index, character] of signedCharacters.entries()) {
         await connection.query(
           `INSERT INTO signups
             (raid_id, discord_user_id, character_id, signup_type, status, is_saved, note, created_at)
            VALUES (?, ?, ?, 'fill', ?, 0, NULL, NOW())`,
-          [raidId, character.userId, character.id, Math.random() < 0.12 ? 'tentative' : 'signed']
+          [
+            raidId,
+            character.userId,
+            character.id,
+            index >= signedCharacters.length - 3 ? 'tentative' : 'signed',
+          ]
         );
       }
 
@@ -319,17 +442,18 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
         'INSERT INTO composition_meta (raid_id, comp_number, revision) VALUES (?, 1, 0)',
         [raidId]
       );
+      const confirmedCharacters = signedCharacters.slice(0, -3);
       const roster = [
-        ...signedCharacters.filter((character) => character.role === 'tank').slice(0, 2),
-        ...signedCharacters.filter((character) => character.role === 'healer').slice(0, 5),
-        ...signedCharacters.filter((character) => character.role === 'dps').slice(0, 16),
-      ].slice(0, 23);
+        ...confirmedCharacters.filter((character) => character.role === 'tank').slice(0, 2),
+        ...confirmedCharacters.filter((character) => character.role === 'healer').slice(0, 5),
+        ...confirmedCharacters.filter((character) => character.role === 'dps').slice(0, 16),
+      ].slice(0, raidData.compositionSize);
       for (const [index, character] of roster.entries()) {
         await connection.query(
           `INSERT INTO compositions
             (raid_id, character_id, role_slot, slot_role, comp_number, created_by, created_at)
            VALUES (?, ?, ?, ?, 1, ?, NOW())`,
-          [raidId, character.id, `slot_${index + 1}`, character.role, config.userId]
+          [raidId, character.id, `slot_${index + 1}`, compositionRole(character), config.userId]
         );
       }
     }

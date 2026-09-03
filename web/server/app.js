@@ -27,6 +27,7 @@ const {
 
 const RESERVED_PUBLIC_SUBDOMAINS = new Set(['armory', 'www']);
 const DEFAULT_PUBLIC_DOMAIN = 'raiding.site';
+const DEFAULT_BOT_PERMISSIONS = '268453888'; // Manage Roles, Send Messages, Embed Links
 
 function normalizedHostname(hostname) {
   return String(hostname || '')
@@ -51,6 +52,18 @@ function publicSiteLinks(baseDomain) {
   };
 }
 
+function buildBotInviteUrl(clientId, configuredUrl) {
+  if (configuredUrl) return configuredUrl;
+  if (!clientId) return null;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    permissions: DEFAULT_BOT_PERMISSIONS,
+    integration_type: '0',
+    scope: 'bot applications.commands',
+  });
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
 function createApp() {
   const app = express();
 
@@ -67,9 +80,13 @@ function createApp() {
   app.use((req, res, next) => {
     const baseDomain = process.env.BASE_DOMAIN;
     const links = publicSiteLinks(baseDomain);
+    const botInviteUrl = buildBotInviteUrl(
+      process.env.DISCORD_CLIENT_ID,
+      process.env.DISCORD_BOT_INVITE_URL
+    );
 
     if (req.method === 'GET' && req.path === '/' && isApexSiteHost(req.hostname, baseDomain)) {
-      return res.render('landing.html', { links });
+      return res.render('landing.html', { links, bot_invite_url: botInviteUrl });
     }
 
     next();
@@ -404,6 +421,7 @@ function createApp() {
 }
 
 module.exports = {
+  buildBotInviteUrl,
   createApp,
   isApexSiteHost,
   publicSiteLinks,

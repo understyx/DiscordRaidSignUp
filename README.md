@@ -379,6 +379,7 @@ Use this quick check to validate that rapid status changes mutate a single log-t
 | `DISCORD_BOT_TOKEN`               | Bot token from Discord Developer Portal                                     | –                                     |
 | `DISCORD_CLIENT_ID`               | OAuth2 Client ID                                                            | –                                     |
 | `DISCORD_CLIENT_SECRET`           | OAuth2 Client Secret                                                        | –                                     |
+| `DISCORD_BOT_INVITE_URL`          | Optional bot invite URL override for the landing page                       | generated from `DISCORD_CLIENT_ID`    |
 | `DB_HOST`                         | Database host                                                               | `localhost`                           |
 | `DB_PORT`                         | Database port                                                               | `3306`                                |
 | `DB_USER`                         | Database user                                                               | `raidbot`                             |
