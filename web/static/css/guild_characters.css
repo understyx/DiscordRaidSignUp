@@ -12,6 +12,9 @@
   text-transform: uppercase;
 }
 .guild-rank-filter-card { border-color: rgba(212, 175, 55, 0.45); }
+.guild-section-toggle .when-collapsed { display: none; }
+.guild-section-toggle.collapsed .when-expanded { display: none; }
+.guild-section-toggle.collapsed .when-collapsed { display: inline; }
 .guild-rank-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));

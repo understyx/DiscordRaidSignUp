@@ -81,6 +81,25 @@ test('characters page renders compact records and preset role shortcuts', () => 
   assert.match(html, /id="presetList"/);
 });
 
+test('navigation groups guild tools, guild switching, and account actions', () => {
+  const html = templates.render('base.html', {
+    user: { id: '1', username: 'guardian', is_admin: true },
+    has_any_guild: true,
+    has_multiple_guilds: true,
+    active_guild_name: 'Citadel',
+  });
+
+  assert.match(html, /id="guildNavigation"/);
+  assert.match(html, /href="\/guild-characters">🏰 Guild Characters<\/a>/);
+  assert.match(html, /href="\/recruitment">📋 Recruitment<\/a>/);
+  assert.match(html, /href="\/statistics">📊 Statistics<\/a>/);
+  assert.match(html, /href="\/guild-settings">⚙️ Guild Settings<\/a>/);
+  assert.match(html, /id="activeGuildNavigation"/);
+  assert.match(html, /href="\/select-guild">Switch Guild<\/a>/);
+  assert.match(html, /id="accountNavigation"/);
+  assert.match(html, /href="\/auth\/logout">Logout<\/a>/);
+});
+
 test('guild database renders a searchable Discord member sidebar and selected detail', () => {
   const selectedUser = {
     userId: '123456789012345678',
@@ -117,6 +136,8 @@ test('guild database renders a searchable Discord member sidebar and selected de
     /data-member-search="guardian guardian raid leader 123456789012345678 aegis bulwark"/
   );
   assert.match(html, /Ranks that count as guild members/);
+  assert.match(html, /data-bs-target="#guildRankFilterContent"/);
+  assert.match(html, /class="collapse show mt-3" id="guildRankFilterContent"/);
   assert.match(html, /action="\/guild-characters\/rank-filter"/);
   assert.match(html, /name="rank_ids" value="10" class="form-check-input"\s+checked/);
   assert.match(html, /People with no rank are always excluded/);
@@ -129,6 +150,8 @@ test('guild database renders a searchable Discord member sidebar and selected de
   assert.match(html, /color: #ff8800/);
   assert.match(html, /123456789012345678/);
   assert.match(html, /id="bulkMessageForm"/);
+  assert.match(html, /data-bs-target="#bulkMessageContent"/);
+  assert.match(html, /class="collapse show mt-3" id="bulkMessageContent"/);
   assert.match(html, /0 characters/);
   assert.match(html, /Specific Person/);
   assert.match(html, /name="specific_user_id"/);

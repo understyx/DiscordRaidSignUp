@@ -20,7 +20,7 @@
 
 <section class="card guild-rank-filter-card mb-3" aria-labelledby="guildRankFilterHeading">
   <div class="card-body">
-    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
       <div>
         <p class="section-kicker mb-1">Shared guild roster</p>
         <h3 class="h5 mb-1" id="guildRankFilterHeading">Ranks that count as guild members</h3>
@@ -28,9 +28,17 @@
           Members must have at least one selected rank. People with no rank are always excluded.
         </p>
       </div>
-      <span class="badge bg-primary">Every officer</span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary">Every officer</span>
+        <button class="btn btn-sm btn-outline-secondary guild-section-toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#guildRankFilterContent"
+                aria-expanded="true" aria-controls="guildRankFilterContent">
+          <span class="when-expanded">Hide</span><span class="when-collapsed">Show</span>
+        </button>
+      </div>
     </div>
 
+    <div class="collapse show mt-3" id="guildRankFilterContent">
     {% if guildCharacterRoles | length %}
     <form method="post" action="/guild-characters/rank-filter">
       {% if selectedUser %}<input type="hidden" name="return_user" value="{{ selectedUser.userId }}">{% endif %}
@@ -57,20 +65,29 @@
     {% else %}
     <p class="text-warning small mb-0">No selectable Discord ranks are available for this guild.</p>
     {% endif %}
+    </div>
   </div>
 </section>
 
 {% if users | length %}
 <section class="card bulk-message-card mb-3" aria-labelledby="bulkMessageHeading">
   <div class="card-body">
-    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
       <div>
         <p class="section-kicker mb-1">Discord outreach</p>
         <h3 class="h5 mb-0" id="bulkMessageHeading">Message matching members</h3>
       </div>
-      <span class="badge bg-secondary" id="bulkRecipientCount">0 recipients</span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary" id="bulkRecipientCount">0 recipients</span>
+        <button class="btn btn-sm btn-outline-secondary guild-section-toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#bulkMessageContent"
+                aria-expanded="true" aria-controls="bulkMessageContent">
+          <span class="when-expanded">Hide</span><span class="when-collapsed">Show</span>
+        </button>
+      </div>
     </div>
 
+    <div class="collapse show mt-3" id="bulkMessageContent">
     <form method="post" action="/guild-characters/message" id="bulkMessageForm"
           data-max-recipients="{{ maxBulkRecipients }}">
       <div class="row g-3">
@@ -214,6 +231,7 @@
       </div>
     </details>
     {% endif %}
+    </div>
   </div>
 </section>
 

@@ -48,10 +48,17 @@
           <li class="nav-item"><a class="nav-link" href="/characters">My Characters</a></li>
           {% endif %}
           {% if user and user.is_admin and has_any_guild %}
-          <li class="nav-item"><a class="nav-link" href="/guild-characters">🏰 Guild Characters</a></li>
-          <li class="nav-item"><a class="nav-link" href="/guild-settings">⚙️ Guild Settings</a></li>
-          <li class="nav-item"><a class="nav-link" href="/recruitment">📋 Recruitment</a></li>
-          <li class="nav-item"><a class="nav-link" href="/statistics">📊 Statistics</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" id="guildNavigation" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">🏰 Guild</a>
+            <ul class="dropdown-menu" aria-labelledby="guildNavigation">
+              <li><a class="dropdown-item" href="/guild-characters">🏰 Guild Characters</a></li>
+              <li><a class="dropdown-item" href="/recruitment">📋 Recruitment</a></li>
+              <li><a class="dropdown-item" href="/statistics">📊 Statistics</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="/guild-settings">⚙️ Guild Settings</a></li>
+            </ul>
+          </li>
           {% endif %}
           {% if user and user.id and user.id == dev_user_id and dev_user_id %}
           <li class="nav-item dropdown">
@@ -73,21 +80,32 @@
         </ul>
         <ul class="navbar-nav ms-auto">
           {% if active_guild_name or active_guild_id %}
+          {% if has_multiple_guilds %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle navbar-context" href="#" id="activeGuildNavigation"
+               role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              🏰 {{ active_guild_name or active_guild_id }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="activeGuildNavigation">
+              <li><h6 class="dropdown-header">Active guild</h6></li>
+              <li><span class="dropdown-item-text">{{ active_guild_name or active_guild_id }}</span></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="/select-guild">Switch Guild</a></li>
+            </ul>
+          </li>
+          {% else %}
           <li class="nav-item">
-            <span class="nav-link">🏰 {{ active_guild_name or active_guild_id }}</span>
+            <span class="nav-link navbar-context">🏰 {{ active_guild_name or active_guild_id }}</span>
           </li>
           {% endif %}
-          {% if has_multiple_guilds %}
-          <li class="nav-item">
-            <a class="nav-link" href="/select-guild">Switch Guild</a>
-          </li>
           {% endif %}
           {% if user and user.id %}
-          <li class="nav-item">
-            <span class="nav-link">👤 {{ user.username }}</span>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/auth/logout">Logout</a>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" id="accountNavigation" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">👤 {{ user.username }}</a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountNavigation">
+              <li><a class="dropdown-item" href="/auth/logout">Logout</a></li>
+            </ul>
           </li>
           {% else %}
           <li class="nav-item">

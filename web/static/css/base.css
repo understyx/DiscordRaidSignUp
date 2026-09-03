@@ -16,6 +16,24 @@ body  { background-color: var(--bg-base); color: #d8dce8; }
 .navbar { background-color: var(--bg-nav) !important; border-bottom: 1px solid var(--border-dim); }
 .navbar-brand, .nav-link { color: var(--wow-gold) !important; }
 .nav-link:hover { color: #fff !important; }
+.navbar .nav-link { white-space: nowrap; }
+.navbar .dropdown-menu {
+  min-width: 13rem;
+  border-color: var(--border-dim);
+  background-color: var(--bg-card);
+  box-shadow: 0 0.7rem 1.5rem rgba(0, 0, 0, 0.35);
+}
+.navbar .dropdown-item { color: #d8dce8; }
+.navbar .dropdown-item:hover,
+.navbar .dropdown-item:focus { background-color: var(--bg-card-2); color: #fff; }
+.navbar .dropdown-item-text,
+.navbar .dropdown-header { color: #8a95b0; }
+.navbar-context { color: #a99673 !important; }
+
+@media (min-width: 992px) {
+  .navbar .navbar-nav { align-items: center; }
+  .navbar-brand { margin-right: 1.5rem; }
+}
 
 /* ── Cards ─────────────────────────────────────────────────────────── */
 .card {
