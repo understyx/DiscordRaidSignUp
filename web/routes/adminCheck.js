@@ -42,7 +42,7 @@ function createAdminResolver(options) {
 
   return async function resolveIsAdmin(userId, guildId) {
     const demo = demoConfig(process.env);
-    if (isDemoGuildId(guildId) && String(userId) === demo.userId) return true;
+    if (isDemoGuildId(guildId)) return String(userId) === demo.officerUserId;
 
     const isDev = devOverrideEnabled() && devUserId && String(userId) === String(devUserId);
     if (isDev) return true;

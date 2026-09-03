@@ -6,6 +6,7 @@ const {
   applyDemoSession,
   buildDemoSeed,
   demoConfig,
+  ensureDemoGuildData,
   isDemoGuildId,
   isDemoHostname,
   resetDemoGuildData,
@@ -27,9 +28,16 @@ test('demo seed contains editable characters and future raids', () => {
   const now = new Date('2026-09-04T12:00:00Z');
   const seed = buildDemoSeed(config, { now, random: () => 0.42 });
 
-  assert.equal(seed.characters.length, 47);
-  assert.equal(seed.characters.filter((character) => character.userId === config.userId).length, 5);
-  assert.equal(new Set(seed.characters.map((character) => character.userId)).size, 37);
+  assert.equal(seed.characters.length, 50);
+  assert.equal(
+    seed.characters.filter((character) => character.userId === config.officerUserId).length,
+    5
+  );
+  assert.equal(
+    seed.characters.filter((character) => character.userId === config.memberUserId).length,
+    3
+  );
+  assert.equal(new Set(seed.characters.map((character) => character.userId)).size, 38);
   assert.equal(seed.raids.length, 3);
   assert.ok(seed.raids.every((raid) => raid.date > now));
   assert.deepEqual(
@@ -40,18 +48,27 @@ test('demo seed contains editable characters and future raids', () => {
   assert.ok(seed.characters.some((character) => character.role === 'healer'));
 });
 
-test('shared demo identity is removed when the visitor leaves the demo host', () => {
+test('demo visitor can switch between officer and normal identities', () => {
   const config = demoConfig({ BASE_DOMAIN: 'raiding.site' });
   const session = {};
   applyDemoSession(session, true, config);
-  assert.equal(session.user_id, config.userId);
+  assert.equal(session.user_id, config.officerUserId);
+  assert.equal(session.is_admin, true);
+  assert.equal(session.demo_view, 'officer');
   assert.equal(session.active_guild_id, config.guildId);
   assert.equal(session.is_demo_session, true);
+
+  session.demo_view = 'member';
+  applyDemoSession(session, true, config);
+  assert.equal(session.user_id, config.memberUserId);
+  assert.equal(session.is_admin, false);
+  assert.equal(session.demo_view, 'member');
 
   applyDemoSession(session, false, config);
   assert.equal(session.user_id, undefined);
   assert.equal(session.active_guild_id, undefined);
   assert.equal(session.is_demo_session, undefined);
+  assert.equal(session.demo_view, undefined);
 });
 
 test('demo reset replaces scoped records in one transaction and schedules repeats', async () => {
@@ -87,6 +104,11 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
     },
   };
   const database = {
+    async query(sql) {
+      if (/COUNT\(\*\).*raids/.test(sql)) return [[{ count: 0 }]];
+      if (/COUNT\(\*\).*characters/.test(sql)) return [[{ count: 0 }]];
+      throw new Error(`Unexpected health-check query: ${sql}`);
+    },
     async getConnection() {
       return connection;
     },
@@ -94,7 +116,7 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
   const config = demoConfig({ BASE_DOMAIN: 'raiding.site', DEMO_RESET_INTERVAL_MINUTES: '12' });
 
   const result = await resetDemoGuildData(database, config);
-  assert.deepEqual(result, { characters: 47, raids: 3 });
+  assert.deepEqual(result, { characters: 50, raids: 3 });
   assert.equal(committed, true);
   assert.equal(released, true);
   assert.ok(statements.some((sql) => /DELETE FROM signups/.test(sql)));
@@ -103,6 +125,9 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
     [200, 201, 202].map((raidId) => compositionCounts.get(raidId) || 0),
     [18, 0, 23]
   );
+
+  const ensured = await ensureDemoGuildData(database, config);
+  assert.deepEqual(ensured, { characters: 50, raids: 3 });
 
   let scheduledDelay = null;
   const logs = [];
@@ -116,5 +141,5 @@ test('demo reset replaces scoped records in one transaction and schedules repeat
     },
   });
   assert.equal(scheduledDelay, 12 * 60 * 1000);
-  assert.match(logs[0], /Rebuilt 3 raids and 47 characters/);
+  assert.match(logs[0], /Rebuilt 3 raids and 50 characters/);
 });

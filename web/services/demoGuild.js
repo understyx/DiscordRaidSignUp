@@ -6,7 +6,8 @@ const pool = require('../db');
 // Discord snowflakes are unsigned. Negative IDs keep all demo identities
 // provably separate from real Discord guilds and users.
 const DEFAULT_DEMO_GUILD_ID = '-1';
-const DEFAULT_DEMO_USER_ID = '-99';
+const DEFAULT_DEMO_OFFICER_ID = '-99';
+const DEFAULT_DEMO_MEMBER_ID = '-98';
 const DEFAULT_RESET_INTERVAL_MINUTES = 30;
 
 const DEMO_CHARACTER_TEMPLATES = [
@@ -15,6 +16,12 @@ const DEMO_CHARACTER_TEMPLATES = [
   ['Ashenbolt', 'Mage', 'Fire', 'dps'],
   ['Nightarrow', 'Hunter', 'Marksmanship', 'dps'],
   ['Wildheart', 'Druid', 'Feral (Cat)', 'dps'],
+];
+
+const DEMO_MEMBER_CHARACTER_TEMPLATES = [
+  ['Oakshield', 'Warrior', 'Protection', 'tank'],
+  ['Silverleaf', 'Druid', 'Restoration', 'healer'],
+  ['Frostspark', 'Mage', 'Arcane', 'dps'],
 ];
 
 const CHARACTER_TEMPLATES = [
@@ -138,16 +145,25 @@ function demoConfig(env = process.env) {
       env.DEMO_RESET_INTERVAL_MINUTES,
       DEFAULT_RESET_INTERVAL_MINUTES
     ),
-    userId: DEFAULT_DEMO_USER_ID,
-    username: 'Demo Raider',
+    // userId remains an alias for the officer identity because seeded raids and
+    // compositions use it as their creator.
+    userId: DEFAULT_DEMO_OFFICER_ID,
+    username: 'Demo Officer',
+    officerUserId: DEFAULT_DEMO_OFFICER_ID,
+    officerUsername: 'Demo Officer',
+    memberUserId: DEFAULT_DEMO_MEMBER_ID,
+    memberUsername: 'Demo Raider',
   };
 }
 
 function applyDemoSession(session, onDemoHost, config) {
   if (config.enabled && onDemoHost) {
-    session.user_id = config.userId;
-    session.username = config.username;
-    session.is_admin = true;
+    const view = session.demo_view === 'member' ? 'member' : 'officer';
+    const isOfficer = view === 'officer';
+    session.demo_view = view;
+    session.user_id = isOfficer ? config.officerUserId : config.memberUserId;
+    session.username = isOfficer ? config.officerUsername : config.memberUsername;
+    session.is_admin = isOfficer;
     session.is_demo_session = true;
     session.active_guild_id = config.guildId;
     session.active_guild_name = config.guildName;
@@ -165,6 +181,7 @@ function applyDemoSession(session, onDemoHost, config) {
     delete session.active_guild_name;
     delete session.user_guild_ids;
     delete session.available_guilds;
+    delete session.demo_view;
   }
   return false;
 }
@@ -184,13 +201,23 @@ function shuffle(values, random = Math.random) {
 
 function buildDemoSeed(config, { now = new Date(), random = Math.random } = {}) {
   const demoCharacters = DEMO_CHARACTER_TEMPLATES.map(([name, charClass, spec, role]) => ({
-    userId: config.userId,
-    username: config.username,
+    userId: config.officerUserId,
+    username: config.officerUsername,
     name,
     charClass,
     spec,
     role,
     gearscore: randomInt(6100, 6550, random),
+  }));
+
+  const memberCharacters = DEMO_MEMBER_CHARACTER_TEMPLATES.map(([name, charClass, spec, role]) => ({
+    userId: config.memberUserId,
+    username: config.memberUsername,
+    name,
+    charClass,
+    spec,
+    role,
+    gearscore: randomInt(5900, 6350, random),
   }));
 
   const shuffledPlayers = shuffle(PLAYER_NAMES, random);
@@ -214,7 +241,7 @@ function buildDemoSeed(config, { now = new Date(), random = Math.random } = {}) 
     }));
   });
 
-  const characters = [...demoCharacters, ...fakeCharacters];
+  const characters = [...demoCharacters, ...memberCharacters, ...fakeCharacters];
 
   const raids = RAID_TEMPLATES.map(
     ([name, instance, maxSize, daysAhead, compositionSize], index) => ({
@@ -293,44 +320,9 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
     await deleteIds(connection, 'character_suggestions', 'character_id', characterIds);
     await deleteIds(connection, 'characters', 'id', characterIds);
 
-    const [formRows] = await connection.query(
-      'SELECT id FROM recruitment_forms WHERE guild_id = ?',
-      [config.guildId]
-    );
-    const formIds = formRows.map((row) => row.id);
-    const [applicationRows] = await connection.query(
-      'SELECT id FROM recruitment_applications WHERE guild_id = ?',
-      [config.guildId]
-    );
-    const applicationIds = applicationRows.map((row) => row.id);
-    const [questionRows] = formIds.length
-      ? await connection.query(
-          `SELECT id FROM recruitment_questions WHERE form_id IN (${formIds.map(() => '?').join(', ')})`,
-          formIds
-        )
-      : [[]];
-    await deleteIds(connection, 'recruitment_answers', 'application_id', applicationIds);
-    await deleteIds(
-      connection,
-      'recruitment_answers',
-      'question_id',
-      questionRows.map((row) => row.id)
-    );
-    await deleteIds(connection, 'recruitment_applications', 'id', applicationIds);
-    await deleteIds(connection, 'recruitment_questions', 'form_id', formIds);
-    await deleteIds(connection, 'recruitment_forms', 'id', formIds);
-    await connection.query('DELETE FROM recruitment_oauth_tokens WHERE guild_id = ?', [
-      config.guildId,
-    ]);
-
-    const [jobRows] = await connection.query(
-      'SELECT id FROM bulk_message_jobs WHERE guild_id = ?',
-      [config.guildId]
-    );
-    const jobIds = jobRows.map((row) => row.id);
-    await deleteIds(connection, 'bulk_message_recipients', 'job_id', jobIds);
-    await deleteIds(connection, 'bulk_message_jobs', 'id', jobIds);
-
+    // Demo visitors cannot access Discord-connected recruitment or bulk-message
+    // tools, so keep the reset focused on the raid tables. This also allows the
+    // demo seed to work while optional feature migrations are still rolling out.
     for (const table of [
       'guild_admin_roles',
       'guild_signup_roles',
@@ -341,7 +333,7 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
     ]) {
       await connection.query(`DELETE FROM ${table} WHERE guild_id = ?`, [config.guildId]);
     }
-    await connection.query('DELETE FROM discord_users WHERE discord_user_id BETWEEN -999 AND -99');
+    await connection.query('DELETE FROM discord_users WHERE discord_user_id BETWEEN -999 AND -1');
 
     const users = new Map(
       seed.characters.map((character) => [character.userId, character.username])
@@ -393,11 +385,12 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
         ]
       );
       const raidId = raidResult.insertId;
-      const demoCharacters = insertedCharacters.filter(
-        (character) => character.userId === config.userId
+      const demoUserIds = new Set([config.officerUserId, config.memberUserId]);
+      const demoCharacters = insertedCharacters.filter((character) =>
+        demoUserIds.has(character.userId)
       );
       const fakeCharacters = insertedCharacters.filter(
-        (character) => character.userId !== config.userId
+        (character) => !demoUserIds.has(character.userId)
       );
       const guaranteedRoleMix = [
         ...shuffle(
@@ -468,6 +461,32 @@ async function resetDemoGuildData(database = pool, config = demoConfig()) {
   }
 }
 
+let sharedResetPromise = null;
+
+function rebuildDemoGuildData(database = pool, config = demoConfig()) {
+  if (!config.enabled) return Promise.resolve(null);
+  if (!sharedResetPromise) {
+    sharedResetPromise = resetDemoGuildData(database, config).finally(() => {
+      sharedResetPromise = null;
+    });
+  }
+  return sharedResetPromise;
+}
+
+async function ensureDemoGuildData(database = pool, config = demoConfig()) {
+  if (!config.enabled) return null;
+  const [[raidCountRows], [characterCountRows]] = await Promise.all([
+    database.query('SELECT COUNT(*) AS count FROM raids WHERE guild_id = ?', [config.guildId]),
+    database.query('SELECT COUNT(*) AS count FROM characters WHERE guild_id = ?', [config.guildId]),
+  ]);
+  const raidCount = Number(raidCountRows[0]?.count || 0);
+  const characterCount = Number(characterCountRows[0]?.count || 0);
+  if (raidCount >= RAID_TEMPLATES.length && characterCount > 0) {
+    return { characters: characterCount, raids: raidCount };
+  }
+  return rebuildDemoGuildData(database, config);
+}
+
 async function startDemoGuildReset({
   database = pool,
   config = demoConfig(),
@@ -481,7 +500,7 @@ async function startDemoGuildReset({
     if (running) return;
     running = true;
     try {
-      const result = await resetDemoGuildData(database, config);
+      const result = await rebuildDemoGuildData(database, config);
       logger.log(
         `[demo-reset] Rebuilt ${result.raids} raids and ${result.characters} characters for ${config.guildName}.`
       );
@@ -502,8 +521,10 @@ module.exports = {
   applyDemoSession,
   buildDemoSeed,
   demoConfig,
+  ensureDemoGuildData,
   isDemoGuildId,
   isDemoHostname,
+  rebuildDemoGuildData,
   resetDemoGuildData,
   startDemoGuildReset,
 };

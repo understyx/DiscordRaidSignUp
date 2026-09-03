@@ -17,7 +17,13 @@ const recruitmentRouter = require('../routes/recruitment');
 const statisticsRouter = require('../routes/statistics');
 const { registerFilters } = require('./filters');
 const { safeRelativeRedirect } = require('../services/guildAccess');
-const { applyDemoSession, demoConfig, isDemoHostname } = require('../services/demoGuild');
+const {
+  applyDemoSession,
+  demoConfig,
+  ensureDemoGuildData,
+  isDemoHostname,
+  rebuildDemoGuildData,
+} = require('../services/demoGuild');
 const {
   buildLinkEmbed,
   guildIdFromRaidPath,
@@ -120,9 +126,17 @@ function createApp() {
   // demo.raiding.site is the real guild interface backed by disposable data.
   // The synthetic session is scoped to that hostname and stripped immediately
   // when the same shared cookie appears on the main site or a real guild site.
-  app.use((req, _res, next) => {
+  app.use(async (req, _res, next) => {
     const config = demoConfig(process.env);
-    applyDemoSession(req.session, isDemoHostname(req.hostname, config.baseDomain), config);
+    const onDemoHost = isDemoHostname(req.hostname, config.baseDomain);
+    applyDemoSession(req.session, onDemoHost, config);
+    if (onDemoHost) {
+      try {
+        await ensureDemoGuildData(pool, config);
+      } catch (error) {
+        console.error('[demo] Failed to ensure demo data:', error.message || error);
+      }
+    }
     next();
   });
 
@@ -253,6 +267,7 @@ function createApp() {
     res.locals.dev_user_id = process.env.DEV_USER_ID || '';
     res.locals.dev_full_admin = isDevFullAdminEnabled();
     res.locals.demo_mode = !!req.session.is_demo_session;
+    res.locals.demo_view = req.session.demo_view || 'officer';
     res.locals.demo_reset_minutes = demoConfig(process.env).resetIntervalMinutes;
     res.locals.public_home_url = publicSiteLinks(process.env.BASE_DOMAIN).home;
     res.locals.active_guild_id = req.session.active_guild_id || null;
@@ -293,6 +308,28 @@ function createApp() {
 
   // Demo visitors can use database-backed raid and character features. Pages
   // that require a real Discord server are intentionally unavailable.
+  app.post('/demo/view', express.urlencoded({ extended: false }), (req, res) => {
+    if (!req.session.is_demo_session) return res.redirect('/');
+    req.session.demo_view = req.body.view === 'member' ? 'member' : 'officer';
+    applyDemoSession(req.session, true, demoConfig(process.env));
+    req.session.flash = `Switched to ${req.session.demo_view} view.`;
+    return res.redirect('/raids');
+  });
+
+  app.post('/demo/reset', async (req, res) => {
+    if (!req.session.is_demo_session || req.session.is_admin !== true) {
+      return res.redirect('/raids');
+    }
+    try {
+      await rebuildDemoGuildData(pool, demoConfig(process.env));
+      req.session.flash = 'Demo raids and characters restored.';
+    } catch (error) {
+      console.error('[demo] Manual reset failed:', error.message || error);
+      req.session.flash = 'Could not reset the demo data. Please try again.';
+    }
+    return res.redirect('/raids');
+  });
+
   app.use((req, res, next) => {
     if (!req.session.is_demo_session) return next();
     const discordOnlyPrefixes = [

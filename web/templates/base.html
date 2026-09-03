@@ -119,9 +119,25 @@
 
   <div class="container mt-4">
     {% if demo_mode %}
-    <div class="alert alert-warning d-flex justify-content-between align-items-center gap-3" role="status">
-      <span><strong>Demo guild:</strong> Raid and character changes are disposable and reset every {{ demo_reset_minutes }} minutes. Discord-connected tools are disabled.</span>
-      <a class="btn btn-sm btn-outline-dark flex-shrink-0" href="{{ public_home_url }}">Exit demo</a>
+    <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-3" role="status">
+      <span>
+        <strong>Demo guild · {{ 'Officer' if demo_view == 'officer' else 'Normal' }} view:</strong>
+        Raid and character changes are disposable and reset every {{ demo_reset_minutes }} minutes.
+      </span>
+      <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="/demo/view">
+          <input type="hidden" name="view" value="{{ 'member' if demo_view == 'officer' else 'officer' }}">
+          <button class="btn btn-sm btn-outline-dark" type="submit">
+            Switch to {{ 'normal' if demo_view == 'officer' else 'officer' }} view
+          </button>
+        </form>
+        {% if demo_view == 'officer' %}
+        <form method="post" action="/demo/reset">
+          <button class="btn btn-sm btn-outline-dark" type="submit">Reset demo data</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-dark" href="{{ public_home_url }}">Exit demo</a>
+      </div>
     </div>
     {% endif %}
     {% if flash %}

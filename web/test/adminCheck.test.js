@@ -46,6 +46,31 @@ test('guilds without configured admin roles preserve open administration', async
   assert.equal(await resolverWith()('100', '42'), true);
 });
 
+test('demo guild grants officer access only to the officer identity', async () => {
+  const previous = {
+    baseDomain: process.env.BASE_DOMAIN,
+    enabled: process.env.DEMO_GUILD_ENABLED,
+    guildId: process.env.DEMO_GUILD_ID,
+  };
+  process.env.BASE_DOMAIN = 'raiding.site';
+  process.env.DEMO_GUILD_ENABLED = 'true';
+  process.env.DEMO_GUILD_ID = '-1';
+  try {
+    const resolve = resolverWith();
+    assert.equal(await resolve('-99', '-1'), true);
+    assert.equal(await resolve('-98', '-1'), false);
+  } finally {
+    for (const [key, value] of [
+      ['BASE_DOMAIN', previous.baseDomain],
+      ['DEMO_GUILD_ENABLED', previous.enabled],
+      ['DEMO_GUILD_ID', previous.guildId],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('admin resolution caches Discord membership checks', async () => {
   let fetchCount = 0;
   const resolve = createAdminResolver({
